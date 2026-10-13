@@ -917,7 +917,7 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport(choices: Playback
                     "tvArcSoundbar=${currentPlayerSettingsForReport.surroundTvArcSoundbar} " +
                     "iecActive=${playbackSpeedAwareAudioSink?.isIecHbrActive()} " +
                     "forceOptical=${currentPlayerSettingsForReport.forceOpticalPassthrough} " +
-                    "tunnelingEffective=${state.tunnelingEnabled}"
+                    "tunnelingEffective=${state.tunnelingApplied}"
             )
         )
     }
@@ -1046,7 +1046,7 @@ private fun PlayerRuntimeController.buildPlaybackIssuePlaybackSettingsInput(): P
         audioOutputChannels = settings.audioOutputChannels.settingValue,
         maintainOriginalAudioOnDownmix = settings.maintainOriginalAudioOnDownmix,
         tunnelingEnabled = settings.tunnelingEnabled,
-        tunnelingEffective = state.tunnelingEnabled,
+        tunnelingEffective = state.tunnelingApplied,
         forceOpticalPassthrough = settings.forceOpticalPassthrough,
         skipSilence = settings.skipSilence,
         audioAmplificationDb = settings.audioAmplificationDb,
@@ -2643,7 +2643,7 @@ fun PlayerRuntimeController.onEvent(
         }
         PlayerEvent.OnToggleAspectRatio -> {
             val state = _uiState.value
-            if (state.tunnelingEnabled) {
+            if (state.tunnelingApplied) {
                 val fill = !state.tunneledSurfaceFill
                 val label = PlayerDisplayModeUtils.resizeModeLabel(
                     PlayerDisplayModeUtils.exoSurfaceResizeMode(
