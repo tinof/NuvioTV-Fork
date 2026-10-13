@@ -49,6 +49,9 @@ internal object AudioOutputRouteDetector {
         return device?.toRoute()
     }
 
+    /** The route for a device the output track is known to play on. */
+    fun routeOf(device: AudioDeviceInfo): AudioOutputRoute = device.toRoute()
+
     /**
      * Whether media audio is currently (or will be) routed to a Bluetooth sink.
      * Same semantic Media3 uses before returning [AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES].
