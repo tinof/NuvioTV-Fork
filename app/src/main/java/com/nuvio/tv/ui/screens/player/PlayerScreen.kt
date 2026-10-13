@@ -240,7 +240,7 @@ fun PlayerScreen(
         viewModel.playbackTimeline.map { PlaybackTimelineState(duration = it.duration, isLive = it.isLive) }.distinctUntilChanged()
     }.collectAsState(initial = PlaybackTimelineState())
     val customAvailable = playerControlAvailability(uiState, controlsTimeline, nativeVideoSelected,
-        viewModel.exoPlayer?.isTunnelingEnabled == true)
+        uiState.tunnelingApplied)
     val customHasTimeline = !controlsTimeline.isLive && controlsTimeline.duration > 0L
     val remoteButtons by remember(viewModel) {
         viewModel.controller.deviceLocalPlayerPreferences.remoteButtons
@@ -1406,7 +1406,7 @@ fun PlayerScreen(
                             isPlaying = uiState.isPlaying,
                             isBuffering = uiState.isBuffering,
                             aspectMode = uiState.aspectMode,
-                            tunnelingEnabled = uiState.tunnelingEnabled,
+                            tunnelingEnabled = uiState.tunnelingApplied,
                             tunneledSurfaceFill = uiState.tunneledSurfaceFill,
                             useLibass = uiState.useLibass,
                             libassRenderType = uiState.libassRenderType,
