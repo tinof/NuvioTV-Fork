@@ -1,18 +1,23 @@
 package com.nuvio.tv.updater
 
 import android.os.Build
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.data.remote.dto.GitHubAssetDto
 
 internal object AbiSelector {
     /**
      * The device's ABIs with the kind this install runs as first, so an update keeps the APK type that is
-     * installed (a 32-bit install on a 64-bit box stays 32-bit).
+     * installed (a 32-bit install on a 64-bit box stays 32-bit). Exception: on Nvidia boxes with a 64-bit
+     * userland (Shield on Android 11) the update moves a 32-bit install to the 64-bit APK.
      */
     fun installedFirst(
         deviceAbis: List<String>,
-        is64Bit: Boolean = android.os.Process.is64Bit()
+        is64Bit: Boolean = android.os.Process.is64Bit(),
+        nvidia: Boolean = DeviceProfile.isNvidia(),
+        supports64Bit: Boolean = Build.SUPPORTED_64_BIT_ABIS?.isNotEmpty() == true
     ): List<String> {
-        val (same, other) = deviceAbis.partition { it.contains("64") == is64Bit }
+        val prefer64 = is64Bit || (nvidia && supports64Bit)
+        val (same, other) = deviceAbis.partition { it.contains("64") == prefer64 }
         return same + other
     }
 
