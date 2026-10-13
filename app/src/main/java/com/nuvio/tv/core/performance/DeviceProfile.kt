@@ -16,6 +16,9 @@ object DeviceProfile {
     /** Shield TV codenames: 2019 Pro (mdarcy), 2019 tube (sif), 2017 (darcy), 2015 (foster). */
     private val SHIELD_DEVICES = setOf("mdarcy", "sif", "darcy", "foster")
 
+    /** The 2019 Shields, the only ones with AI upscaling. */
+    private val SHIELD_2019_DEVICES = setOf("mdarcy", "sif")
+
     private const val MIB = 1024L * 1024L
     private const val SMALL_BELOW_BYTES = 2_300L * MIB
     private const val LARGE_FROM_BYTES = 3_300L * MIB
@@ -34,6 +37,12 @@ object DeviceProfile {
         manufacturer: String? = Build.MANUFACTURER,
         device: String? = Build.DEVICE,
     ): Boolean = isNvidia(manufacturer) && device.orEmpty().trim().equals("mdarcy", ignoreCase = true)
+
+    /** 2019 Pro (mdarcy) or 2019 tube (sif): the Shields with AI upscaling. */
+    fun isShield2019(
+        manufacturer: String? = Build.MANUFACTURER,
+        device: String? = Build.DEVICE,
+    ): Boolean = isNvidia(manufacturer) && device.orEmpty().trim().lowercase() in SHIELD_2019_DEVICES
 
     /** 3 GB boxes report 2.6 to 2.9 GiB, so MID is the "3 GB" class. */
     fun ramClass(totalMemBytes: Long): RamClass = when {
