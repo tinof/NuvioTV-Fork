@@ -302,6 +302,15 @@ class PlayerTunnelAvSyncPolicyTest {
             listOf(MimeTypes.VIDEO_H265),
             PlayerTunnelAvSyncPolicy.tunnelDecoderCandidateMimes(MimeTypes.VIDEO_H265)
         )
+        // A DV display keeps DV on the DV decoder, so an HEVC stall must not demote DV titles.
+        assertEquals(
+            listOf(MimeTypes.VIDEO_DOLBY_VISION),
+            PlayerTunnelAvSyncPolicy.tunnelDecoderCandidateMimes(MimeTypes.VIDEO_DOLBY_VISION, displayDv = true)
+        )
+        assertEquals(
+            listOf(MimeTypes.VIDEO_DOLBY_VISION, MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264),
+            PlayerTunnelAvSyncPolicy.tunnelDecoderCandidateMimes(MimeTypes.VIDEO_DOLBY_VISION, displayDv = false)
+        )
     }
 
     @Test

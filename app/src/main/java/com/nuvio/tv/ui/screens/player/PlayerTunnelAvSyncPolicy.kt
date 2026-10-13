@@ -64,10 +64,11 @@ internal object PlayerTunnelAvSyncPolicy {
 
     /**
      * Mimes whose tunneling decoders Media3 may use for a [sampleMimeType] track. A Dolby Vision
-     * track on a display without DV plays on the HEVC or AVC decoder (Media3's alternative mime).
+     * track on a display without DV plays on the HEVC or AVC decoder (Media3's alternative mime);
+     * on a DV display it stays on the DV decoder. Unknown display support counts as no DV.
      */
-    fun tunnelDecoderCandidateMimes(sampleMimeType: String): List<String> =
-        if (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) {
+    fun tunnelDecoderCandidateMimes(sampleMimeType: String, displayDv: Boolean? = null): List<String> =
+        if (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION && displayDv != true) {
             listOf(MimeTypes.VIDEO_DOLBY_VISION, MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264)
         } else {
             listOf(sampleMimeType)
