@@ -111,6 +111,34 @@ class AudioShieldPassTest {
         )
     }
 
+    private val hdmiRoute = AudioOutputRoute("type:hdmi|name:tv", "TV", isBluetooth = false)
+    private val idleSpeaker = AudioOutputRoute("type:bluetooth_a2dp|name:speaker", "Speaker", isBluetooth = true)
+    private val headphones = AudioOutputRoute("type:bluetooth_a2dp|name:headphones", "Headphones", isBluetooth = true)
+    private val pin = HdmiRouteUnderIdleBluetooth("stream-a", hdmiRoute, idleSpeaker.key)
+
+    @Test
+    fun `the same idle bluetooth sink keeps the stream on its hdmi route`() {
+        assertEquals(hdmiRoute, resolveRouteUnderIdleBluetooth(pin, "stream-a", idleSpeaker))
+    }
+
+    @Test
+    fun `another sink, another stream or no pin reads detect as is`() {
+        assertEquals(headphones, resolveRouteUnderIdleBluetooth(pin, "stream-a", headphones))
+        assertEquals(idleSpeaker, resolveRouteUnderIdleBluetooth(pin, "stream-b", idleSpeaker))
+        assertEquals(idleSpeaker, resolveRouteUnderIdleBluetooth(null, "stream-a", idleSpeaker))
+        val builtIn = AudioOutputRoute("type:built_in_speaker|name:box", "Box", isBluetooth = false)
+        assertEquals(builtIn, resolveRouteUnderIdleBluetooth(pin, "stream-a", builtIn))
+        assertNull(resolveRouteUnderIdleBluetooth(pin, "stream-a", null))
+    }
+
+    @Test
+    fun `only events for the idle bluetooth sink or no bluetooth sink keep the pin`() {
+        assertTrue(idleBluetoothPinSurvives(pin, emptyList()))
+        assertTrue(idleBluetoothPinSurvives(pin, listOf(idleSpeaker.key)))
+        assertFalse(idleBluetoothPinSurvives(pin, listOf(headphones.key)))
+        assertFalse(idleBluetoothPinSurvives(pin, listOf(idleSpeaker.key, headphones.key)))
+    }
+
     // --- debug.nuvio.hbr_buffer_scale ---
 
     @Test
