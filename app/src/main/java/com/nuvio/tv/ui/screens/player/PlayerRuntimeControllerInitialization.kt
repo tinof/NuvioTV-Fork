@@ -1059,7 +1059,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                             predictTunnelVideoDecoderNames(
                                 mappedTrackInfo,
                                 rendererFormatSupports,
-                                tunnelPredictionCodecSelector
+                                tunnelPredictionCodecSelector,
+                                displayDv = capsForDiagnostics.displayDv
                             )
                         },
                         hbrTunnelAllowed = hbrTunnelAllowed
@@ -4227,7 +4228,8 @@ private fun demoteVideoTunnelingWhereFramesNeedTheApp(
 private fun predictTunnelVideoDecoderNames(
     mappedTrackInfo: androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo,
     rendererFormatSupports: Array<out Array<out IntArray>>,
-    codecSelector: MediaCodecSelector?
+    codecSelector: MediaCodecSelector?,
+    displayDv: Boolean?
 ): Set<String>? {
     codecSelector ?: return null
     for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
@@ -4242,7 +4244,7 @@ private fun predictTunnelVideoDecoderNames(
                 val mime = format.sampleMimeType ?: continue
                 val secure = format.drmInitData != null
                 return runCatching {
-                    PlayerTunnelAvSyncPolicy.tunnelDecoderCandidateMimes(mime)
+                    PlayerTunnelAvSyncPolicy.tunnelDecoderCandidateMimes(mime, displayDv)
                         .flatMap { candidateMime -> codecSelector.getDecoderInfos(candidateMime, secure, true) }
                         .map { it.name }
                         .toSet()

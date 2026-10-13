@@ -13,6 +13,8 @@ internal fun PlayerRuntimeController.releasePlayer(flushPlaybackState: Boolean, 
         playbackRecoveryJob?.cancel()
         playbackRecoveryJob = null
         playbackRecoveryGate.cancel(resetIdentity = flushPlaybackState)
+        // A cancelled recovery never reaches initializePlayer, which is where the override is consumed.
+        hdmiRouteUnderBluetoothPin = null
     }
     logScrobbleDiagnostic("release_player", "flushPlaybackState=$flushPlaybackState")
     isReleasingPlayer = true
