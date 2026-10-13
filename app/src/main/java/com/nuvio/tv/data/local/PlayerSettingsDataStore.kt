@@ -2,6 +2,7 @@ package com.nuvio.tv.data.local
 
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.domain.model.AppFont
+import android.os.Build
 import android.util.Log
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -15,6 +16,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.player.BufferAhead
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.BufferSizing
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
 import kotlinx.coroutines.CoroutineScope
@@ -671,6 +673,28 @@ internal fun tunnelStallsExpired(
 }
 
 /**
+ * Frame-rate matching as stored; a saved choice (or the old on/off switch) always wins.
+ * Without one, Nvidia boxes start with START_STOP and other boxes keep OFF.
+ */
+internal fun storedFrameRateMatchingMode(
+    storedMode: String?,
+    legacyEnabled: Boolean?,
+    manufacturer: String? = Build.MANUFACTURER
+): FrameRateMatchingMode {
+    storedMode?.let { stored ->
+        runCatching { FrameRateMatchingMode.valueOf(stored) }.getOrNull()?.let { return it }
+    }
+    return when (legacyEnabled) {
+        true -> FrameRateMatchingMode.START_STOP
+        false -> FrameRateMatchingMode.OFF
+        null -> defaultFrameRateMatchingMode(manufacturer)
+    }
+}
+
+internal fun defaultFrameRateMatchingMode(manufacturer: String? = Build.MANUFACTURER): FrameRateMatchingMode =
+    if (DeviceProfile.isNvidia(manufacturer)) FrameRateMatchingMode.START_STOP else FrameRateMatchingMode.OFF
+
+/**
  * Surround mode as stored. An install that never chose a mode but has a format switch
  * off, or transcodes denied formats, reads as MANUAL so those choices keep applying.
  */
@@ -1311,9 +1335,10 @@ class PlayerSettingsDataStore @Inject constructor(
                 mpvHi10pGnextSoftwareFallbackEnabled =
                     prefs[mpvHi10pGnextSoftwareFallbackEnabledKey] ?: false,
                 mpvHardwareDecodeMode = parseMpvHardwareDecodeMode(prefs[mpvHardwareDecodeModeKey]),
-                frameRateMatchingMode = prefs[frameRateMatchingModeKey]?.let {
-                    runCatching { FrameRateMatchingMode.valueOf(it) }.getOrNull()
-                } ?: if (prefs[frameRateMatchingKey] == true) FrameRateMatchingMode.START_STOP else FrameRateMatchingMode.OFF,
+                frameRateMatchingMode = storedFrameRateMatchingMode(
+                    storedMode = prefs[frameRateMatchingModeKey],
+                    legacyEnabled = prefs[frameRateMatchingKey]
+                ),
                 resolutionMatchingEnabled = prefs[resolutionMatchingEnabledKey] ?: false,
                 streamAutoPlayMode = prefs[streamAutoPlayModeKey]?.let {
                     runCatching { StreamAutoPlayMode.valueOf(it) }.getOrDefault(StreamAutoPlayMode.MANUAL)
