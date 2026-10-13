@@ -521,7 +521,12 @@ private class PlatformIecAudioTrack(
     private var lastLatencySampleMs: Long = Long.MIN_VALUE
     private val latencyMethod: java.lang.reflect.Method? = try {
         AudioTrack::class.java.getMethod("getLatency")
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        // Without it the IEC clock has no output latency, so A/V sync can be late by the HAL's delay.
+        if (!latencyLookupFailureLogged) {
+            latencyLookupFailureLogged = true
+            Log.w(IEC_LATENCY_TAG, "AudioTrack.getLatency not found (${e.javaClass.simpleName}); output latency counted as 0")
+        }
         null
     }
 
@@ -604,6 +609,11 @@ private class PlatformIecAudioTrack(
 }
 
 private const val MIN_LATENCY_SAMPLE_MS = 500L
+
+private const val IEC_LATENCY_TAG = "IecPassthrough"
+
+@Volatile
+private var latencyLookupFailureLogged = false
 
 internal enum class IecProbeAttemptAction { OPEN, DEFER, STOP_USABLE }
 

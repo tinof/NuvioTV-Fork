@@ -279,6 +279,15 @@ internal class PlaybackAudioSinkMonitor(
         }
     }
 
+    /** The output track's routed device. Read-only: the HUD's route counters are left alone. */
+    fun routedDevice(): AudioDeviceInfo? {
+        return try {
+            if (iecSink?.isIecActive == true) iecSink.iecRoutedDevice() else platformAudioTrack()?.routedDevice
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
     private fun platformAudioTrack(): AudioTrack? {
         val sink = platformSink ?: return null
         if (audioTrackFieldLookupFailed) return null
