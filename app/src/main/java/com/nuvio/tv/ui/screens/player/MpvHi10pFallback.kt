@@ -3,6 +3,8 @@ package com.nuvio.tv.ui.screens.player
 import java.util.Locale
 
 internal fun PlayerRuntimeController.shouldUseMpvHi10pGnextSoftwareFallback(): Boolean {
+    // ExoPlayer saw a High 10 track no decoder takes (see shouldSwitchForHighBitDepthH264): no hints needed.
+    if (currentStreamUrl in mpvSoftwareDecodeStreamUrls) return true
     if (!mpvHi10pGnextSoftwareFallbackEnabledSetting) return false
     return mpvPlaybackHintsIndicateHi10p(
         currentFilename,
