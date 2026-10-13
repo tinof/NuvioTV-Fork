@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.os.Build
 import android.util.Log
+import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
@@ -40,6 +41,31 @@ object DolbyVisionCodecFallback {
     private const val TAG = "DvCodecFallback"
 
     /**
+     * debug.nuvio.dv_decoder_first=1 on a DV display, set per playback. The renderer sorts the
+     * selector's list by format support (a DV decoder that does not list the stream's profile
+     * goes behind HEVC), so the order is applied to the renderer's sorted list, not here.
+     */
+    @Volatile
+    var preferDvDecoders: Boolean = false
+
+    /** Hardware decoders queried under video/dolby-vision, moved ahead of the rest, order kept. */
+    fun dvDecodersFirst(format: Format, decoders: List<MediaCodecInfo>): List<MediaCodecInfo> =
+        dvDecodersFirst(preferDvDecoders, format.sampleMimeType, decoders) {
+            it.mimeType == DV_MIME && it.hardwareAccelerated && !it.softwareOnly
+        }
+
+    internal fun <T> dvDecodersFirst(
+        enabled: Boolean,
+        sampleMimeType: String?,
+        decoders: List<T>,
+        isHardwareDvDecoder: (T) -> Boolean
+    ): List<T> {
+        if (!enabled || sampleMimeType != DV_MIME || decoders.size < 2) return decoders
+        val (dv, rest) = decoders.partition(isHardwareDvDecoder)
+        return if (dv.isEmpty()) decoders else dv + rest
+    }
+
+    /**
      * Returns Media3 [MediaCodecInfo] entries for every hardware decoder that
      * handles `video/dolby-vision`, regardless of which DV profiles it advertises.
      *
@@ -49,9 +75,15 @@ object DolbyVisionCodecFallback {
      * ExoPlayer's profile-level check because the hardware can handle DV8.1
      * even though it doesn't say so in its advertisement.
      *
-     * Returns an empty list if no DV decoder exists or on any error.
+     * Like media3's own selector, a decoder qualifies only when it supports the secure and
+     * tunneled playback this query asks for, and does not require one it does not ask for.
+     *
+     * Returns an empty list if no DV decoder qualifies or on any error.
      */
-    fun findDvDecodersIgnoringProfile(): List<MediaCodecInfo> {
+    fun findDvDecodersIgnoringProfile(
+        requiresSecure: Boolean,
+        requiresTunneling: Boolean
+    ): List<MediaCodecInfo> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return emptyList()
 
         return runCatching {
@@ -71,6 +103,22 @@ object DolbyVisionCodecFallback {
                 }.getOrNull()
                 if (caps == null) {
                     Log.w(TAG, "Skipping ${info.name}: getCapabilitiesForType returned null")
+                    continue
+                }
+
+                val featuresMatch = matchesPlaybackFeatures(
+                    requiresSecure = requiresSecure,
+                    secureSupported = caps.isFeatureSupported(FEATURE_SECURE),
+                    secureRequired = caps.isFeatureRequired(FEATURE_SECURE),
+                    requiresTunneling = requiresTunneling,
+                    tunnelingSupported = caps.isFeatureSupported(FEATURE_TUNNELED),
+                    tunnelingRequired = caps.isFeatureRequired(FEATURE_TUNNELED)
+                )
+                if (!featuresMatch) {
+                    Log.i(
+                        TAG,
+                        "Skipping ${info.name}: secure=$requiresSecure tunneling=$requiresTunneling not matched"
+                    )
                     continue
                 }
 
@@ -122,6 +170,22 @@ object DolbyVisionCodecFallback {
         }
     }
 
+    /** media3 MediaCodecUtil's rule: what the query asks for is supported, nothing else is required. */
+    internal fun matchesPlaybackFeatures(
+        requiresSecure: Boolean,
+        secureSupported: Boolean,
+        secureRequired: Boolean,
+        requiresTunneling: Boolean,
+        tunnelingSupported: Boolean,
+        tunnelingRequired: Boolean
+    ): Boolean {
+        if (requiresSecure && !secureSupported) return false
+        if (!requiresSecure && secureRequired) return false
+        if (requiresTunneling && !tunnelingSupported) return false
+        if (!requiresTunneling && tunnelingRequired) return false
+        return true
+    }
+
     /**
      * Verifies that a codec can actually be instantiated by the platform.
      * Creates and immediately releases. Returns true if the codec is usable.
@@ -142,4 +206,6 @@ object DolbyVisionCodecFallback {
     }
 
     private const val DV_MIME = MimeTypes.VIDEO_DOLBY_VISION
+    private const val FEATURE_SECURE = android.media.MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback
+    private const val FEATURE_TUNNELED = android.media.MediaCodecInfo.CodecCapabilities.FEATURE_TunneledPlayback
 }
