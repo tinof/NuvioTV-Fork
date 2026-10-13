@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
+import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.player.AudioPassthroughPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -170,5 +172,64 @@ class LosslessAudioTrackDefaultTest {
     @Test
     fun `empty track list is a no-op`() {
         assertNull(LosslessAudioTrackDefault.pickDefaultIndex(emptyList(), listOf("en"), exactMatch))
+    }
+
+    // --- passthrough policy ---
+
+    private val trueHdDecoded = AudioPassthroughPolicy(allowTrueHd = false, allowDtsHd = false)
+
+    @Test
+    fun `decoded truehd ranks below bitstreamed eac3 joc`() {
+        val tracks = listOf(
+            track(0, "AC-3", "English (AC-3 5.1)", selected = true),
+            track(1, "TrueHD", "English (TrueHD 7.1)", channels = 8),
+            track(2, "E-AC-3", "English (E-AC-3 5.1)"),
+            track(3, "E-AC-3-JOC", "English (E-AC-3 Atmos)")
+        )
+        assertEquals(3, LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, trueHdDecoded))
+    }
+
+    @Test
+    fun `bitstreamed truehd still wins`() {
+        val tracks = listOf(
+            track(0, "E-AC-3-JOC", "English (E-AC-3 Atmos)", selected = true),
+            track(1, "TrueHD", "English (TrueHD 7.1)", channels = 8)
+        )
+        assertEquals(
+            1,
+            LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, AudioPassthroughPolicy.ALLOW_ALL)
+        )
+    }
+
+    @Test
+    fun `decoded truehd stays when no lossy track would be bitstreamed`() {
+        val tracks = listOf(
+            track(0, "AAC", "English (AAC Stereo)", channels = 2, selected = true),
+            track(1, "TrueHD", "English (TrueHD 7.1)", channels = 8),
+            track(2, "E-AC-3", "English (E-AC-3 5.1)")
+        )
+        val nothingBitstreamed = AudioPassthroughPolicy(
+            allowAc3 = false, allowEac3 = false, allowTrueHd = false, allowDts = false, allowDtsHd = false
+        )
+        assertEquals(1, LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, nothingBitstreamed))
+    }
+
+    @Test
+    fun `flac keeps its rank under any policy`() {
+        val tracks = listOf(
+            track(0, "E-AC-3-JOC", "English (E-AC-3 Atmos)", selected = true),
+            track(1, "FLAC", "English (FLAC 5.1)")
+        )
+        assertEquals(1, LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, trueHdDecoded))
+    }
+
+    @Test
+    fun `mpv names map to passthrough mimes`() {
+        assertEquals(MimeTypes.AUDIO_TRUEHD, LosslessAudioTrackDefault.passthroughMime("truehd", "English"))
+        assertEquals(MimeTypes.AUDIO_E_AC3, LosslessAudioTrackDefault.passthroughMime("eac3", "English"))
+        assertEquals(MimeTypes.AUDIO_DTS_HD, LosslessAudioTrackDefault.passthroughMime("dts", "DTS-HD MA 7.1"))
+        assertEquals(MimeTypes.AUDIO_DTS, LosslessAudioTrackDefault.passthroughMime("dts", "DTS 5.1"))
+        assertEquals(MimeTypes.AUDIO_E_AC3_JOC, LosslessAudioTrackDefault.passthroughMime("E-AC-3-JOC", "English"))
+        assertNull(LosslessAudioTrackDefault.passthroughMime("FLAC", "English"))
     }
 }

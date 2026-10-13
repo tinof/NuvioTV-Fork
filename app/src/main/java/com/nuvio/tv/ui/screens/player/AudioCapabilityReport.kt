@@ -71,7 +71,21 @@ object AudioCapabilityReport {
                 val maxPcmLabel = maxPcmChannelCount(audioManager)?.let { "$it ch" } ?: "unknown"
                 val plugReport = AudioChainProbe.readHdmiPlugEncodings(context)
                     ?.asList()?.mapNotNull(::encodingLabel)?.distinct()?.joinToString(" ")
-                format(supported, absent, negotiatedEncodings(audioManager), surroundModeName(audioManager), maxPcmLabel, plugReport)
+                // The decision reads 5.1 only; the other layouts are shown so a HAL that answers
+                // for one layout is visible.
+                val otherLayouts = OTHER_LAYOUTS.map { (layout, mask) ->
+                    layout to probeDirectLabels(attributes, mask).filter { it.second }.map { it.first }
+                }
+                format(
+                    supported,
+                    absent,
+                    negotiatedEncodings(audioManager),
+                    surroundModeName(context, audioManager),
+                    maxPcmLabel,
+                    plugReport,
+                    layoutLine = layoutLine(otherLayouts),
+                    plugMaxChannels = AudioChainProbe.readHdmiPlugMaxChannelCount(context)
+                )
             }
         } catch (t: Throwable) {
             "unavailable (${t.javaClass.simpleName})"
@@ -119,19 +133,37 @@ object AudioCapabilityReport {
         }.getOrNull()
     }
 
-    /** One isDirectPlaybackSupported call per [PROBES] entry, 48 kHz / 5.1, in order. */
-    private fun probeDirectLabels(attributes: AudioAttributes): List<Pair<String, Boolean>> =
+    private val OTHER_LAYOUTS: List<Pair<String, Int>> = listOf(
+        "2.0" to AudioFormat.CHANNEL_OUT_STEREO,
+        "7.1" to AudioFormat.CHANNEL_OUT_7POINT1_SURROUND
+    )
+
+    /** One isDirectPlaybackSupported call per [PROBES] entry, 48 kHz / 5.1 unless [channelMask] says otherwise, in order. */
+    private fun probeDirectLabels(
+        attributes: AudioAttributes,
+        channelMask: Int = AudioFormat.CHANNEL_OUT_5POINT1
+    ): List<Pair<String, Boolean>> =
         PROBES.map { (label, encoding) ->
             val format = AudioFormat.Builder()
                 .setEncoding(encoding)
                 .setSampleRate(48_000)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_5POINT1)
+                .setChannelMask(channelMask)
                 .build()
             val ok = runCatching {
                 AudioTrack.isDirectPlaybackSupported(format, attributes)
             }.getOrDefault(false)
             label to ok
         }
+
+    /**
+     * "2.0: AC3 EAC3 · 7.1: none" for the layouts probed next to 5.1, or null when none were.
+     */
+    internal fun layoutLine(layouts: List<Pair<String, List<String>>>): String? {
+        if (layouts.isEmpty()) return null
+        return layouts.joinToString(" · ") { (layout, opened) ->
+            "$layout: ${if (opened.isEmpty()) "none" else opened.joinToString(" ")}"
+        }
+    }
 
     /** Pure formatter, split out so the wording is unit-testable without a device. */
     internal fun format(
@@ -140,7 +172,9 @@ object AudioCapabilityReport {
         negotiated: String,
         surroundMode: String,
         maxPcm: String,
-        plugReport: String? = null
+        plugReport: String? = null,
+        layoutLine: String? = null,
+        plugMaxChannels: Int? = null
     ): String {
         val direct = if (supported.isEmpty()) "none" else supported.joinToString(" ")
         val missing = if (absent.isEmpty()) "none" else absent.joinToString(" ")
@@ -149,6 +183,10 @@ object AudioCapabilityReport {
             append("Box opens: $direct\nBox cannot open: $missing\nHDMI device lists: $negotiated")
             append("\nAndroid surround: $surroundMode\nHDMI device max PCM: $maxPcm")
             if (!plugReport.isNullOrBlank()) append("\nHDMI plug report: $plugReport")
+            if (!layoutLine.isNullOrBlank()) append("\nBox opens in other layouts (heuristic): $layoutLine")
+            if (plugMaxChannels != null) {
+                append("\nHDMI plug max channels (heuristic, any format): $plugMaxChannels ch")
+            }
             if (listedNotOpened.isNotEmpty()) {
                 append("\nListed by HDMI, not opened by this box: ${listedNotOpened.joinToString(" ")}")
             }
@@ -252,14 +290,18 @@ object AudioCapabilityReport {
      * own names; MANUAL means the user has ticked formats by hand, which is the only case
      * where the enabled set carries information the EDID does not.
      */
-    private fun surroundModeName(audioManager: AudioManager?): String {
-        if (audioManager == null) return "unknown"
+    private fun surroundModeName(context: Context, audioManager: AudioManager?): String {
         // getEncodedSurroundMode() is API 31+ (Android 12). On Android 10/11 it throws,
         // which would read as "unknown" and look like a genuinely unreadable value.
-        // Attempt only where the getter exists, wrap it so an OEM off-by-one still
-        // degrades cleanly, and say "n/a" when the platform cannot report the mode
-        // rather than "unknown".
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return "n/a (<API 31)"
+        // Below API 31 the same choice is stored in Settings.Global "encoded_surround_output";
+        // say where it came from, and "n/a" when neither can be read.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            val setting = runCatching {
+                android.provider.Settings.Global.getInt(context.contentResolver, ENCODED_SURROUND_SETTING, -1)
+            }.getOrDefault(-1)
+            return surroundSettingLabel(setting)
+        }
+        if (audioManager == null) return "unknown"
         val mode = runCatching { audioManager.encodedSurroundMode }.getOrNull()
             ?: return "n/a"
         return when (mode) {
@@ -269,5 +311,17 @@ object AudioCapabilityReport {
             AudioManager.ENCODED_SURROUND_OUTPUT_MANUAL -> "MANUAL"
             else -> "unknown"
         }
+    }
+
+    /** Settings.Global key behind the surround setting; the constant is hidden from apps. */
+    private const val ENCODED_SURROUND_SETTING = "encoded_surround_output"
+
+    /** Settings.Global values: 0 AUTO, 1 NEVER, 2 ALWAYS, 3 MANUAL. */
+    internal fun surroundSettingLabel(value: Int): String = when (value) {
+        0 -> "AUTO (setting, <API 31)"
+        1 -> "NEVER (setting, <API 31)"
+        2 -> "ALWAYS (setting, <API 31)"
+        3 -> "MANUAL (setting, <API 31)"
+        else -> "n/a (<API 31)"
     }
 }

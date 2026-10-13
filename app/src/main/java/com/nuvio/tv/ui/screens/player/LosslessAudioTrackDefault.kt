@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
+import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.player.AudioPassthroughPolicy
 import kotlinx.coroutines.flow.update
 
 /**
@@ -15,6 +17,10 @@ import kotlinx.coroutines.flow.update
  * ranked only when its codec or name proves the tier (mpv reports plain "dts",
  * so it needs an MA / Master Audio hint; ExoPlayer's DTS-HD mime ranks as
  * lossless). The default is never persisted.
+ *
+ * With a passthrough policy, a TrueHD or DTS-HD track the policy would decode to PCM
+ * (Atmos and DTS:X objects lost) ranks below a lossy track it would bitstream, E-AC-3
+ * JOC first. FLAC and PCM are always decoded and keep their rank.
  */
 internal object LosslessAudioTrackDefault {
 
@@ -68,7 +74,8 @@ internal object LosslessAudioTrackDefault {
     fun pickDefaultIndex(
         tracks: List<TrackInfo>,
         preferredLanguages: List<String>,
-        languageMatches: (String?, String) -> Boolean
+        languageMatches: (String?, String) -> Boolean,
+        passthroughPolicy: AudioPassthroughPolicy? = null
     ): Int? {
         if (tracks.isEmpty()) return null
 
@@ -92,16 +99,65 @@ internal object LosslessAudioTrackDefault {
         for ((_, tierTracks) in byTierDesc) {
             val clean = tierTracks.filterNot { isCommentaryLike(it.name) }
             if (clean.isNotEmpty()) {
-                return clean
+                val lossless = clean
                     .sortedWith(
                         compareByDescending<TrackInfo> { it.channelCount ?: 0 }
                             .thenBy { it.index }
                     )
                     .first()
-                    .index
+                if (passthroughPolicy != null &&
+                    passthroughPolicy.deniesPassthrough(passthroughMime(lossless.codec, lossless.name))
+                ) {
+                    bitstreamedLossy(pool, passthroughPolicy)?.let { return it.index }
+                }
+                return lossless.index
             }
         }
         return null
+    }
+
+    /** Lossy rank when bitstreamed, higher is better; null when the codec has no passthrough. */
+    private fun lossyBitstreamRank(mime: String?): Int? = when (mime) {
+        MimeTypes.AUDIO_E_AC3_JOC -> 4
+        MimeTypes.AUDIO_E_AC3 -> 3
+        MimeTypes.AUDIO_DTS -> 2
+        MimeTypes.AUDIO_AC3 -> 1
+        else -> null
+    }
+
+    /** Best non-commentary lossy track in [pool] that [policy] lets out as bitstream. */
+    private fun bitstreamedLossy(pool: List<TrackInfo>, policy: AudioPassthroughPolicy): TrackInfo? =
+        pool.asSequence()
+            .filterNot { isCommentaryLike(it.name) }
+            .filter { losslessTier(it.codec, it.name) == null }
+            .mapNotNull { track ->
+                val mime = passthroughMime(track.codec, track.name)
+                val rank = lossyBitstreamRank(mime) ?: return@mapNotNull null
+                if (policy.deniesPassthrough(mime)) null else track to rank
+            }
+            .sortedWith(
+                compareByDescending<Pair<TrackInfo, Int>> { it.second }
+                    .thenByDescending { it.first.channelCount ?: 0 }
+                    .thenBy { it.first.index }
+            )
+            .firstOrNull()
+            ?.first
+
+    /**
+     * Passthrough mime for a track label: ExoPlayer names ("TrueHD", "DTS-HD", "E-AC-3-JOC",
+     * "AC-3") or FFmpeg names from mpv ("truehd", "dts", "eac3", "ac3"). Null otherwise.
+     */
+    internal fun passthroughMime(codec: String?, name: String?): String? {
+        val c = codec?.trim()?.lowercase().orEmpty()
+        return when (c) {
+            "truehd", "mlp" -> MimeTypes.AUDIO_TRUEHD
+            "dts-hd" -> MimeTypes.AUDIO_DTS_HD
+            "dts" -> if (losslessTier(codec, name) == TIER_DTS_HD_MA) MimeTypes.AUDIO_DTS_HD else MimeTypes.AUDIO_DTS
+            "e-ac-3-joc" -> MimeTypes.AUDIO_E_AC3_JOC
+            "e-ac-3", "eac3" -> MimeTypes.AUDIO_E_AC3
+            "ac-3", "ac3" -> MimeTypes.AUDIO_AC3
+            else -> null
+        }
     }
 }
 
@@ -135,12 +191,14 @@ internal fun PlayerRuntimeController.applyLosslessAudioDefaultIfUnset(
 
     losslessAudioDefaultAppliedForStream = true
 
+    // The policy is ExoPlayer's sink policy; mpv has its own passthrough handling.
     val pick = LosslessAudioTrackDefault.pickDefaultIndex(
         tracks = audioTracks,
         preferredLanguages = mpvPreferredAudioLanguages,
         languageMatches = { trackLanguage, preferred ->
             PlayerSubtitleUtils.matchesLanguageCode(trackLanguage, preferred)
-        }
+        },
+        passthroughPolicy = if (isUsingMpvEngine()) null else currentAudioPassthroughPolicy
     )
     val selectedIndex = audioTracks.indexOfFirst { it.isSelected }
         .takeIf { it >= 0 } ?: _uiState.value.selectedAudioTrackIndex
