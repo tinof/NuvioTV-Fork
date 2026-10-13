@@ -43,6 +43,24 @@ internal object PlayerTunnelAvSyncPolicy {
         seededSignature = null
     }
 
+    private const val LEDGER_DECODER_SEPARATOR = '@'
+
+    /** Stall ledger entry: the sound type, plus the video decoder it stalled with when known. */
+    fun ledgerKey(audioClass: String, decoderName: String?): String =
+        if (decoderName.isNullOrBlank()) audioClass else "$audioClass$LEDGER_DECODER_SEPARATOR$decoderName"
+
+    /**
+     * Whether the ledger rules out tunneling for this sound type with this decoder. Entries saved
+     * before keys named a decoder, and an unknown decoder, match every entry of the sound type.
+     */
+    fun ledgerMatches(entries: Collection<String>, audioClass: String, decoderName: String?): Boolean =
+        entries.any { entry ->
+            val entryClass = entry.substringBefore(LEDGER_DECODER_SEPARATOR)
+            val entryDecoder = entry.substringAfter(LEDGER_DECODER_SEPARATOR, "")
+            entryClass == audioClass &&
+                (entryDecoder.isEmpty() || decoderName.isNullOrBlank() || entryDecoder == decoderName)
+        }
+
     private val CLASS_LABELS: List<Pair<String, String>> = listOf(
         MimeTypes.AUDIO_AC3 to "AC-3",
         MimeTypes.AUDIO_E_AC3 to "E-AC-3",
@@ -61,7 +79,7 @@ internal object PlayerTunnelAvSyncPolicy {
 
     /** Readable names for dead-clock classes, known formats first, PCM last. */
     fun memoLabels(classes: Collection<String>): List<String> {
-        val present = classes.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        val present = classes.map { it.substringBefore(LEDGER_DECODER_SEPARATOR).trim() }.filter { it.isNotEmpty() }.toSet()
         val known = CLASS_LABELS.filter { (mime, _) -> mime in present }.map { it.second }
         val knownMimes = CLASS_LABELS.map { it.first }.toSet()
         val other = present
@@ -81,6 +99,13 @@ internal object PlayerTunnelAvSyncPolicy {
 
     fun frameReportKey(fingerprint: String, decoderName: String?): String? =
         decoderName?.takeIf { it.isNotBlank() }?.let { "$fingerprint|$it" }
+
+    /**
+     * debug.nuvio.tunnel_real_first_frame=1: a decoder known to report tunnelled frames starts
+     * through the real first-frame callback instead of the synthetic start at READY.
+     */
+    fun waitsForRealFirstFrame(switchOn: Boolean, frameReportKey: String?, reportDecoders: Set<String>): Boolean =
+        switchOn && frameReportKey != null && frameReportKey in reportDecoders
 
     /** One sample's share of untunnelled playback: seeks and stalls add nothing. */
     fun memoAdvanceMs(previousPositionMs: Long, positionMs: Long, intervalMs: Long): Long {

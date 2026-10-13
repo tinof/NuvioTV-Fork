@@ -29,6 +29,18 @@ class TunnelStallLabelsTest {
     }
 
     @Test
+    fun `decoder suffixes are dropped and old bare entries read the same`() {
+        assertEquals(
+            listOf("E-AC-3", "PCM"),
+            PlayerTunnelAvSyncPolicy.memoLabels(setOf("audio/eac3@OMX.a.tunneled", "audio/eac3", "pcm@c2.b.tunneled"))
+        )
+        assertEquals(
+            "Tunnel off after a stall: AC-3",
+            AudioCapabilityReport.tunnelStallLine(setOf("${MimeTypes.AUDIO_AC3}@OMX.a.tunneled"))
+        )
+    }
+
+    @Test
     fun `diagnostics line names the sound types and is absent when nothing is remembered`() {
         assertEquals(
             "Tunnel off after a stall: E-AC-3, PCM",

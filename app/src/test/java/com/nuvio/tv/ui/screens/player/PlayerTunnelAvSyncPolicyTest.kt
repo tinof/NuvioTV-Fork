@@ -252,4 +252,36 @@ class PlayerTunnelAvSyncPolicyTest {
             )
         )
     }
+
+    @Test
+    fun ledgerKey_namesTheDecoderWhenKnown() {
+        assertEquals("pcm@OMX.a.tunneled", PlayerTunnelAvSyncPolicy.ledgerKey("pcm", "OMX.a.tunneled"))
+        assertEquals("pcm", PlayerTunnelAvSyncPolicy.ledgerKey("pcm", null))
+        assertEquals("pcm", PlayerTunnelAvSyncPolicy.ledgerKey("pcm", " "))
+    }
+
+    @Test
+    fun ledgerMatches_keyedEntriesHoldOnlyForTheirDecoder() {
+        val entries = setOf("audio/eac3@OMX.a.tunneled")
+        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "audio/eac3", "OMX.a.tunneled"))
+        assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "audio/eac3", "OMX.b.tunneled"))
+        assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "pcm", "OMX.a.tunneled"))
+    }
+
+    @Test
+    fun ledgerMatches_oldBareEntriesAndAnUnknownDecoderMatchEveryDecoder() {
+        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(setOf("pcm"), "pcm", "OMX.b.tunneled"))
+        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(setOf("pcm"), "pcm", null))
+        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(setOf("pcm@OMX.a.tunneled"), "pcm", null))
+        assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(emptySet(), "pcm", null))
+    }
+
+    @Test
+    fun waitsForRealFirstFrame_onlyWithTheSwitchAndAReportingDecoder() {
+        val reporting = setOf("fp|OMX.a.tunneled")
+        assertTrue(PlayerTunnelAvSyncPolicy.waitsForRealFirstFrame(true, "fp|OMX.a.tunneled", reporting))
+        assertFalse(PlayerTunnelAvSyncPolicy.waitsForRealFirstFrame(false, "fp|OMX.a.tunneled", reporting))
+        assertFalse(PlayerTunnelAvSyncPolicy.waitsForRealFirstFrame(true, "fp|OMX.b.tunneled", reporting))
+        assertFalse(PlayerTunnelAvSyncPolicy.waitsForRealFirstFrame(true, null, reporting))
+    }
 }
