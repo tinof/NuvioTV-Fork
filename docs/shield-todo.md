@@ -52,6 +52,15 @@ AI upscaling covers 60 Hz HDR10 on the Pro from 9.1, there is no AV1 hardware, n
 - Media3 past 1.8.0: check the release notes for decoder and async-queue changes.
 - A unit test that keeps Media3's Nvidia `no-post-process` / `auto-frc=0` workaround working through
   `DecodeOrderPtsVideoRenderer.getMediaFormat`.
+- Pre-blurred glass inside the raw `Dialog` in `EpisodeOptionsOverlay.kt` still reads the page artwork. The dialog
+  is full screen, so the placement is close to right; add `LocalPreblurredGlass provides null` there if it looks off.
+- DV5 MKV on a box whose decoder list could not be read counts the DV decoder as present, so the HEVC remap is
+  skipped. Only matters on boxes where `MediaCodecList` fails.
+- The HUD row "Video codec queue (requested)" says `default (sync)` on Fire TV API 28–30, where Media3 already runs
+  async by default.
+- Translations: new or changed English strings `assessment_grounds_afr_shield`, `assessment_grounds_res_shield`,
+  `assessment_grounds_shield_dolby`, `assessment_item_shield_dolby`, `audio_tunneled_sub`,
+  `playback_engine_mvplayer_shield_note`, `playback_engine_mvplayer_shield_note_no_ai`.
 
 ## Quick reference
 
