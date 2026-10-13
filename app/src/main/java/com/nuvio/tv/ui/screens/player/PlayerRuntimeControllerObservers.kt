@@ -427,6 +427,8 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
                     frameRateMatchingMode = settings.frameRateMatchingMode,
                     tunnelingEnabled = settings.effectiveTunnelingEnabled &&
                             resolvedInternalPlayerEngine != InternalPlayerEngine.MVP_PLAYER,
+                    tunnelingApplied = state.tunnelingApplied &&
+                            resolvedInternalPlayerEngine != InternalPlayerEngine.MVP_PLAYER,
                     persistAudioAmplification = settings.persistAudioAmplification,
                     audioAmplificationDb = resolvedAudioAmplificationDb,
                     centerMixLevelDb = resolvedCenterMixLevelDb
@@ -1340,10 +1342,15 @@ internal fun PlayerRuntimeController.maybeScheduleTunnelAvSyncWatchdog() {
                             )
                         }
                         if (audioClass != null && remembered) {
-                            PlayerTunnelAvSyncPolicy.deadAudioClasses.add(audioClass)
+                            // Keyed by the video decoder too: another decoder on the same box can keep the clock.
+                            val ledgerKey = PlayerTunnelAvSyncPolicy.ledgerKey(
+                                audioClass,
+                                playbackAnalyticsDiagnostics.hudSample().videoDecoderName
+                            )
+                            PlayerTunnelAvSyncPolicy.deadAudioClasses.add(ledgerKey)
                             val signature = tunnelDeadClockSignature
                             if (signature != null && positionMs == firstReadyPositionMs) {
-                                pendingDeadClockMemo = audioClass to signature
+                                pendingDeadClockMemo = ledgerKey to signature
                             }
                         }
                         Log.w(
