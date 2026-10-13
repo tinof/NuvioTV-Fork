@@ -75,12 +75,37 @@ class UnsupportedFormatMpvFallbackPolicyTest {
         assertTrue(fatal(init, MimeTypes.VIDEO_MP4V))
         assertTrue(fatal(decoding, MimeTypes.VIDEO_MP43, firstFrame = true))
         assertTrue(fatal(init, "video/x-ms-wmv"))
+        assertTrue(fatal(decoding, MimeTypes.VIDEO_MPEG2))
 
         assertFalse(fatal(init, MimeTypes.VIDEO_H265))
         assertFalse(fatal(init, MimeTypes.VIDEO_H264))
         assertFalse(fatal(init, MimeTypes.VIDEO_DOLBY_VISION))
         assertFalse(fatal(decoding, MimeTypes.VIDEO_AV1))
         assertFalse(fatal(init, null))
+    }
+
+    @Test
+    fun `H264 High 10 beyond the decoders goes to MPV even while selected`() {
+        fun hi10(
+            codecs: String?,
+            support: Int = C.FORMAT_EXCEEDS_CAPABILITIES,
+            mime: String? = MimeTypes.VIDEO_H264,
+            exo: Boolean = true,
+            switched: Boolean = false
+        ) = UnsupportedFormatMpvFallbackPolicy.shouldSwitchForHighBitDepthH264(exo, switched, mime, codecs, support)
+        assertTrue(hi10("avc1.6E0028"))
+        assertTrue(hi10("avc1.7A0033"))
+        assertTrue(hi10("avc3.F40028"))
+        assertTrue(hi10("avc1.6E0028", support = C.FORMAT_UNSUPPORTED_SUBTYPE))
+        // A decoder that takes the profile keeps it on ExoPlayer.
+        assertFalse(hi10("avc1.6E0028", support = C.FORMAT_HANDLED))
+        // 8-bit High profile, an unreadable profile and other codecs never switch.
+        assertFalse(hi10("avc1.640028"))
+        assertFalse(hi10("avc1"))
+        assertFalse(hi10(null))
+        assertFalse(hi10("hvc1.2.4.L150", mime = MimeTypes.VIDEO_H265))
+        assertFalse(hi10("avc1.6E0028", switched = true))
+        assertFalse(hi10("avc1.6E0028", exo = false))
     }
 
     @Test

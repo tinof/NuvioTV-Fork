@@ -1,5 +1,7 @@
 package com.nuvio.tv.data.mediaserver.mediabrowser
 
+import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.player.VideoDecoderCapabilities
 import com.nuvio.tv.core.tracking.TrackingExternalIds
 import com.nuvio.tv.data.mediaserver.ServerCandidate
 import com.nuvio.tv.data.mediaserver.ServerCapability
@@ -51,11 +53,34 @@ internal data class Endpoint(
     val query: Map<String, String> = emptyMap()
 )
 
+/** Whether this box decodes AV1 in hardware; decides the AV1 limits the device profile states. */
+internal fun hasHardwareAv1Decoder(): Boolean = VideoDecoderCapabilities.hasHardwareDecoder(MimeTypes.VIDEO_AV1)
+
+/**
+ * Without a hardware AV1 decoder only what the software decoder keeps up with plays as is (up to 1920 wide,
+ * 8-bit); the server converts anything bigger instead of sending a file the box would stutter through.
+ */
+internal fun softwareAv1CodecProfiles(hardwareAv1: Boolean): List<CodecProfile> =
+    if (hardwareAv1) {
+        emptyList()
+    } else {
+        listOf(
+            CodecProfile(
+                codec = "av1",
+                conditions = listOf(
+                    ProfileCondition(condition = "LessThanEqual", property = "Width", value = "1920"),
+                    ProfileCondition(condition = "LessThanEqual", property = "VideoBitDepth", value = "8")
+                )
+            )
+        )
+    }
+
 internal abstract class MediaBrowserProvider(
     authorizationHeader: String,
     private val apiPath: String,
     http: OkHttpClient,
-    identity: ServerClientIdentity
+    identity: ServerClientIdentity,
+    private val hardwareAv1Decoder: () -> Boolean = ::hasHardwareAv1Decoder
 ) : ServerProvider {
     override val capabilities: Set<ServerCapability> = ServerCapability.entries.toSet() - ServerCapability.HOME_ROWS
 
@@ -859,7 +884,8 @@ internal abstract class MediaBrowserProvider(
             )
         },
         transcodingProfiles = transcodingProfiles(),
-        codecProfiles = if (capabilities.allowDirectPlay) emptyList() else codecProfiles(),
+        codecProfiles = (if (capabilities.allowDirectPlay) emptyList() else codecProfiles()) +
+            softwareAv1CodecProfiles(hardwareAv1Decoder()),
         subtitleProfiles = EMBEDDED_SUBTITLES.map { SubtitleProfile(format = it, method = "Embed") } +
             TEXT_SUBTITLES.map { SubtitleProfile(format = it, method = "External") } +
             IMAGE_SUBTITLES.map { SubtitleProfile(format = it, method = "Encode") }
