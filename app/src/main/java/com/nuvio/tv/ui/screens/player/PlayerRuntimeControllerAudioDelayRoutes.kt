@@ -96,14 +96,21 @@ internal fun resolveRouteUnderIdleBluetooth(
 }
 
 /**
- * Whether a device event leaves [pin] standing. A Bluetooth sink other than the idle one coming or
- * going is a real route change: detect() breaks ties between Bluetooth sinks by list order, so it
- * may still name the idle sink while media moves to the new one.
+ * Whether a device event leaves [pin] standing. Any Bluetooth sink being added is a real route
+ * change, the idle one included: Android routes media to a newly connected A2DP sink, and a
+ * bitstream sent there fails. A Bluetooth sink other than the idle one going away is one too:
+ * detect() breaks ties between Bluetooth sinks by list order, so it may still name the idle sink
+ * while media moves elsewhere.
  */
 internal fun idleBluetoothPinSurvives(
     pin: HdmiRouteUnderIdleBluetooth,
-    changedBluetoothRouteKeys: Collection<String>
-): Boolean = changedBluetoothRouteKeys.all { it == pin.idleBluetoothRouteKey }
+    changedBluetoothRouteKeys: Collection<String>,
+    added: Boolean = false
+): Boolean = if (added) {
+    changedBluetoothRouteKeys.isEmpty()
+} else {
+    changedBluetoothRouteKeys.all { it == pin.idleBluetoothRouteKey }
+}
 
 /** The media output route for the current stream: detect(), corrected by the idle-Bluetooth HDMI pin. */
 internal fun PlayerRuntimeController.detectAudioOutputRouteForStream(): AudioOutputRoute? =
@@ -229,7 +236,9 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
         if (isReleasingPlayer) return@launch
 
         hdmiRouteUnderIdleBluetooth?.let { pin ->
-            if (!idleBluetoothPinSurvives(pin, changedBluetoothRouteKeys)) hdmiRouteUnderIdleBluetooth = null
+            if (!idleBluetoothPinSurvives(pin, changedBluetoothRouteKeys, added = reason == "added")) {
+                hdmiRouteUnderIdleBluetooth = null
+            }
         }
         val oldRoute = currentAudioOutputRoute
         // The same idle Bluetooth sink still listed keeps this stream's HDMI route: no re-pin.

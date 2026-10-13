@@ -137,6 +137,9 @@ class AudioShieldPassTest {
         assertTrue(idleBluetoothPinSurvives(pin, listOf(idleSpeaker.key)))
         assertFalse(idleBluetoothPinSurvives(pin, listOf(headphones.key)))
         assertFalse(idleBluetoothPinSurvives(pin, listOf(idleSpeaker.key, headphones.key)))
+        // Media follows a newly connected A2DP sink, so a Bluetooth add always drops the pin.
+        assertFalse(idleBluetoothPinSurvives(pin, listOf(idleSpeaker.key), added = true))
+        assertTrue(idleBluetoothPinSurvives(pin, emptyList(), added = true))
     }
 
     // --- debug.nuvio.hbr_buffer_scale ---
