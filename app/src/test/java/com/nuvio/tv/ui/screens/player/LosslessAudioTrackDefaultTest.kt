@@ -21,7 +21,8 @@ class LosslessAudioTrackDefaultTest {
         name: String,
         language: String? = "en",
         channels: Int? = 6,
-        selected: Boolean = false
+        selected: Boolean = false,
+        mime: String? = null
     ) = TrackInfo(
         index = index,
         name = name,
@@ -29,7 +30,8 @@ class LosslessAudioTrackDefaultTest {
         trackId = index.toString(),
         codec = codec,
         channelCount = channels,
-        isSelected = selected
+        isSelected = selected,
+        sampleMimeType = mime
     )
 
     private val exactMatch: (String?, String) -> Boolean = { lang, target ->
@@ -221,6 +223,73 @@ class LosslessAudioTrackDefaultTest {
             track(1, "FLAC", "English (FLAC 5.1)")
         )
         assertEquals(1, LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, trueHdDecoded))
+    }
+
+    private val trueHdDeniedDtsHdAllowed = AudioPassthroughPolicy(allowTrueHd = false, allowDtsHd = true)
+
+    @Test
+    fun `denied truehd falls to a bitstreamed dts-hd ma before a lossy track`() {
+        val tracks = listOf(
+            track(0, "TrueHD", "English (TrueHD 7.1)", channels = 8, selected = true),
+            track(1, "DTS-HD", "English (DTS-HD 7.1)", channels = 8),
+            track(2, "E-AC-3-JOC", "English (E-AC-3 Atmos)")
+        )
+        assertEquals(
+            1,
+            LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, trueHdDeniedDtsHdAllowed)
+        )
+    }
+
+    @Test
+    fun `denied truehd with no other lossless track gives the bitstreamed lossy track`() {
+        val tracks = listOf(
+            track(0, "TrueHD", "English (TrueHD 7.1)", channels = 8, selected = true),
+            track(1, "E-AC-3-JOC", "English (E-AC-3 Atmos)")
+        )
+        assertEquals(
+            1,
+            LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, trueHdDeniedDtsHdAllowed)
+        )
+    }
+
+    @Test
+    fun `denied truehd stays when there is no lossy track`() {
+        val tracks = listOf(
+            track(0, "AAC", "English (AAC Stereo)", channels = 2, selected = true),
+            track(1, "TrueHD", "English (TrueHD 7.1)", channels = 8)
+        )
+        assertEquals(
+            1,
+            LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, trueHdDeniedDtsHdAllowed)
+        )
+    }
+
+    @Test
+    fun `denied truehd falls to flac before a bitstreamed lossy track`() {
+        val tracks = listOf(
+            track(0, "TrueHD", "English (TrueHD 7.1)", channels = 8, selected = true),
+            track(1, "FLAC", "English (FLAC 5.1)"),
+            track(2, "E-AC-3-JOC", "English (E-AC-3 Atmos)")
+        )
+        assertEquals(
+            1,
+            LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, trueHdDeniedDtsHdAllowed)
+        )
+    }
+
+    @Test
+    fun `policy reads the format mime when the engine reports it`() {
+        // ExoPlayer can report a Matroska DTS-HD MA track as plain DTS; the sink then sees DTS.
+        val tracks = listOf(
+            track(0, "AC-3", "English (AC-3 5.1)", selected = true, mime = MimeTypes.AUDIO_AC3),
+            track(1, "DTS", "English DTS-HD MA 7.1 (DTS 7.1)", channels = 8, mime = MimeTypes.AUDIO_DTS)
+        )
+        val dtsCoreOnly = AudioPassthroughPolicy(allowDts = true, allowDtsHd = false)
+        assertEquals(1, LosslessAudioTrackDefault.pickDefaultIndex(tracks, listOf("en"), exactMatch, dtsCoreOnly))
+
+        // Without the format mime (mpv) the label decides: DTS-HD is denied, so AC-3 is bitstreamed.
+        val labelOnly = tracks.map { it.copy(sampleMimeType = null) }
+        assertEquals(0, LosslessAudioTrackDefault.pickDefaultIndex(labelOnly, listOf("en"), exactMatch, dtsCoreOnly))
     }
 
     @Test

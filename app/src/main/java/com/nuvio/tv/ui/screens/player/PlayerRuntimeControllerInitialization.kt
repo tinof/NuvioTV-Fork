@@ -457,10 +457,18 @@ internal fun PlayerRuntimeController.initializePlayer(
             // rebuild it asked for, once: a later wrong pin is caught again after the first frame.
             val hdmiRouteOverride = hdmiRouteUnderBluetoothPin?.takeIf { it.first == url }?.second
             hdmiRouteUnderBluetoothPin = null
-            if (hdmiRouteOverride != null && currentAudioOutputRoute?.isBluetooth == true) {
-                currentAudioOutputRoute = AudioOutputRouteDetector.routeOf(hdmiRouteOverride)
-            }
-            if (rememberAudioDelayPerDeviceEnabled) {
+            // The HDMI route holds for this stream while detect() still names the same idle sink;
+            // every other build starts from what detect() reports, as the sink is built from it.
+            hdmiRouteUnderIdleBluetooth = null
+            val idleBluetoothRoute = currentAudioOutputRoute?.takeIf { it.isBluetooth }
+            if (hdmiRouteOverride != null && idleBluetoothRoute != null) {
+                val hdmiRoute = AudioOutputRouteDetector.routeOf(hdmiRouteOverride)
+                currentAudioOutputRoute = hdmiRoute
+                hdmiRouteUnderIdleBluetooth = HdmiRouteUnderIdleBluetooth(url, hdmiRoute, idleBluetoothRoute.key)
+                if (rememberAudioDelayPerDeviceEnabled) {
+                    applyStoredAudioDelayForCurrentRouteIfEnabled(hdmiRoute)
+                }
+            } else if (rememberAudioDelayPerDeviceEnabled) {
                 applyStoredAudioDelayForCurrentRouteIfEnabled()
             }
             currentAudioOutputRoute?.let { route ->

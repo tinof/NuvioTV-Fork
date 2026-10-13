@@ -19,8 +19,10 @@ import kotlinx.coroutines.flow.update
  * lossless). The default is never persisted.
  *
  * With a passthrough policy, a TrueHD or DTS-HD track the policy would decode to PCM
- * (Atmos and DTS:X objects lost) ranks below a lossy track it would bitstream, E-AC-3
- * JOC first. FLAC and PCM are always decoded and keep their rank.
+ * (Atmos and DTS:X objects lost) ranks below a lower lossless tier the policy lets out,
+ * then below a lossy track it would bitstream, E-AC-3 JOC first. FLAC and PCM are always
+ * decoded and keep their rank. The policy is checked against the format's own mime when
+ * the engine reports one (ExoPlayer), else against the mime the label implies (mpv).
  */
 internal object LosslessAudioTrackDefault {
 
@@ -93,28 +95,32 @@ internal object LosslessAudioTrackDefault {
         if (ranked.isEmpty()) return null
 
         // Highest tier that has a non-commentary member; a commentary track is never
-        // made the default, even when it is the only lossless one.
+        // made the default, even when it is the only lossless one. A pick the policy would
+        // decode is kept as the fallback while lower tiers are tried: a DTS-HD MA track that
+        // is bitstreamed beats a decoded TrueHD one, and FLAC/PCM are never denied.
         val byTierDesc = ranked.groupBy({ it.second }, { it.first })
             .toSortedMap(compareByDescending { it })
+        var decodedFallback: TrackInfo? = null
         for ((_, tierTracks) in byTierDesc) {
-            val clean = tierTracks.filterNot { isCommentaryLike(it.name) }
-            if (clean.isNotEmpty()) {
-                val lossless = clean
-                    .sortedWith(
-                        compareByDescending<TrackInfo> { it.channelCount ?: 0 }
-                            .thenBy { it.index }
-                    )
-                    .first()
-                if (passthroughPolicy != null &&
-                    passthroughPolicy.deniesPassthrough(passthroughMime(lossless.codec, lossless.name))
-                ) {
-                    bitstreamedLossy(pool, passthroughPolicy)?.let { return it.index }
-                }
-                return lossless.index
-            }
+            val clean = tierTracks
+                .filterNot { isCommentaryLike(it.name) }
+                .sortedWith(
+                    compareByDescending<TrackInfo> { it.channelCount ?: 0 }
+                        .thenBy { it.index }
+                )
+            if (clean.isEmpty()) continue
+            val lossless = clean.firstOrNull { passthroughPolicy?.deniesPassthrough(it.policyMime()) != true }
+            if (lossless != null) return lossless.index
+            if (decodedFallback == null) decodedFallback = clean.first()
         }
-        return null
+        val decoded = decodedFallback ?: return null
+        // Every lossless pick would be decoded: a lossy track the policy bitstreams wins.
+        passthroughPolicy?.let { policy -> bitstreamedLossy(pool, policy)?.let { return it.index } }
+        return decoded.index
     }
+
+    /** The format's own mime when the engine reports it (ExoPlayer), else the one the label implies (mpv). */
+    private fun TrackInfo.policyMime(): String? = sampleMimeType ?: passthroughMime(codec, name)
 
     /** Lossy rank when bitstreamed, higher is better; null when the codec has no passthrough. */
     private fun lossyBitstreamRank(mime: String?): Int? = when (mime) {
@@ -131,7 +137,7 @@ internal object LosslessAudioTrackDefault {
             .filterNot { isCommentaryLike(it.name) }
             .filter { losslessTier(it.codec, it.name) == null }
             .mapNotNull { track ->
-                val mime = passthroughMime(track.codec, track.name)
+                val mime = track.policyMime()
                 val rank = lossyBitstreamRank(mime) ?: return@mapNotNull null
                 if (policy.deniesPassthrough(mime)) null else track to rank
             }
