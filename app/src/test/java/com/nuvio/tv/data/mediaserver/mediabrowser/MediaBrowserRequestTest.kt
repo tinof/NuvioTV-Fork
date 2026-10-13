@@ -622,7 +622,7 @@ class MediaBrowserRequestTest {
         val http = TestHttp {
             """{"PlaySessionId": "ps1", "MediaSources": [{"Id": "ms1", "SupportsDirectPlay": true, "TranscodingUrl": "/videos/i1/master.m3u8"}]}"""
         }
-        val jellyfin = JellyfinProvider(http.client, testIdentity)
+        val jellyfin = JellyfinProvider(http.client, testIdentity, hardwareAv1Decoder = { true })
         val session = session("jellyfin", "https://media.example.com/jellyfin")
         val target = ServerPlaybackTarget(ServerItemRef("cabc", "i1"), mediaSourceId = "ms1")
 
@@ -663,11 +663,37 @@ class MediaBrowserRequestTest {
     }
 
     @Test
+    fun withoutHardwareAv1TheServerConvertsAv1BeyondTheSoftwareDecoder() = runTest {
+        val http = TestHttp {
+            """{"PlaySessionId": "ps1", "MediaSources": [{"Id": "ms1", "SupportsDirectPlay": true, "TranscodingUrl": "/videos/i1/master.m3u8"}]}"""
+        }
+        val jellyfin = JellyfinProvider(http.client, testIdentity, hardwareAv1Decoder = { false })
+        val session = session("jellyfin", "https://media.example.com/jellyfin")
+        val target = ServerPlaybackTarget(ServerItemRef("cabc", "i1"), mediaSourceId = "ms1")
+
+        jellyfin.preparePlayback(session, ServerPlaybackRequest(target, ServerPlayerCapabilities()))
+        jellyfin.preparePlayback(session, ServerPlaybackRequest(target, ServerPlayerCapabilities(allowDirectPlay = false)))
+
+        val (direct, fallback) = http.requests.map {
+            Json.parseToJsonElement(it.text).jsonObject.getValue("DeviceProfile").jsonObject.getValue("CodecProfiles").jsonArray
+        }
+        val av1Limits = direct.single().jsonObject
+        assertEquals("av1", av1Limits.getValue("Codec").jsonPrimitive.content)
+        val conditions = av1Limits.getValue("Conditions").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("Width", "VideoBitDepth"), conditions.map { it.getValue("Property").jsonPrimitive.content })
+        assertEquals(listOf("1920", "8"), conditions.map { it.getValue("Value").jsonPrimitive.content })
+        assertTrue(conditions.all { it.getValue("Condition").jsonPrimitive.content == "LessThanEqual" })
+        assertEquals(listOf("hevc", "av1", "av1"), fallback.map { it.jsonObject.getValue("Codec").jsonPrimitive.content })
+
+        assertTrue(softwareAv1CodecProfiles(hardwareAv1 = true).isEmpty())
+    }
+
+    @Test
     fun embyFallbackKeepsLosslessAudioWithoutJellyfinOnlyConditions() = runTest {
         val http = TestHttp {
             """{"PlaySessionId": "ps1", "MediaSources": [{"Id": "ms1", "TranscodingUrl": "/videos/i1/master.m3u8"}]}"""
         }
-        val emby = EmbyProvider(http.client, testIdentity)
+        val emby = EmbyProvider(http.client, testIdentity, hardwareAv1Decoder = { true })
         val target = ServerPlaybackTarget(ServerItemRef("cabc", "i1"), mediaSourceId = "ms1")
 
         emby.preparePlayback(

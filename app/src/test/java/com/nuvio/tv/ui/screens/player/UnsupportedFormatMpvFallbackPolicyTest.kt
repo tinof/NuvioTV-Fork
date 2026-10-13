@@ -75,6 +75,7 @@ class UnsupportedFormatMpvFallbackPolicyTest {
         assertTrue(fatal(init, MimeTypes.VIDEO_MP4V))
         assertTrue(fatal(decoding, MimeTypes.VIDEO_MP43, firstFrame = true))
         assertTrue(fatal(init, "video/x-ms-wmv"))
+        assertTrue(fatal(decoding, MimeTypes.VIDEO_MPEG2))
 
         assertFalse(fatal(init, MimeTypes.VIDEO_H265))
         assertFalse(fatal(init, MimeTypes.VIDEO_H264))
