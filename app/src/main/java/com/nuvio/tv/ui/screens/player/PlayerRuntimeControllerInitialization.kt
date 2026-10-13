@@ -2,6 +2,9 @@ package com.nuvio.tv.ui.screens.player
 
 import com.nuvio.tv.core.build.IssueReports
 import com.nuvio.tv.core.util.TtffTrace
+import com.nuvio.tv.core.util.DebugSwitches
+import com.nuvio.tv.core.performance.DeviceProfile
+import com.nuvio.tv.core.player.DecodeOrderTimestamps
 import com.nuvio.tv.core.logging.diagnosticStreamUrl
 import com.nuvio.tv.core.logging.redactedUrlForLog
 import android.content.Context
@@ -41,6 +44,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
 import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import com.nuvio.tv.ui.screens.player.iec.IecPassthroughAudioSink
+import androidx.media3.exoplayer.mediacodec.DefaultMediaCodecAdapterFactory
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
@@ -1384,6 +1388,12 @@ internal fun PlayerRuntimeController.initializePlayer(
                         "mimes=${deniedTranscodeMimes.joinToString(",")}"
                 )
             }
+            val asyncVideoQueueing = asyncVideoCodecQueueing(
+                switch = DebugSwitches.flag("debug.nuvio.async_codec"),
+                manufacturer = Build.MANUFACTURER,
+                sdkInt = Build.VERSION.SDK_INT
+            )
+            videoCodecAsyncRequested = asyncVideoQueueing
             val nativeSelectionOwner = Any()
             val renderersFactory = SubtitleOffsetRenderersFactory(
                 audioPassthroughPolicy = surroundResolution.policy,
@@ -1425,6 +1435,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 initialForcePcm = hasTriedAudioPcmFallback || isBluetoothAudioOutput,
                 vendorUnstablePts = am9SystemProperty("debug.nuvio.aml_unstable_pts") == "1",
                 forceSoftwareAv1 = am9SystemProperty("debug.nuvio.sw_av1") == "1",
+                asyncVideoCodecQueueing = asyncVideoQueueing,
                 mapDv7ToHevc = mapDv7ToHevcEnabled,
                 onPlaybackSpeedAwareAudioSinkCreated = { playbackSpeedAwareAudioSink = it },
                 onAudioDiagnosticEvent = { line -> queuePlaybackRawEventLine(line) },
@@ -3214,6 +3225,14 @@ internal fun videoExtensionRendererMode(extensionRendererMode: Int): Int =
         extensionRendererMode
     }
 
+/**
+ * Asynchronous MediaCodec queueing for the video decoder. Media3 turns it on by itself
+ * only from API 31, so Android 11 Shields run synchronous; debug.nuvio.async_codec=1/0
+ * forces it either way for an A/B.
+ */
+internal fun asyncVideoCodecQueueing(switch: Boolean?, manufacturer: String?, sdkInt: Int): Boolean =
+    switch ?: (DeviceProfile.isNvidia(manufacturer) && sdkInt < 31)
+
 private class SubtitleOffsetRenderersFactory(
     context: Context,
     private val subtitleDelayUsProvider: () -> Long,
@@ -3242,6 +3261,7 @@ private class SubtitleOffsetRenderersFactory(
     private val nativeMelEnabled: Boolean = true,
     private val vendorUnstablePts: Boolean = false,
     private val forceSoftwareAv1: Boolean = false,
+    private val asyncVideoCodecQueueing: Boolean = false,
     private val mapDv7ToHevc: Boolean = false,
     private val playbackSpeedProvider: () -> Float,
     private val initialForcePcm: Boolean = false,
@@ -3291,13 +3311,19 @@ private class SubtitleOffsetRenderersFactory(
                 createSoftwareAv1Renderer(allowedVideoJoiningTimeMs, eventHandler, eventListener, hardware)
             )
         }
+        // Video only: audio keeps the shared factory and its default queueing mode.
+        val videoCodecAdapterFactory = if (asyncVideoCodecQueueing) {
+            DefaultMediaCodecAdapterFactory(context).forceEnableAsynchronous()
+        } else {
+            getCodecAdapterFactory()
+        }
         // Decode-order time repair (AVI, VC-1, XviD/DivX): replace ONLY the platform MediaCodec
         // video renderer with the repairing subclass; extension renderers (VP9/AV1) and their
         // ordering pass through untouched.
         for (vc1RestampRenderer in vc1RestampTmp) {
             if (vc1RestampRenderer::class.java == MediaCodecVideoRenderer::class.java) {
                 val vc1RestampBuilder = MediaCodecVideoRenderer.Builder(context)
-                    .setCodecAdapterFactory(getCodecAdapterFactory())
+                    .setCodecAdapterFactory(videoCodecAdapterFactory)
                     .setMediaCodecSelector(mediaCodecSelector)
                     .setAllowedJoiningTimeMs(allowedVideoJoiningTimeMs)
                     .setEnableDecoderFallback(enableDecoderFallback)
