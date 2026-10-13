@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import com.nuvio.tv.core.player.DecodeOrderTimestamps
+import com.nuvio.tv.core.player.VideoCodecsString
 import com.nuvio.tv.data.local.InternalPlayerEngine
 
 /**
@@ -25,6 +26,24 @@ internal object UnsupportedFormatMpvFallbackPolicy {
         if (!videoTrackPresent || videoTrackSelected) return false
         return videoFormatSupport == C.FORMAT_UNSUPPORTED_SUBTYPE ||
             videoFormatSupport == C.FORMAT_UNSUPPORTED_TYPE
+    }
+
+    /**
+     * H.264 High 10 (Hi10P) and the 4:2:2 / 4:4:4 profiles: decoders without the profile report the track as
+     * beyond their limits, so it stays selected and plays as a broken picture or not at all. MPV decodes it in
+     * software. A codecs string without a readable profile never takes this route.
+     */
+    fun shouldSwitchForHighBitDepthH264(
+        exoPlayerActive: Boolean,
+        alreadySwitched: Boolean,
+        videoMimeType: String?,
+        codecs: String?,
+        videoFormatSupport: Int
+    ): Boolean {
+        if (!exoPlayerActive || alreadySwitched) return false
+        if (videoMimeType != MimeTypes.VIDEO_H264) return false
+        if (!VideoCodecsString.isAvcHighBitDepthProfile(codecs)) return false
+        return videoFormatSupport != C.FORMAT_HANDLED
     }
 
     fun shouldSwitchForFatalError(
@@ -81,7 +100,8 @@ internal object UnsupportedFormatMpvFallbackPolicy {
 
     fun isLegacyVideoMime(mimeType: String?): Boolean =
         DecodeOrderTimestamps.maxReorderFramesFor(mimeType, null) != null ||
-            Vc1VideoFormatHeuristics.isLikelyVc1(sampleMimeType = mimeType)
+            Vc1VideoFormatHeuristics.isLikelyVc1(sampleMimeType = mimeType) ||
+            mimeType.equals(MimeTypes.VIDEO_MPEG2, ignoreCase = true)
 }
 
 /** Switches the current stream to MPV. Returns false when the stream already took this route once. */

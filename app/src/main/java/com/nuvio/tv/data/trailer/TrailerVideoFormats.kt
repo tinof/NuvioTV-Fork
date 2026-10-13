@@ -2,9 +2,9 @@ package com.nuvio.tv.data.trailer
 
 import android.content.Context
 import android.hardware.display.DisplayManager
-import android.media.MediaCodecList
-import android.os.Build
 import android.view.Display
+import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.player.VideoDecoderCapabilities
 
 internal const val TRAILER_MAX_VIDEO_HEIGHT = 1080
 internal const val TRAILER_MAX_VIDEO_WIDTH = 1920
@@ -77,22 +77,9 @@ internal fun trailerVideoCodecRank(codec: TrailerVideoCodec?): Int = when (codec
 }
 
 internal fun deviceTrailerVideoLimits(context: Context): TrailerVideoLimits = TrailerVideoLimits(
-    av1HardwareDecoder = hasHardwareDecoder("video/av01"),
+    av1HardwareDecoder = VideoDecoderCapabilities.hasHardwareDecoder(MimeTypes.VIDEO_AV1),
     hdrDisplay = displaySupportsHdr(context)
 )
-
-private fun hasHardwareDecoder(mimeType: String): Boolean = runCatching {
-    MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
-        !info.isEncoder &&
-            info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) } &&
-            if (Build.VERSION.SDK_INT >= 29) {
-                info.isHardwareAccelerated
-            } else {
-                !info.name.startsWith("OMX.google.", ignoreCase = true) &&
-                    !info.name.startsWith("c2.android.", ignoreCase = true)
-            }
-    }
-}.getOrDefault(false)
 
 @Suppress("DEPRECATION")
 private fun displaySupportsHdr(context: Context): Boolean = runCatching {

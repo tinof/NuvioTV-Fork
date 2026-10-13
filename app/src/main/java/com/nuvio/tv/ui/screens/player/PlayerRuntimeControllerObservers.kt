@@ -1226,8 +1226,17 @@ internal fun PlayerRuntimeController.maybeScheduleFirstFrameWatchdog() {
                 retryCurrentStreamWithDv7Mode1Fallback(currentPosition)
             }
             PlayerFirstFrameCodecRecoveryPolicy.RecoveryAction.FailVc1Unsupported -> {
-                val exoError = livePlayer.playerError ?: return@launch
-                handleVc1PlaybackFailure(errorMessage = exoError.toDisplayMessage(context))
+                // VC-1 that is READY but never draws: MPV's software decoder plays it.
+                if (!isInBackground && isExoPlayerActiveForFormatFallback &&
+                    switchToMpvForUnsupportedFormat("vc1-no-first-frame")
+                ) {
+                    return@launch
+                }
+                // Without a player error this stream would otherwise sit on a black screen with no message.
+                handleVc1PlaybackFailure(
+                    errorMessage = livePlayer.playerError?.toDisplayMessage(context)
+                        ?: context.getString(com.nuvio.tv.R.string.player_error_startup_video_track_unsupported)
+                )
             }
             PlayerFirstFrameCodecRecoveryPolicy.RecoveryAction.None -> Unit
         }

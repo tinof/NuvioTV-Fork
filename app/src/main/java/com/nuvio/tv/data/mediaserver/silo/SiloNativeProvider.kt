@@ -38,6 +38,7 @@ import com.nuvio.tv.data.mediaserver.ServerUserState
 import com.nuvio.tv.data.mediaserver.mediabrowser.MediaBrowserClient
 import com.nuvio.tv.data.mediaserver.mediabrowser.ServerClientIdentity
 import com.nuvio.tv.data.mediaserver.mediabrowser.dropsEncryption
+import com.nuvio.tv.data.mediaserver.mediabrowser.hasHardwareAv1Decoder
 import com.nuvio.tv.data.mediaserver.mediabrowser.normalizeServerAddress
 import com.nuvio.tv.data.mediaserver.mediabrowser.pathSegment
 import java.time.Instant
@@ -629,7 +630,8 @@ class SiloNativeProvider internal constructor(
             audioIndex = request.audioStreamIndex,
             subtitleIndex = request.subtitleStreamIndex,
             model = identity.device,
-            appVersion = identity.version
+            appVersion = identity.version,
+            hardwareAv1 = hasHardwareAv1Decoder()
         )
         val decision = sendJson(session, "POST", PLAYBACK_START_PATH, body.toString(), DecisionWire.serializer())
         val started = decision.plan
