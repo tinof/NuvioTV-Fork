@@ -38,7 +38,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.ForwardingRenderer
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
-import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
@@ -472,6 +471,14 @@ internal fun PlayerRuntimeController.initializePlayer(
             rearmOutputChecksForNewPlayer()
             registerAudioDelayRouteCallback()
             currentAudioOutputRoute = AudioOutputRouteDetector.detect(context)
+            // Below API 33 the detector ranks a listed Bluetooth sink first. When this stream's
+            // track was seen playing on HDMI under the Bluetooth pin, keep that HDMI route for the
+            // rebuild it asked for, once: a later wrong pin is caught again after the first frame.
+            val hdmiRouteOverride = hdmiRouteUnderBluetoothPin?.takeIf { it.first == url }?.second
+            hdmiRouteUnderBluetoothPin = null
+            if (hdmiRouteOverride != null && currentAudioOutputRoute?.isBluetooth == true) {
+                currentAudioOutputRoute = AudioOutputRouteDetector.routeOf(hdmiRouteOverride)
+            }
             if (rememberAudioDelayPerDeviceEnabled) {
                 applyStoredAudioDelayForCurrentRouteIfEnabled()
             }
@@ -1296,7 +1303,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             // Bluetooth media sink (A2DP / LE Audio): Media3 only advertises PCM. Do not attempt
             // optical/HDMI passthrough — decode to PCM and let the BT stack encode SBC/AAC/aptX/LDAC.
             val isBluetoothAudioOutput = currentAudioOutputRoute?.isBluetooth == true ||
-                AudioOutputRouteDetector.isBluetoothMediaOutput(context)
+                (hdmiRouteOverride == null && AudioOutputRouteDetector.isBluetoothMediaOutput(context))
             // Force-optical must never win over Bluetooth: AC3/DTS AudioTrack to A2DP fails hard.
             val isForcePassthroughActive = !isBluetoothAudioOutput &&
                 playerSettings.forceOpticalPassthrough &&
@@ -1461,6 +1468,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 deniedTranscodeMimes = deniedTranscodeMimes,
                 preferFfmpegAudio = preferFfmpegAudioActive,
                 bluetoothForcePcm = isBluetoothAudioOutput,
+                hdmiRoutedDevice = hdmiRouteOverride?.takeIf { !isBluetoothAudioOutput },
                 nativeFelActive = nativeFelActive,
                 onNativeSelectionChanged = { selected -> nativeVideoSelection.update(nativeSelectionOwner, selected) },
                 nativeMelEnabled = am9SystemProperty("debug.nuvio.native_dv7_mel") != "0",
@@ -2226,6 +2234,7 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                         if (isFirstFrame) {
                             currentDiagnostics = recordFirstFrameDiagnostics(this@apply, currentDiagnostics, playerSettings)
+                            scheduleHdmiRouteUnderBluetoothPinCheck("first frame")
                         }
                     }
 
@@ -3303,6 +3312,8 @@ private class SubtitleOffsetRenderersFactory(
     private val preferFfmpegAudio: Boolean,
     private val audioPassthroughPolicy: AudioPassthroughPolicy,
     private val bluetoothForcePcm: Boolean = false,
+    /** HDMI device the output was seen on under a wrong Bluetooth pin; media3 judges it instead of the device list. */
+    private val hdmiRoutedDevice: android.media.AudioDeviceInfo? = null,
     /** Native FEL: put [com.nuvio.tv.core.player.amlfel.AmlDvFelVideoRenderer] first (claims DV P7 only). */
     private val nativeFelActive: Boolean = false,
     private val onNativeSelectionChanged: (Boolean) -> Unit = {},
@@ -3426,7 +3437,7 @@ private class SubtitleOffsetRenderersFactory(
                     .setAudioCapabilities(AudioOutputRouteDetector.bluetoothPcmOnlyCapabilities())
             }
             isTelevision -> {
-                val pinned = PassthroughOutputReturn.capabilities(context)
+                val pinned = PassthroughOutputReturn.capabilities(context, hdmiRoutedDevice)
                 pinnedOutputEncodings = PassthroughOutputReturn.encodingsOf(pinned)
                 DefaultAudioSink.Builder()
                     .setAudioCapabilities(pinned)
@@ -3460,7 +3471,9 @@ private class SubtitleOffsetRenderersFactory(
             android.provider.Settings.Global.getString(context.contentResolver, "nuvio_reduced_start_threshold")
         }.getOrNull()?.trim()?.toIntOrNull() ?: defaultStartThresholdFrames
         if (reducedStartThresholdFrames > 0) {
-            Log.w(PlayerRuntimeController.TAG, "STHRESH: DIRECT start threshold -> $reducedStartThresholdFrames frames")
+            // AudioTrack.setStartThresholdInFrames is API 31+; below that the sink monitor skips it.
+            val note = if (Build.VERSION.SDK_INT < 31) " (not applied below API 31)" else ""
+            Log.w(PlayerRuntimeController.TAG, "STHRESH: DIRECT start threshold -> $reducedStartThresholdFrames frames$note")
         }
         var speedAwareSink: PlaybackSpeedAwareAudioSink? = null
         val iecAudioSink = IecPassthroughAudioSink(
@@ -4246,17 +4259,12 @@ internal val cappedPassthroughBufferSizeProvider =
         maxOf(minBuffer, minOf(size, capBytes))
     }
 
-private fun passthroughBufferCapBytes(encoding: Int): Int {
-    return when (encoding) {
-        C.ENCODING_DOLBY_TRUEHD -> 2 * 61_440
-        C.ENCODING_DTS_HD, C.ENCODING_DTS_UHD_P2 -> 4 * 30_720
-        C.ENCODING_DTS -> 16 * 2_012
-        C.ENCODING_E_AC3, C.ENCODING_E_AC3_JOC -> 2 * 10_752
-        C.ENCODING_AC3 -> 1_536 * 8
-        C.ENCODING_AC4 -> 16_384
-        else -> 16_384
-    }
-}
+// Read at each track open, so `adb shell setprop debug.nuvio.hbr_buffer_scale <n>` applies to the next one.
+private fun passthroughBufferCapBytes(encoding: Int): Int =
+    com.nuvio.tv.core.player.PassthroughBufferCaps.capBytes(
+        encoding,
+        com.nuvio.tv.core.util.DebugSwitches.int("debug.nuvio.hbr_buffer_scale")
+    )
 
 private fun DefaultRenderersFactory.applyMapDv7ToHevcIfSupported(enabled: Boolean): DefaultRenderersFactory {
     return runCatching {
@@ -4264,47 +4272,6 @@ private fun DefaultRenderersFactory.applyMapDv7ToHevcIfSupported(enabled: Boolea
         method.invoke(this, enabled)
         this
     }.getOrElse { this }
-}
-
-@Suppress("unused")
-// Retained for reference only: Builder.setAudioCapabilities is discarded when the
-// builder has a Context, so this never reaches the sink. The force-AC3 path lives
-// in PlaybackSpeedAwareAudioSink.
-private fun buildStableAudioCapabilities(context: Context, forceOpticalPassthrough: Boolean = false): AudioCapabilities {
-    val detected = AudioCapabilities.getCapabilities(context, AudioAttributes.DEFAULT, null)
-    val supportedEncodings = mutableListOf<Int>()
-    val knownEncodings = intArrayOf(
-        C.ENCODING_PCM_16BIT, C.ENCODING_AC3, C.ENCODING_AC4, C.ENCODING_DTS,
-        C.ENCODING_E_AC3_JOC, C.ENCODING_E_AC3, C.ENCODING_DOLBY_TRUEHD
-    )
-    for (encoding in knownEncodings) {
-        if (detected.supportsEncoding(encoding)) {
-            supportedEncodings += encoding
-        }
-    }
-    if ((detected.supportsEncoding(C.ENCODING_DTS_HD) || detected.supportsEncoding(C.ENCODING_DTS_UHD_P2)) && C.ENCODING_DTS !in supportedEncodings) {
-        supportedEncodings += C.ENCODING_DTS
-    }
-    if (forceOpticalPassthrough) {
-        val forced = intArrayOf(
-            C.ENCODING_AC3,
-            C.ENCODING_E_AC3,
-            C.ENCODING_E_AC3_JOC,
-            C.ENCODING_DTS,
-            C.ENCODING_DTS_HD
-        )
-        for (encoding in forced) {
-            if (encoding !in supportedEncodings) {
-                supportedEncodings += encoding
-            }
-        }
-    }
-    val maxChannelCount = if (forceOpticalPassthrough) {
-        maxOf(detected.maxChannelCount, 8)
-    } else {
-        detected.maxChannelCount
-    }
-    return AudioCapabilities(supportedEncodings.toIntArray(), maxChannelCount)
 }
 
 private class SafeBandwidthMeter(
