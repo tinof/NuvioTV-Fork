@@ -535,7 +535,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                     tunneledSurfaceFill = tunneledSurfaceFill,
                     playbackIssueReportsEnabled = IssueReports.available && playerSettings.playbackIssueReportsEnabled,
                     tunnelingEnabled = tunnelingActive &&
-                            effectiveInternalPlayerEngine != InternalPlayerEngine.MVP_PLAYER
+                            effectiveInternalPlayerEngine != InternalPlayerEngine.MVP_PLAYER,
+                    tunnelingApplied = false
                 )
             }
 
@@ -1048,6 +1049,11 @@ internal fun PlayerRuntimeController.initializePlayer(
             }
             requestedLibassRenderMode = playerSettings.effectiveLibassRenderMode
             // ── Track Selector Setup ──
+            // Read once per build: the selector runs on the playback thread for every reselection.
+            val hbrTunnelAllowed = DebugSwitches.flag("debug.nuvio.hbr_tunnel") == true
+            val dvTunnelDropped = DebugSwitches.flag("debug.nuvio.dv_no_tunnel") == true
+            // Set below once the codec selector exists; selection runs only after the player is built.
+            var tunnelPredictionCodecSelector: MediaCodecSelector? = null
             val adaptiveTrackSelectionFactory = AdaptiveTrackSelection.Factory(
                 ADAPTIVE_QUALITY_INCREASE_MIN_DURATION_MS,
                 AdaptiveTrackSelection.DEFAULT_MAX_DURATION_FOR_QUALITY_DECREASE_MS,
@@ -1074,12 +1080,27 @@ internal fun PlayerRuntimeController.initializePlayer(
                         passthroughPolicy = currentAudioPassthroughPolicy,
                         audioSink = playbackSpeedAwareAudioSink
                     )
+                    demoteVideoTunnelingWhereFramesNeedTheApp(
+                        mappedTrackInfo,
+                        rendererFormatSupports,
+                        dropDolbyVisionTunneling = dvTunnelDropped
+                    )
                     demoteAudioTunnelingWhereItCannotBeClocked(
                         mappedTrackInfo,
                         rendererFormatSupports,
                         ffmpegRendererName = ffmpegAudioRenderer?.name,
                         audioSink = playbackSpeedAwareAudioSink,
-                        deadClockAudioClasses = PlayerTunnelAvSyncPolicy.deadAudioClasses
+                        deadClockAudioClasses = PlayerTunnelAvSyncPolicy.deadAudioClasses,
+                        tunnelVideoDecoderName = if (PlayerTunnelAvSyncPolicy.deadAudioClasses.isEmpty()) {
+                            null
+                        } else {
+                            predictTunnelVideoDecoderName(
+                                mappedTrackInfo,
+                                rendererFormatSupports,
+                                tunnelPredictionCodecSelector
+                            )
+                        },
+                        hbrTunnelAllowed = hbrTunnelAllowed
                     )
                     if (isHls) {
                         for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
@@ -1276,6 +1297,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             val codecSelector = createDolbyVisionFallbackCodecSelector(
                 convertToDv81Active = convertToDv81Active
             )
+            tunnelPredictionCodecSelector = codecSelector
             scope.launch(kotlinx.coroutines.Dispatchers.Default) { softwareOnlyDecoderNames }
             val preferFfmpegAudioActive = preferFfmpegAudioStreamUrls.contains(url)
             // Bluetooth media sink (A2DP / LE Audio): Media3 only advertises PCM. Do not attempt
@@ -1803,6 +1825,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 )
                 scheduleStartupWatchdog()
                 val isTunneledPlayback = isTunnelingActiveForCurrentPlayback
+                val realTunnelFirstFrameSwitch = DebugSwitches.flag("debug.nuvio.tunnel_real_first_frame") == true
                 // Hold playWhenReady=false through prepare() so audio does not race ahead
                 // while the video decoder is still opening. The first STATE_READY primes the
                 // pipeline (ColdStartPrime); synchronized play() begins in onRenderedFirstFrame().
@@ -1983,7 +2006,15 @@ internal fun PlayerRuntimeController.initializePlayer(
                             // The preference only requests tunneling: track selection enables it only when the
                             // selected renderers support it (not the AM9 native FEL renderer, safe-audio mode
                             // turns it off). The synthetic-first-frame start below is only for real tunneling.
-                            val tunneledNow = isTunneledPlayback && this@apply.isTunnelingEnabled
+                            val tunneledNow = isTunneledPlayback && this@apply.isTunnelingEnabled &&
+                                !PlayerTunnelAvSyncPolicy.waitsForRealFirstFrame(
+                                    switchOn = realTunnelFirstFrameSwitch,
+                                    frameReportKey = PlayerTunnelAvSyncPolicy.frameReportKey(
+                                        Build.FINGERPRINT,
+                                        playbackAnalyticsDiagnostics.hudSample().videoDecoderName
+                                    ),
+                                    reportDecoders = PlayerTunnelAvSyncPolicy.frameReportDecoders
+                                )
                             val readyTransition = PlayerStartupPlaybackPolicy.onStateReady(
                                 PlayerStartupPlaybackPolicy.ReadyState(
                                     shouldEnforceAutoplayOnFirstReady = shouldEnforceAutoplayOnFirstReady,
@@ -2159,6 +2190,10 @@ internal fun PlayerRuntimeController.initializePlayer(
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
+                        val tunnelingApplied = this@apply.isTunnelingEnabled
+                        if (_uiState.value.tunnelingApplied != tunnelingApplied) {
+                            _uiState.update { it.copy(tunnelingApplied = tunnelingApplied) }
+                        }
                         updateAvailableTracks(tracks)
                     }
 
@@ -4100,7 +4135,9 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
     rendererFormatSupports: Array<out Array<out IntArray>>,
     ffmpegRendererName: String?,
     audioSink: PlaybackSpeedAwareAudioSink?,
-    deadClockAudioClasses: Set<String>
+    deadClockAudioClasses: Set<String>,
+    tunnelVideoDecoderName: String?,
+    hbrTunnelAllowed: Boolean
 ) {
     for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
         if (mappedTrackInfo.getRendererType(rendererIndex) != C.TRACK_TYPE_AUDIO) continue
@@ -4114,16 +4151,28 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
                 val format = group.getFormat(trackIndex)
                 val reason = when {
                     isFfmpegRenderer ->
-                        if (deadClockAudioClasses.contains(PlaybackSpeedAwareAudioSink.TUNNEL_AUDIO_CLASS_PCM)) {
+                        if (PlayerTunnelAvSyncPolicy.ledgerMatches(
+                                deadClockAudioClasses,
+                                PlaybackSpeedAwareAudioSink.TUNNEL_AUDIO_CLASS_PCM,
+                                tunnelVideoDecoderName
+                            )
+                        ) {
                             "dead-tunnel-clock"
                         } else {
                             null
                         }
                     audioSink == null -> null
                     audioSink.demandsNonTunnelledVideo(format) -> "iec-hbr"
-                    audioSink.hbrDemandsNonTunnelledVideo(format) -> "hbr-format"
+                    // debug.nuvio.hbr_tunnel=1: let the platform sink try TrueHD/DTS-HD bitstream tunnelled.
+                    audioSink.hbrDemandsNonTunnelledVideo(format) &&
+                        !(hbrTunnelAllowed &&
+                            audioSink.getFormatSupport(format) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY) -> "hbr-format"
                     deadClockAudioClasses.isNotEmpty() &&
-                        deadClockAudioClasses.contains(audioSink.tunnelAudioClass(format)) -> "dead-tunnel-clock"
+                        PlayerTunnelAvSyncPolicy.ledgerMatches(
+                            deadClockAudioClasses,
+                            audioSink.tunnelAudioClass(format),
+                            tunnelVideoDecoderName
+                        ) -> "dead-tunnel-clock"
                     else -> null
                 } ?: continue
                 val current = supports[groupIndex][trackIndex]
@@ -4146,6 +4195,99 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
             }
         }
     }
+}
+
+/**
+ * Why a video track must not be tunnelled, or null. Decode-order streams need
+ * [DecodeOrderPtsVideoRenderer] to fix output times, and a tunnelled decoder never hands
+ * its output buffers to the app. debug.nuvio.dv_no_tunnel=1 does the same for Dolby Vision.
+ */
+internal fun videoTunnelDemotionReason(
+    sampleMimeType: String?,
+    containerMimeType: String?,
+    codecs: String?,
+    dropDolbyVisionTunneling: Boolean
+): String? = when {
+    DecodeOrderTimestamps.maxReorderFramesFor(sampleMimeType, containerMimeType) != null -> "decode-order"
+    dropDolbyVisionTunneling && (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION ||
+        codecs?.trim()?.lowercase()?.startsWith("dv") == true) -> "dolby-vision"
+    else -> null
+}
+
+/**
+ * Media3 tunnels only when the selected video track reports tunneling support (it reads its own
+ * parameters for the tunneling switch, not the ones passed to selectAllTracks), so clearing the
+ * bit is what keeps such a track untunnelled.
+ */
+private fun demoteVideoTunnelingWhereFramesNeedTheApp(
+    mappedTrackInfo: androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo,
+    rendererFormatSupports: Array<out Array<out IntArray>>,
+    dropDolbyVisionTunneling: Boolean
+) {
+    for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
+        if (mappedTrackInfo.getRendererType(rendererIndex) != C.TRACK_TYPE_VIDEO) continue
+        val trackGroups = mappedTrackInfo.getTrackGroups(rendererIndex)
+        val supports = rendererFormatSupports[rendererIndex]
+        for (groupIndex in 0 until trackGroups.length) {
+            val group = trackGroups[groupIndex]
+            for (trackIndex in 0 until group.length) {
+                val format = group.getFormat(trackIndex)
+                val reason = videoTunnelDemotionReason(
+                    format.sampleMimeType,
+                    format.containerMimeType,
+                    format.codecs,
+                    dropDolbyVisionTunneling
+                ) ?: continue
+                val current = supports[groupIndex][trackIndex]
+                if (RendererCapabilities.getTunnelingSupport(current) ==
+                    RendererCapabilities.TUNNELING_NOT_SUPPORTED
+                ) {
+                    continue
+                }
+                Log.d(
+                    "NuvioTrackSelector",
+                    "Video tunnelling cleared for mime=${format.sampleMimeType} reason=$reason"
+                )
+                supports[groupIndex][trackIndex] = RendererCapabilities.create(
+                    RendererCapabilities.getFormatSupport(current),
+                    RendererCapabilities.getAdaptiveSupport(current),
+                    RendererCapabilities.TUNNELING_NOT_SUPPORTED,
+                    RendererCapabilities.getHardwareAccelerationSupport(current),
+                    RendererCapabilities.getDecoderSupport(current)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The decoder a tunnelled video track would get: the selector's first tunneling decoder for the
+ * first playable video track. Null when there is none or the query fails; the stall ledger then
+ * treats every entry of a sound type as a match.
+ */
+private fun predictTunnelVideoDecoderName(
+    mappedTrackInfo: androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo,
+    rendererFormatSupports: Array<out Array<out IntArray>>,
+    codecSelector: MediaCodecSelector?
+): String? {
+    codecSelector ?: return null
+    for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
+        if (mappedTrackInfo.getRendererType(rendererIndex) != C.TRACK_TYPE_VIDEO) continue
+        val trackGroups = mappedTrackInfo.getTrackGroups(rendererIndex)
+        val supports = rendererFormatSupports[rendererIndex]
+        for (groupIndex in 0 until trackGroups.length) {
+            val group = trackGroups[groupIndex]
+            for (trackIndex in 0 until group.length) {
+                if (RendererCapabilities.getFormatSupport(supports[groupIndex][trackIndex]) != C.FORMAT_HANDLED) continue
+                val format = group.getFormat(trackIndex)
+                val mime = format.sampleMimeType ?: continue
+                return runCatching {
+                    codecSelector.getDecoderInfos(mime, format.drmInitData != null, true).firstOrNull()?.name
+                }.getOrNull()
+            }
+        }
+    }
+    return null
 }
 
 private fun isPassthroughAudioMime(mime: String): Boolean {
