@@ -126,7 +126,7 @@ internal suspend fun PlayerRuntimeController.applySurroundResolutionInPlace(reas
             read = {
                 readings++
                 AudioChainProbe.invalidate()
-                AudioOutputRouteDetector.detect(context)?.let { currentAudioOutputRoute = it }
+                detectAudioOutputRouteForStream()?.let { currentAudioOutputRoute = it }
                 readSurroundInPlace(inputs, settings)
             },
             wait = {
