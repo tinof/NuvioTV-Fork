@@ -106,7 +106,7 @@ internal object Mp4AfrProbe {
         while (pos < end) {
             val box = readBox(bytes, pos, end) ?: return
             action(box)
-            if (!box.complete) return
+            if (!box.complete || box.end <= pos) return
             pos = box.end
         }
     }
@@ -126,10 +126,10 @@ internal object Mp4AfrProbe {
             }
             else -> size32
         }
+        // A 64-bit size can be anything; compare against what is left so pos + size never overflows.
         if (size < header) return null
-        val declaredEnd = pos.toLong() + size
-        val complete = declaredEnd <= limit
-        return Box(type, pos + header, if (complete) declaredEnd.toInt() else limit, complete)
+        val complete = size <= (limit - pos).toLong()
+        return Box(type, pos + header, if (complete) pos + size.toInt() else limit, complete)
     }
 
     private fun readTkhdTrackId(bytes: ByteArray, box: Box): Long? {
