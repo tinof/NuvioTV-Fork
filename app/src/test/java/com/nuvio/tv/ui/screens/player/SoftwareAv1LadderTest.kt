@@ -56,6 +56,8 @@ class SoftwareAv1LadderTest {
         MimeTypes.VIDEO_AV1,
         ColorInfo.Builder().setLumaBitdepth(10).setChromaBitdepth(10).build(),
     )
+    private val av1Uhd = video("av1-uhd", MimeTypes.VIDEO_AV1).buildUpon().setWidth(3840).setHeight(2160).build()
+    private val av1UhdTenBit = av1TenBit.buildUpon().setId("av1-uhd-10").setWidth(3840).setHeight(2160).build()
     private val avc = video("avc", MimeTypes.VIDEO_H264)
     private val hevc = video("hevc", MimeTypes.VIDEO_H265)
 
@@ -158,5 +160,27 @@ class SoftwareAv1LadderTest {
         }
         assertEquals(listOf("c2.amlogic.av1.decoder"), names(av1))
         assertEquals(listOf("c2.amlogic.av1.decoder", "c2.android.av1.decoder"), names(av1TenBit))
+    }
+
+    @Test
+    fun `no hardware AV1 - wider than 1920 has no decoder at any bit depth, so it goes to MPV`() {
+        listOf(av1Uhd, av1UhdTenBit).forEach { format ->
+            player(noHardwareAv1).forEach { renderer ->
+                assertEquals(
+                    "${renderer.name} ${format.id}",
+                    C.FORMAT_UNSUPPORTED_SUBTYPE,
+                    RendererCapabilities.getFormatSupport(renderer.supportsFormat(format)),
+                )
+            }
+        }
+        val withoutDav1d = mediaCodec(noHardwareAv1, dav1dLoaded = false)
+        assertEquals(C.FORMAT_UNSUPPORTED_SUBTYPE, RendererCapabilities.getFormatSupport(withoutDav1d.supportsFormat(av1Uhd)))
+    }
+
+    @Test
+    fun `hardware AV1 - wider than 1920 keeps the whole decoder list`() {
+        val names = withoutAndroidSoftwareAv1(hardwareAv1, av1Uhd) { true }
+            .getDecoderInfos(MimeTypes.VIDEO_AV1, false, false).map { it.name }
+        assertEquals(listOf("c2.amlogic.av1.decoder", "c2.android.av1.decoder"), names)
     }
 }

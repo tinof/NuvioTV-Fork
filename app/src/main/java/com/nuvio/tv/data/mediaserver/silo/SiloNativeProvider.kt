@@ -41,6 +41,7 @@ import com.nuvio.tv.data.mediaserver.searchEach
 import com.nuvio.tv.data.mediaserver.mediabrowser.MediaBrowserClient
 import com.nuvio.tv.data.mediaserver.mediabrowser.ServerClientIdentity
 import com.nuvio.tv.data.mediaserver.mediabrowser.dropsEncryption
+import com.nuvio.tv.data.mediaserver.mediabrowser.hasHardwareAv1Decoder
 import com.nuvio.tv.data.mediaserver.mediabrowser.normalizeServerAddress
 import com.nuvio.tv.data.mediaserver.mediabrowser.pathSegment
 import java.time.Instant
@@ -658,7 +659,8 @@ class SiloNativeProvider internal constructor(
             subtitleIndex = request.subtitleStreamIndex,
             model = identity.device,
             appVersion = identity.version,
-            legacyQuality = legacy
+            legacyQuality = legacy,
+            hardwareAv1 = hasHardwareAv1Decoder()
         )
         val key = cacheKey(session)
         var body = startBody(key in legacyQuality)
