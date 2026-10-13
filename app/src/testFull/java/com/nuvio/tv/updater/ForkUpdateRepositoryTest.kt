@@ -101,4 +101,16 @@ class ForkUpdateRepositoryTest {
         // A 32-bit-only device is unchanged.
         assertEquals(listOf("armeabi-v7a", "armeabi"), AbiSelector.installedFirst(listOf("armeabi-v7a", "armeabi"), false))
     }
+    @Test fun `a 32-bit install on a 64-bit Nvidia box updates to the 64-bit APK`() {
+        val device = listOf("arm64-v8a", "armeabi-v7a", "armeabi")
+        val all = listOf(asset("armeabi-v7a"), asset())
+        val order = AbiSelector.installedFirst(device, is64Bit = false, nvidia = true, supports64Bit = true)
+        assertEquals(listOf("arm64-v8a", "armeabi-v7a", "armeabi"), order)
+        assertEquals(asset(), AbiSelector.chooseBestApkAsset(all, order))
+        // Other vendors keep the installed type; an Nvidia box without a 64-bit userland stays 32-bit.
+        assertEquals(asset("armeabi-v7a"), AbiSelector.chooseBestApkAsset(all,
+            AbiSelector.installedFirst(device, is64Bit = false, nvidia = false, supports64Bit = true)))
+        assertEquals(listOf("armeabi-v7a", "armeabi"),
+            AbiSelector.installedFirst(listOf("armeabi-v7a", "armeabi"), is64Bit = false, nvidia = true, supports64Bit = false))
+    }
 }
