@@ -1298,6 +1298,12 @@ internal fun PlayerRuntimeController.initializePlayer(
                 convertToDv81Active = convertToDv81Active
             )
             tunnelPredictionCodecSelector = codecSelector
+            DolbyVisionCodecFallback.preferDvDecoders =
+                com.nuvio.tv.core.util.DebugSwitches.flag("debug.nuvio.dv_decoder_first") == true &&
+                    capsForDiagnostics.displayDv
+            if (DolbyVisionCodecFallback.preferDvDecoders) {
+                Log.i(PlayerRuntimeController.TAG, "DV_DECODER_FIRST: hardware DV decoders ahead of HEVC")
+            }
             scope.launch(kotlinx.coroutines.Dispatchers.Default) { softwareOnlyDecoderNames }
             val preferFfmpegAudioActive = preferFfmpegAudioStreamUrls.contains(url)
             // Bluetooth media sink (A2DP / LE Audio): Media3 only advertises PCM. Do not attempt
@@ -3996,39 +4002,6 @@ private fun friendlyVideoCodecName(mimeType: String?, codecs: String?): String? 
     }
 }
 
-/**
- * Human-friendly HDR/output type for the diagnostics card — reflects what is
- * actually output, not just the source track mime. When DV7 is stripped to the
- * HDR10 base layer the output is HDR10/SDR even though the track mime is DV.
- */
-private fun friendlyVideoHdrType(
-    mimeType: String?,
-    colorTransfer: Int?,
-    effectiveModeName: String?,
-    dvConversionOccurred: Boolean
-): String? {
-    val isDolbyVisionMime = mimeType?.lowercase() == MimeTypes.VIDEO_DOLBY_VISION
-    fun fromTransfer(): String? = when (colorTransfer) {
-        C.COLOR_TRANSFER_ST2084 -> "HDR10"
-        C.COLOR_TRANSFER_HLG -> "HLG"
-        C.COLOR_TRANSFER_SDR -> "SDR"
-        else -> null
-    }
-    return when {
-        // Ignore DV data: output is HDR10/SDR, never Dolby Vision.
-        effectiveModeName == "HDR10_BASE_LAYER" -> fromTransfer() ?: "HDR10"
-        // DV RPU stripped: output is HDR10 base layer, never Dolby Vision.
-        effectiveModeName == "STRIP_DV" -> fromTransfer() ?: "HDR10"
-        // DV8.1 conversion, but only label it DV if a conversion actually ran. AUTO arms
-        // this mode for every file on a DV display, so plain SDR/HDR10 lands here too.
-        effectiveModeName == "DV81_LIBDOVI" && dvConversionOccurred -> "Dolby Vision"
-        effectiveModeName == "DV81_LIBDOVI" -> fromTransfer()
-        // Native DV passthrough.
-        isDolbyVisionMime -> "Dolby Vision"
-        else -> fromTransfer()
-    }
-}
-
 private fun createDolbyVisionFallbackCodecSelector(
     convertToDv81Active: Boolean = false
 ): MediaCodecSelector {
@@ -4068,7 +4041,10 @@ private fun createDolbyVisionFallbackCodecSelector(
             }
         }
         if (convertToDv81Active && mimeType == MimeTypes.VIDEO_DOLBY_VISION) {
-            return@MediaCodecSelector DolbyVisionCodecFallback.findDvDecodersIgnoringProfile()
+            return@MediaCodecSelector DolbyVisionCodecFallback.findDvDecodersIgnoringProfile(
+                requiresSecure = requiresSecureDecoder,
+                requiresTunneling = requiresTunnelingDecoder
+            )
         }
         defaults
     }
@@ -4568,7 +4544,10 @@ private fun PlayerRuntimeController.recordFirstFrameDiagnostics(
             currentVideoTrackMimeType,
             currentVideoTrackColorTransfer,
             currentDiagnostics.dv7ModeEffective,
-            dvConversionOccurred
+            dvConversionOccurred,
+            DolbyVisionBaseLayerPolicy.isDolbyVisionDecoder(
+                playbackAnalyticsDiagnostics.hudSample().videoDecoderName
+            )
         ),
         audioPath = currentAudioPathDescription
             ?: if (playbackSpeedAwareAudioSink?.isIecHbrActive() == true) {

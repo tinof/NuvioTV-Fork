@@ -377,7 +377,11 @@ private fun Dv7HandlingModeDialog(
     onModeSelected: (Dv7HandlingMode) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val options = listOf(
+    // Native FEL needs the Amlogic dual-layer port; elsewhere it only resolves like Auto.
+    // A saved Native FEL stays listed so the current choice is visible.
+    val felDeviceUsable = remember { com.nuvio.tv.core.player.amlfel.AmlFelSupport.isDeviceUsable() }
+    val nativeFelListed = felDeviceUsable || selectedMode == Dv7HandlingMode.NATIVE_FEL
+    val options = listOfNotNull(
         SettingsPickerOption(
             Dv7HandlingMode.AUTO,
             stringResource(R.string.dv7_mode_auto),
@@ -403,11 +407,15 @@ private fun Dv7HandlingModeDialog(
             stringResource(R.string.dv7_mode_off),
             stringResource(R.string.dv7_mode_off_desc)
         ),
-        SettingsPickerOption(
-            Dv7HandlingMode.NATIVE_FEL,
-            stringResource(R.string.dv7_mode_native_fel),
-            stringResource(R.string.dv7_mode_native_fel_desc)
-        )
+        if (nativeFelListed) {
+            SettingsPickerOption(
+                Dv7HandlingMode.NATIVE_FEL,
+                stringResource(R.string.dv7_mode_native_fel),
+                stringResource(R.string.dv7_mode_native_fel_desc)
+            )
+        } else {
+            null
+        }
     )
 
     SettingsSingleChoiceDialog(
