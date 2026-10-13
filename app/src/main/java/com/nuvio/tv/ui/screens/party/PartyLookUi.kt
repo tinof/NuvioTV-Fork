@@ -119,6 +119,8 @@ internal fun PartyDialogWindow(
         CompositionLocalProvider(
             LocalDensity provides if (v2) activityDensity else LocalDensity.current,
             LocalGlassBackdrop provides (LocalPopupGlassBackdrop.current?.state ?: LocalGlassBackdrop.current),
+            // The pre-blurred page artwork is placed against the page's window, not this one.
+            com.nuvio.tv.ui.v2.components.LocalPreblurredGlass provides null,
         ) {
             Box(modifier = Modifier.fillMaxSize().padding(NuvioTheme.spacing.xl), contentAlignment = alignment, content = content)
         }
