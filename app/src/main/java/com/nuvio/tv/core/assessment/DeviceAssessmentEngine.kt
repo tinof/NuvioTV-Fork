@@ -8,6 +8,7 @@ import com.nuvio.tv.R
 import com.nuvio.tv.core.network.DiagnosticRunCoordinator
 import com.nuvio.tv.core.network.StreamSpeedTester
 import com.nuvio.tv.core.network.StreamSweepEngine
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.DisplayCapabilities
 import com.nuvio.tv.core.player.DolbyVisionBaseLayerPolicy
 import com.nuvio.tv.core.player.DoviBridge
@@ -477,9 +478,31 @@ object DeviceAssessmentEngine {
                 changeNeeded = false
             )
         }
+        val isNvidia = DeviceProfile.isNvidia()
+        if (isNvidia) {
+            // A Shield setting no API reads, and one to rule out when sound drifts or Atmos drops out.
+            items += AssessmentItem(
+                key = "shield_dolby_processing",
+                title = s(R.string.assessment_item_shield_dolby),
+                currentValue = null,
+                recommendedValue = s(R.string.assessment_value_your_call),
+                grounds = s(R.string.assessment_grounds_shield_dolby),
+                tier = AssessmentTier.VERIFY,
+                changeNeeded = false
+            )
+        }
 
         // AFR + resolution: honest per display capability; VERIFY when the
         // display could not be inspected (no Activity, or API unsupported).
+        val afrRecommendsOn = display.apiSupported && display.supportsFrameRateSwitching &&
+            settings.frameRateMatchingMode == FrameRateMatchingMode.OFF
+        val afrShieldNote = if (
+            ShieldAssessmentNotes.afrNoteApplies(isNvidia, settings.frameRateMatchingMode, afrRecommendsOn)
+        ) {
+            s(R.string.assessment_grounds_afr_shield)
+        } else {
+            null
+        }
         if (display.apiSupported) {
             val ratesLabel = ratesAtCurrentResolution(display)
             if (display.supportsFrameRateSwitching) {
@@ -489,7 +512,10 @@ object DeviceAssessmentEngine {
                         title = s(R.string.assessment_item_afr),
                         currentValue = off,
                         recommendedValue = s(R.string.assessment_value_afr_start_stop),
-                        grounds = s(R.string.assessment_grounds_afr_on, ratesLabel),
+                        grounds = ShieldAssessmentNotes.withNote(
+                            s(R.string.assessment_grounds_afr_on, ratesLabel),
+                            afrShieldNote
+                        ),
                         tier = AssessmentTier.CALCULATED,
                         changeNeeded = true
                     )
@@ -503,7 +529,10 @@ object DeviceAssessmentEngine {
                             s(R.string.assessment_value_afr_start)
                         },
                         recommendedValue = s(R.string.assessment_value_your_call),
-                        grounds = s(R.string.assessment_grounds_afr_already),
+                        grounds = ShieldAssessmentNotes.withNote(
+                            s(R.string.assessment_grounds_afr_already),
+                            afrShieldNote
+                        ),
                         tier = AssessmentTier.CALCULATED,
                         changeNeeded = false
                     )
@@ -514,7 +543,10 @@ object DeviceAssessmentEngine {
                     title = s(R.string.assessment_item_afr),
                     currentValue = afrModeLabel(context, settings.frameRateMatchingMode),
                     recommendedValue = off,
-                    grounds = s(R.string.assessment_grounds_afr_single),
+                    grounds = ShieldAssessmentNotes.withNote(
+                        s(R.string.assessment_grounds_afr_single),
+                        afrShieldNote
+                    ),
                     tier = AssessmentTier.CALCULATED,
                     changeNeeded = settings.frameRateMatchingMode != FrameRateMatchingMode.OFF
                 )
@@ -522,23 +554,29 @@ object DeviceAssessmentEngine {
             // Resolution matching is a preference, not a derivable fact: it
             // decides WHICH scaler upscales sub-native content (the panel's or
             // this box's), and no API says which looks better. State the trade
-            // and leave the choice; never write it.
+            // and leave the choice; never write it. On a Shield the box's scaler
+            // is its AI upscaler, which matching switches off, so advise off there.
+            val resOffOnShield = ShieldAssessmentNotes.resMatchRecommendsOff(
+                isNvidia,
+                display.supportsResolutionSwitching
+            )
             items += AssessmentItem(
                 key = "res_match",
                 title = s(R.string.assessment_item_res_match),
                 currentValue = if (settings.resolutionMatchingEnabled) on else off,
-                recommendedValue = if (display.supportsResolutionSwitching) {
-                    s(R.string.assessment_value_your_call)
-                } else {
-                    s(R.string.assessment_value_leave_as_is)
+                recommendedValue = when {
+                    resOffOnShield -> off
+                    display.supportsResolutionSwitching -> s(R.string.assessment_value_your_call)
+                    else -> s(R.string.assessment_value_leave_as_is)
                 },
-                grounds = if (display.supportsResolutionSwitching) {
-                    s(R.string.assessment_grounds_res_choice, resolutionsLabel(display))
-                } else {
-                    s(R.string.assessment_grounds_res_inert)
+                grounds = when {
+                    resOffOnShield -> s(R.string.assessment_grounds_res_shield)
+                    display.supportsResolutionSwitching ->
+                        s(R.string.assessment_grounds_res_choice, resolutionsLabel(display))
+                    else -> s(R.string.assessment_grounds_res_inert)
                 },
                 tier = AssessmentTier.CALCULATED,
-                changeNeeded = false
+                changeNeeded = resOffOnShield && settings.resolutionMatchingEnabled
             )
         } else {
             items += AssessmentItem(
@@ -546,7 +584,10 @@ object DeviceAssessmentEngine {
                 title = s(R.string.assessment_item_afr),
                 currentValue = afrModeLabel(context, settings.frameRateMatchingMode),
                 recommendedValue = s(R.string.assessment_value_leave_as_is),
-                grounds = s(R.string.assessment_grounds_display_unknown),
+                grounds = ShieldAssessmentNotes.withNote(
+                    s(R.string.assessment_grounds_display_unknown),
+                    afrShieldNote
+                ),
                 tier = AssessmentTier.VERIFY,
                 changeNeeded = false
             )

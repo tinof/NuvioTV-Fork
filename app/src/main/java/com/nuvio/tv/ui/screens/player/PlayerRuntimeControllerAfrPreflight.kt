@@ -38,8 +38,8 @@ internal const val AFR_PREFLIGHT_MIN_STAGE_MS = 2_000L
  */
 /**
  * Derives a video frame rate from the prewarm's already-held head bytes
- * (MKV only). Returns a provisional FrameRateDetection and records the seeded
- * raw rate on the controller so the track-format path can validate it against
+ * (MKV, or MP4 / MOV with moov at the front). Returns a provisional
+ * FrameRateDetection and records the seeded raw rate on the controller so the track-format path can validate it against
  * ExoPlayer's reported rate after prepare (see maybeRunTrackFormatAfr). Gated
  * on ladder proximity: a rate that is not close to a standard rate is not
  * trusted to switch the panel, so it is left to the post-prepare path. The
@@ -51,7 +51,9 @@ private fun PlayerRuntimeController.seedFrameRateFromPrewarmedHead(url: String, 
         android.net.Uri.parse(url), PlaybackPrewarmIdentity.from(url, headers, mapOf("Icy-MetaData" to "1"))
     )
         ?: return null
-    val hint = com.nuvio.tv.core.player.MatroskaAfrProbe.parseVideoFrameRateFromHead(head) ?: return null
+    val hint = com.nuvio.tv.core.player.MatroskaAfrProbe.parseVideoFrameRateFromHead(head)
+        ?: com.nuvio.tv.core.player.Mp4AfrProbe.parseVideoFrameRateFromHead(head)
+        ?: return null
     if (!FrameRateUtils.isNearStandardRate(hint.rawFps)) {
         Log.d(PlayerRuntimeController.TAG, "AFR seed rejected: fps=${hint.rawFps} not near a standard rate")
         return null
