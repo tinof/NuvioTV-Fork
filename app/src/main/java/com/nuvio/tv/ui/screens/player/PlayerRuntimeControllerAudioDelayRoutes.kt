@@ -70,10 +70,56 @@ internal fun audioDelayMsToSeconds(delayMs: Int): Double {
     return delayMs.coerceIn(AUDIO_DELAY_MIN_MS, AUDIO_DELAY_MAX_MS) / 1000.0
 }
 
-internal suspend fun PlayerRuntimeController.applyStoredAudioDelayForCurrentRouteIfEnabled() {
+/**
+ * Below API 33 detect() ranks a listed Bluetooth sink first even while the track plays on HDMI.
+ * Once this stream's track was seen on HDMI under that idle sink, the HDMI route stands for as
+ * long as detect() still names the same Bluetooth sink.
+ */
+internal data class HdmiRouteUnderIdleBluetooth(
+    val streamUrl: String,
+    val hdmiRoute: AudioOutputRoute,
+    val idleBluetoothRouteKey: String
+)
+
+/** In-place unpins per stream; past this the stream stays PCM, the safe side. */
+internal const val MAX_HDMI_IN_PLACE_UNPINS_PER_STREAM = 2
+
+/** [detected], or the stream's pinned HDMI route while [detected] is still the idle Bluetooth sink. */
+internal fun resolveRouteUnderIdleBluetooth(
+    pin: HdmiRouteUnderIdleBluetooth?,
+    streamUrl: String?,
+    detected: AudioOutputRoute?
+): AudioOutputRoute? {
+    if (pin == null || pin.streamUrl != streamUrl) return detected
+    if (detected == null || !detected.isBluetooth || detected.key != pin.idleBluetoothRouteKey) return detected
+    return pin.hdmiRoute
+}
+
+/**
+ * Whether a device event leaves [pin] standing. A Bluetooth sink other than the idle one coming or
+ * going is a real route change: detect() breaks ties between Bluetooth sinks by list order, so it
+ * may still name the idle sink while media moves to the new one.
+ */
+internal fun idleBluetoothPinSurvives(
+    pin: HdmiRouteUnderIdleBluetooth,
+    changedBluetoothRouteKeys: Collection<String>
+): Boolean = changedBluetoothRouteKeys.all { it == pin.idleBluetoothRouteKey }
+
+/** The media output route for the current stream: detect(), corrected by the idle-Bluetooth HDMI pin. */
+internal fun PlayerRuntimeController.detectAudioOutputRouteForStream(): AudioOutputRoute? =
+    resolveRouteUnderIdleBluetooth(
+        pin = hdmiRouteUnderIdleBluetooth,
+        streamUrl = currentStreamUrl,
+        detected = AudioOutputRouteDetector.detect(context)
+    )
+
+/** [knownRoute] is the route to load the delay for; null detects it for the current stream. */
+internal suspend fun PlayerRuntimeController.applyStoredAudioDelayForCurrentRouteIfEnabled(
+    knownRoute: AudioOutputRoute? = null
+) {
     if (!rememberAudioDelayPerDeviceEnabled) return
 
-    val route = AudioOutputRouteDetector.detect(context) ?: return
+    val route = knownRoute ?: detectAudioOutputRouteForStream() ?: return
     currentAudioOutputRoute = route
 
     val storedDelayMs = audioDelayRouteDataStore.loadDelayMs(route.key) ?: 0
@@ -87,7 +133,7 @@ internal suspend fun PlayerRuntimeController.applyStoredAudioDelayForCurrentRout
 internal fun PlayerRuntimeController.persistAudioDelayForCurrentRoute(delayMs: Int) {
     if (!rememberAudioDelayPerDeviceEnabled) return
 
-    val route = AudioOutputRouteDetector.detect(context) ?: currentAudioOutputRoute ?: return
+    val route = detectAudioOutputRouteForStream() ?: currentAudioOutputRoute ?: return
     currentAudioOutputRoute = route
     scope.launch {
         audioDelayRouteDataStore.saveDelayMs(route.key, delayMs)
@@ -174,13 +220,20 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
         "Audio device $reason (count=${devices.size}); scheduling route re-probe"
     )
 
+    val changedBluetoothRouteKeys = devices
+        .filter { it.isSink && AudioOutputRouteDetector.isBluetoothType(it.type) }
+        .map { AudioOutputRouteDetector.routeOf(it).key }
     audioRouteChangeJob?.cancel()
     audioRouteChangeJob = scope.launch {
         delay(AUDIO_ROUTE_CHANGE_DEBOUNCE_MS)
         if (isReleasingPlayer) return@launch
 
+        hdmiRouteUnderIdleBluetooth?.let { pin ->
+            if (!idleBluetoothPinSurvives(pin, changedBluetoothRouteKeys)) hdmiRouteUnderIdleBluetooth = null
+        }
         val oldRoute = currentAudioOutputRoute
-        val newRoute = AudioOutputRouteDetector.detect(context)
+        // The same idle Bluetooth sink still listed keeps this stream's HDMI route: no re-pin.
+        val newRoute = detectAudioOutputRouteForStream()
         if (newRoute != null) {
             currentAudioOutputRoute = newRoute
         }
@@ -208,7 +261,8 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
             BluetoothRoutePlaybackAction.NONE -> {
                 Log.d(
                     PlayerRuntimeController.TAG,
-                    "Audio route after device $reason: bluetooth=$isBluetooth (was=$wasBluetooth); player stays running"
+                    "Audio route after device $reason: bluetooth=$isBluetooth (was=$wasBluetooth) " +
+                        "hdmiUnderIdleBluetooth=${hdmiRouteUnderIdleBluetooth != null}; player stays running"
                 )
                 if (reason == "added" && !isBluetooth) schedulePassthroughReturnCheck("device added")
             }
@@ -222,6 +276,7 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
                 applyBluetoothAudioRouteInPlace(isBluetooth)
                 if (isBluetooth) {
                     hdmiRouteUnderBluetoothPin = null
+                    hdmiRouteUnderIdleBluetooth = null
                     scheduleHdmiRouteUnderBluetoothPinCheck("device $reason")
                 }
             }
@@ -319,12 +374,27 @@ private suspend fun PlayerRuntimeController.rebuildForHdmiRouteUnderBluetoothPin
     }
     if (sink.pinnedOutputEncodings != null) {
         // Built with HDMI capabilities and pinned to PCM in place by a route event: unpin in place.
+        val unpinsSoFar = hdmiInPlaceUnpins[currentStreamUrl] ?: 0
+        if (unpinsSoFar >= MAX_HDMI_IN_PLACE_UNPINS_PER_STREAM) {
+            Log.i(
+                PlayerRuntimeController.TAG,
+                "PASSTHROUGH_RETURN hdmi-under-bluetooth-pin reason=$reason in place skipped: " +
+                    "$unpinsSoFar unpins this stream; stays PCM"
+            )
+            return false
+        }
+        hdmiInPlaceUnpins[currentStreamUrl] = unpinsSoFar + 1
         Log.i(
             PlayerRuntimeController.TAG,
             "PASSTHROUGH_RETURN hdmi-under-bluetooth-pin reason=$reason in place routed=${device.type}"
         )
-        currentAudioOutputRoute = AudioOutputRouteDetector.routeOf(device)
+        val hdmiRoute = AudioOutputRouteDetector.routeOf(device)
+        hdmiRouteUnderIdleBluetooth = AudioOutputRouteDetector.detect(context)
+            ?.takeIf { it.isBluetooth }
+            ?.let { idle -> HdmiRouteUnderIdleBluetooth(currentStreamUrl, hdmiRoute, idle.key) }
+        currentAudioOutputRoute = hdmiRoute
         applyBluetoothAudioRouteInPlace(false)
+        applyStoredAudioDelayForCurrentRouteIfEnabled(hdmiRoute)
         applySurroundResolutionInPlace("hdmi under bluetooth pin")
         return true
     }

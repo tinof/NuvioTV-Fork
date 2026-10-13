@@ -292,7 +292,9 @@ data class TrackInfo(
     val sampleRate: Int? = null,
     /** The track's own name from the file, as written there. */
     val title: String? = null,
-    val role: TrackRole? = null
+    val role: TrackRole? = null,
+    /** The format's sample mime when the engine reports it (ExoPlayer audio), else null. */
+    val sampleMimeType: String? = null
 )
 
 enum class TrackRole { COMMENTARY, AUDIO_DESCRIPTION, HEARING_IMPAIRED, ORIGINAL }
