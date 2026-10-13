@@ -124,18 +124,24 @@ class HardwareVideoDecoderSelectorTest {
     }
 
     @Test
-    fun `other video types are untouched`() {
+    fun `VC-1 keeps its software fallback`() {
         val decoders = arrayOf(
             decoder("c2.amlogic.vc1.decoder", "video/vc1", softwareOnly = false),
             decoder("c2.amlogic.vc1.decoder.sw", "video/vc1", softwareOnly = true),
-            decoder("c2.amlogic.mpeg2.decoder", MimeTypes.VIDEO_MPEG2, softwareOnly = false),
-            decoder("c2.android.mpeg2.decoder", MimeTypes.VIDEO_MPEG2, softwareOnly = true),
         )
         assertEquals(listOf("c2.amlogic.vc1.decoder", "c2.amlogic.vc1.decoder.sw"), names(format("video/vc1"), *decoders))
-        assertEquals(
-            listOf("c2.amlogic.mpeg2.decoder", "c2.android.mpeg2.decoder"),
-            names(format(MimeTypes.VIDEO_MPEG2), *decoders),
+    }
+
+    @Test
+    fun `MPEG-2 and MPEG-4 Part 2 prefer the hardware decoder`() {
+        val decoders = arrayOf(
+            decoder("c2.amlogic.mpeg2.decoder", MimeTypes.VIDEO_MPEG2, softwareOnly = false),
+            decoder("c2.android.mpeg2.decoder", MimeTypes.VIDEO_MPEG2, softwareOnly = true),
+            decoder("OMX.Nvidia.mp4.decode", MimeTypes.VIDEO_MP4V, softwareOnly = false),
+            decoder("c2.android.mpeg4.decoder", MimeTypes.VIDEO_MP4V, softwareOnly = true),
         )
+        assertEquals(listOf("c2.amlogic.mpeg2.decoder"), names(format(MimeTypes.VIDEO_MPEG2), *decoders))
+        assertEquals(listOf("OMX.Nvidia.mp4.decode"), names(format(MimeTypes.VIDEO_MP4V), *decoders))
     }
 
     @Test

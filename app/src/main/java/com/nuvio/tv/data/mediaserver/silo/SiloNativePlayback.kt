@@ -204,7 +204,8 @@ internal fun siloStartBody(
     audioIndex: Int?,
     subtitleIndex: Int?,
     model: String,
-    appVersion: String
+    appVersion: String,
+    hardwareAv1: Boolean = true
 ): JsonObject = buildJsonObject {
     put("installation_id", installationId)
     put("protocol_version", PROTOCOL_VERSION)
@@ -218,7 +219,12 @@ internal fun siloStartBody(
     put("start_position", 0)
     audioIndex?.let { put("audio_track_index", it) }
     subtitleIndex?.let { put("subtitle_track_index", it) }
-    val videoCodecs = if (direct) DIRECT_VIDEO_CODECS else HLS_VIDEO_CODECS
+    // Without a hardware AV1 decoder Silo converts AV1 rather than sending a file software decoding stutters through.
+    val videoCodecs = when {
+        !direct -> HLS_VIDEO_CODECS
+        hardwareAv1 -> DIRECT_VIDEO_CODECS
+        else -> DIRECT_VIDEO_CODECS - "av1"
+    }
     val audioCodecs = if (direct) DIRECT_AUDIO_CODECS else HLS_AUDIO_CODECS
     val hdr = hdrDetails(direct)
     put("client_capabilities", buildJsonObject {

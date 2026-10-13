@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.AttributeSet
 import android.util.Log
 import android.view.SurfaceHolder
+import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.player.VideoDecoderCapabilities
+import com.nuvio.tv.core.util.DebugSwitches
 import com.nuvio.tv.data.local.MpvHardwareDecodeMode
 import com.nuvio.tv.data.local.SubtitleStyleSettings
 import `is`.xyz.mpv.BaseMPVView
@@ -14,6 +17,13 @@ import kotlin.math.pow
 import kotlin.math.roundToLong
 
 internal const val MPV_TRACK_LIST_PROPERTY = "track-list"
+
+/**
+ * Codecs mpv hands to MediaCodec. Without a hardware AV1 decoder MediaCodec would only find Android's slow software
+ * one, so mpv keeps AV1 on its own decoder. VC-1 is never listed: FFmpeg has no MediaCodec wrapper for it.
+ */
+internal fun mpvHwdecCodecs(hardwareAv1: Boolean): String =
+    if (hardwareAv1) "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1" else "h264,hevc,mpeg4,mpeg2video,vp8,vp9"
 
 class NuvioMpvSurfaceView @JvmOverloads constructor(
     context: Context,
@@ -698,7 +708,12 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
             if (hi10pGnextSoftwareFallbackActive) MPV_HWDEC_DISABLED else hardwareDecodeMode.toMpvHwdecValue()
         )
         appliedHi10pGnextSoftwareFallback = hi10pGnextSoftwareFallbackActive
-        mpv.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
+        mpv.setOptionString("hwdec-codecs", mpvHwdecCodecs(VideoDecoderCapabilities.hasHardwareDecoder(MimeTypes.VIDEO_AV1)))
+        // Test switch for HDR shown on an SDR output; mpv's default curve stays until the two are compared on a device.
+        if (DebugSwitches.flag("debug.nuvio.mpv_tonemap") == true) {
+            mpv.setOptionString("tone-mapping", "bt.2446a")
+            mpv.setOptionString("hdr-compute-peak", "no")
+        }
         mpv.setOptionString("ao", "audiotrack,opensles")
         mpv.setOptionString("audio-set-media-role", "yes")
         mpv.setOptionString("tls-verify", "yes")

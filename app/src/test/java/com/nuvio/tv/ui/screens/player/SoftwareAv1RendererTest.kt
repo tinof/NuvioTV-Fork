@@ -115,12 +115,20 @@ class SoftwareAv1RendererTest {
     }
 
     @Test
-    fun `above 1080p without any hardware decoder is still tried on dav1d`() {
+    fun `wider than 1920 without any hardware decoder is left to MPV`() {
+        // dav1d steps aside and Android's software AV1 leaves MediaCodec's list, so no renderer takes the track.
         val software = dav1d(av1(width = 3840, height = 2160), HardwareAv1Support.NONE)
+        assertEquals(C.FORMAT_UNSUPPORTED_SUBTYPE, software)
+        assertEquals("none", chosen(EXTENSION_RENDERER_MODE_ON, C.FORMAT_UNSUPPORTED_SUBTYPE, software))
+        assertEquals("none", chosen(EXTENSION_RENDERER_MODE_PREFER, C.FORMAT_UNSUPPORTED_SUBTYPE, software))
+        assertEquals(C.FORMAT_UNSUPPORTED_SUBTYPE, dav1d(av1(width = 2560, height = 1440), HardwareAv1Support.NONE))
+    }
+
+    @Test
+    fun `just above 1080p within 1920 wide without any hardware decoder is still tried on dav1d`() {
+        val software = dav1d(av1(width = 1920, height = 1200), HardwareAv1Support.NONE)
         assertEquals(C.FORMAT_EXCEEDS_CAPABILITIES, software)
         assertEquals("dav1d", chosen(EXTENSION_RENDERER_MODE_ON, C.FORMAT_UNSUPPORTED_SUBTYPE, software))
-        // Android's software AV1 stays in MediaCodec's list above 1080p and wins when it claims the stream.
-        assertEquals("mediacodec", chosen(EXTENSION_RENDERER_MODE_ON, C.FORMAT_HANDLED, software))
     }
 
     @Test
@@ -190,6 +198,17 @@ class SoftwareAv1RendererTest {
     }
 
     @Test
+    fun `software envelope is the long side only, at any bit depth`() {
+        assertFalse(aboveSoftwareAv1Envelope(av1(1920, 1080)))
+        assertFalse(aboveSoftwareAv1Envelope(av1(1920, 1200)))
+        assertFalse(aboveSoftwareAv1Envelope(av1(1080, 1920)))
+        assertTrue(aboveSoftwareAv1Envelope(av1(2560, 1440)))
+        assertTrue(aboveSoftwareAv1Envelope(av1(1080, 2560)))
+        assertTrue(aboveSoftwareAv1Envelope(av1(3840, 2160, codecs = "av01.0.13M.10")))
+        assertFalse(aboveSoftwareAv1Envelope(av1(Format.NO_VALUE, Format.NO_VALUE)))
+    }
+
+    @Test
     fun `capabilities wrapper keeps the decoder flags`() {
         val handled = RendererCapabilities.create(
             C.FORMAT_HANDLED,
@@ -208,9 +227,11 @@ class SoftwareAv1RendererTest {
         val wrapped = SoftwareAv1Capabilities(delegate) { hardware }
         assertEquals("Libdav1dVideoRenderer", wrapped.name)
         assertEquals(handled, wrapped.supportsFormat(av1()))
+        val tall = wrapped.supportsFormat(av1(width = 1920, height = 1200))
+        assertEquals(C.FORMAT_EXCEEDS_CAPABILITIES, RendererCapabilities.getFormatSupport(tall))
+        assertEquals(RendererCapabilities.ADAPTIVE_SEAMLESS, RendererCapabilities.getAdaptiveSupport(tall))
         val uhd = wrapped.supportsFormat(av1(width = 3840, height = 2160))
-        assertEquals(C.FORMAT_EXCEEDS_CAPABILITIES, RendererCapabilities.getFormatSupport(uhd))
-        assertEquals(RendererCapabilities.ADAPTIVE_SEAMLESS, RendererCapabilities.getAdaptiveSupport(uhd))
+        assertEquals(C.FORMAT_UNSUPPORTED_SUBTYPE, RendererCapabilities.getFormatSupport(uhd))
         hardware = HardwareAv1Support.HANDLES
         assertEquals(C.FORMAT_UNSUPPORTED_SUBTYPE, RendererCapabilities.getFormatSupport(wrapped.supportsFormat(av1())))
         val hevc = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265).build()
