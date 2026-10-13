@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.player
 import android.os.SystemClock
 import androidx.media3.common.Format
 import com.nuvio.tv.core.player.DoviBridge
+import com.nuvio.tv.core.player.VideoCodecsString
 import java.io.File
 import java.util.Locale
 
@@ -119,35 +120,9 @@ internal object PlaybackStatsDv {
         return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
     }
 
-    private fun bitDepthFromCodecs(format: Format): Int? {
-        val c = format.codecs?.lowercase(Locale.ROOT) ?: return null
-        return when {
-            c.startsWith("dvhe") || c.startsWith("dvh1") -> 10
-            c.startsWith("hvc1.2.") || c.startsWith("hev1.2.") -> 10
-            c.startsWith("hvc1.1.") || c.startsWith("hev1.1.") -> 8
-            c.startsWith("avc1") || c.startsWith("avc3") -> {
-                // avc1.PPCCLL: profile_idc 110 (High 10), 122 (High 4:2:2), 244 (High 4:4:4) may be > 8 bit.
-                val p = c.substringAfter('.', "").take(2).toIntOrNull(16)
-                if (p == null || p == 110 || p == 122 || p == 244) null else 8
-            }
-            c.startsWith("av01") -> c.split('.').getOrNull(3)?.toIntOrNull()
-            else -> null
-        }
-    }
+    private fun bitDepthFromCodecs(format: Format): Int? = VideoCodecsString.bitDepth(format.codecs)
 
-    private fun chromaFromCodecs(format: Format): String? {
-        val c = format.codecs?.lowercase(Locale.ROOT) ?: return null
-        return when {
-            c.startsWith("dvhe") || c.startsWith("dvh1") -> "4:2:0"
-            c.startsWith("hvc1.1.") || c.startsWith("hev1.1.") || c.startsWith("hvc1.2.") || c.startsWith("hev1.2.") -> "4:2:0"
-            c.startsWith("avc1") || c.startsWith("avc3") -> {
-                val p = c.substringAfter('.', "").take(2).toIntOrNull(16)
-                if (p != null && p < 122) "4:2:0" else null
-            }
-            c.startsWith("av01.0") -> "4:2:0"
-            else -> null
-        }
-    }
+    private fun chromaFromCodecs(format: Format): String? = VideoCodecsString.chroma(format.codecs)
 
     /** HDMI output from amhdmitx sysfs (read at most every [CACHE_MS]; the HUD samples on the main thread). */
     private object HdmiOutput {

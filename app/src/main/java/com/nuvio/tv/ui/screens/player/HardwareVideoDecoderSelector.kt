@@ -6,12 +6,15 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 
+// VC-1 stays out: Amlogic's ".sw" VC-1 decoder is the fallback for streams its hardware decoder will not start.
 private val HARDWARE_FIRST_VIDEO_TYPES = setOf(
     MimeTypes.VIDEO_H264,
     MimeTypes.VIDEO_H265,
     MimeTypes.VIDEO_VP9,
     MimeTypes.VIDEO_AV1,
     MimeTypes.VIDEO_DOLBY_VISION,
+    MimeTypes.VIDEO_MPEG2,
+    MimeTypes.VIDEO_MP4V,
 )
 
 private val SOFTWARE_DECODER_PREFIXES = listOf("omx.google.", "c2.android.", "c2.google.", "omx.ffmpeg.")
