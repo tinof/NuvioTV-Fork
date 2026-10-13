@@ -86,17 +86,17 @@ class TunnelDeadClockMemoTest {
         assertEquals(stored, PlayerTunnelAvSyncPolicy.seedFromStore(stored, signature, signature))
         assertTrue(
             PlayerTunnelAvSyncPolicy.ledgerMatches(
-                PlayerTunnelAvSyncPolicy.deadAudioClasses, "pcm", "OMX.vendor.avc.tunneled"
+                PlayerTunnelAvSyncPolicy.deadAudioClasses, "pcm", setOf("OMX.vendor.avc.tunneled")
             )
         )
         assertFalse(
             PlayerTunnelAvSyncPolicy.ledgerMatches(
-                PlayerTunnelAvSyncPolicy.deadAudioClasses, "pcm", "OMX.vendor.hevc.tunneled"
+                PlayerTunnelAvSyncPolicy.deadAudioClasses, "pcm", setOf("OMX.vendor.hevc.tunneled")
             )
         )
         assertTrue(
             PlayerTunnelAvSyncPolicy.ledgerMatches(
-                PlayerTunnelAvSyncPolicy.deadAudioClasses, "audio/eac3", "OMX.vendor.hevc.tunneled"
+                PlayerTunnelAvSyncPolicy.deadAudioClasses, "audio/eac3", setOf("OMX.vendor.hevc.tunneled")
             )
         )
     }
