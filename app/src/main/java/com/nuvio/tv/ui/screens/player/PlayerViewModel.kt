@@ -587,8 +587,11 @@ class PlayerViewModel @Inject constructor(
         }
 
         hud.videoDecoderName?.let { rows += StatsRow("Decoder", it) }
-        controller.videoCodecAsyncRequested?.let { queueAsync ->
-            rows += StatsRow("Video codec queue (requested)", if (queueAsync) "async" else "sync")
+        controller.videoCodecQueueingRequested?.let { queueing ->
+            rows += StatsRow(
+                "Video codec queue (requested)",
+                videoCodecQueueingLabel(queueing, android.os.Build.VERSION.SDK_INT)
+            )
         }
 
         val videoPresentation = sampleVideoPresentation()

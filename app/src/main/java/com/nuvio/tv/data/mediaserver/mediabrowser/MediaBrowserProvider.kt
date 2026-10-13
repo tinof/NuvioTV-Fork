@@ -55,6 +55,7 @@ internal fun hasHardwareAv1Decoder(): Boolean = VideoDecoderCapabilities.hasHard
 /**
  * Without a hardware AV1 decoder only what the software decoder keeps up with plays as is (up to 1920 wide,
  * 8-bit); the server converts anything bigger instead of sending a file the box would stutter through.
+ * Sent only on the fallback (no direct play) request.
  */
 internal fun softwareAv1CodecProfiles(hardwareAv1: Boolean): List<CodecProfile> =
     if (hardwareAv1) {
@@ -787,8 +788,12 @@ internal abstract class MediaBrowserProvider(
             )
         },
         transcodingProfiles = transcodingProfiles(),
-        codecProfiles = (if (capabilities.allowDirectPlay) emptyList() else codecProfiles()) +
-            softwareAv1CodecProfiles(hardwareAv1Decoder()),
+        // The first request states no limits, so a server that cannot transcode still direct-plays.
+        codecProfiles = if (capabilities.allowDirectPlay) {
+            emptyList()
+        } else {
+            codecProfiles() + softwareAv1CodecProfiles(hardwareAv1Decoder())
+        },
         subtitleProfiles = EMBEDDED_SUBTITLES.map { SubtitleProfile(format = it, method = "Embed") } +
             TEXT_SUBTITLES.map { SubtitleProfile(format = it, method = "External") } +
             IMAGE_SUBTITLES.map { SubtitleProfile(format = it, method = "Encode") }

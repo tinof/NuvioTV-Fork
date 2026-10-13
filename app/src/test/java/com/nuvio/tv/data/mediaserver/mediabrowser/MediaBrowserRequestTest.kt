@@ -495,13 +495,15 @@ class MediaBrowserRequestTest {
         val (direct, fallback) = http.requests.map {
             Json.parseToJsonElement(it.text).jsonObject.getValue("DeviceProfile").jsonObject.getValue("CodecProfiles").jsonArray
         }
-        val av1Limits = direct.single().jsonObject
+        // Direct play states no limits: a server that cannot transcode still sends the file.
+        assertTrue(direct.isEmpty())
+        assertEquals(listOf("hevc", "av1", "av1"), fallback.map { it.jsonObject.getValue("Codec").jsonPrimitive.content })
+        val av1Limits = fallback.last().jsonObject
         assertEquals("av1", av1Limits.getValue("Codec").jsonPrimitive.content)
         val conditions = av1Limits.getValue("Conditions").jsonArray.map { it.jsonObject }
         assertEquals(listOf("Width", "VideoBitDepth"), conditions.map { it.getValue("Property").jsonPrimitive.content })
         assertEquals(listOf("1920", "8"), conditions.map { it.getValue("Value").jsonPrimitive.content })
         assertTrue(conditions.all { it.getValue("Condition").jsonPrimitive.content == "LessThanEqual" })
-        assertEquals(listOf("hevc", "av1", "av1"), fallback.map { it.jsonObject.getValue("Codec").jsonPrimitive.content })
 
         assertTrue(softwareAv1CodecProfiles(hardwareAv1 = true).isEmpty())
     }
