@@ -209,10 +209,14 @@ internal fun InternalPlayerEngineDialog(
     onEngineSelected: (InternalPlayerEngine) -> Unit,
     onDismiss: () -> Unit
 ) {
-    // On a Shield mpv's GPU output bypasses the video path that carries HDR and AI upscaling.
+    // On a Shield mpv's GPU output bypasses the video path that carries HDR (and AI upscaling, on the 2019 models).
     val nvidia = remember { DeviceProfile.isNvidia() }
+    val shield2019 = remember { DeviceProfile.isShield2019() }
     val mpvDescription = stringResource(R.string.playback_engine_mvplayer_desc)
-    val mpvShieldNote = stringResource(R.string.playback_engine_mvplayer_shield_note)
+    val mpvShieldNote = stringResource(
+        if (shield2019) R.string.playback_engine_mvplayer_shield_note
+        else R.string.playback_engine_mvplayer_shield_note_no_ai
+    )
     val options = listOf(
         SettingsPickerOption(
             InternalPlayerEngine.EXOPLAYER,

@@ -859,6 +859,7 @@
     <string name="playback_engine_exoplayer_desc">Best compatibility with current Nuvio Arc features.</string>
     <string name="playback_engine_mvplayer_desc">Uses libmpv with Nuvio Arc OSD controls. Experimental.</string>
     <string name="playback_engine_mvplayer_shield_note">On a Shield, libmpv draws the picture on the GPU: no HDR output and no AI upscaling.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">On a Shield, libmpv draws the picture on the GPU: no HDR output.</string>
 
     <string name="video_section">Video</string>
     <string name="playback_true_black_letterbox">True black bars</string>

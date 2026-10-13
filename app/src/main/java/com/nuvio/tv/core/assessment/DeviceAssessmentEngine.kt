@@ -467,6 +467,7 @@ object DeviceAssessmentEngine {
             )
         }
         val isNvidia = DeviceProfile.isNvidia()
+        val isShield2019 = DeviceProfile.isShield2019()
         if (isNvidia) {
             // A Shield setting no API reads, and one to rule out when sound drifts or Atmos drops out.
             items += AssessmentItem(
@@ -491,6 +492,16 @@ object DeviceAssessmentEngine {
         } else {
             null
         }
+        // Resolution matching is a preference, not a derivable fact: it
+        // decides WHICH scaler upscales sub-native content (the panel's or
+        // this box's), and no API says which looks better. State the trade
+        // and leave the choice. On a 2019 Shield the box's scaler is its AI
+        // upscaler, which matching switches off, so advise off there and let
+        // Apply write it (the plan's resolutionMatchingEnabled below).
+        val resOffOnShield = display.apiSupported && ShieldAssessmentNotes.resMatchRecommendsOff(
+            isShield2019,
+            display.supportsResolutionSwitching
+        )
         if (display.apiSupported) {
             val ratesLabel = ratesAtCurrentResolution(display)
             if (display.supportsFrameRateSwitching) {
@@ -539,15 +550,6 @@ object DeviceAssessmentEngine {
                     changeNeeded = settings.frameRateMatchingMode != FrameRateMatchingMode.OFF
                 )
             }
-            // Resolution matching is a preference, not a derivable fact: it
-            // decides WHICH scaler upscales sub-native content (the panel's or
-            // this box's), and no API says which looks better. State the trade
-            // and leave the choice; never write it. On a Shield the box's scaler
-            // is its AI upscaler, which matching switches off, so advise off there.
-            val resOffOnShield = ShieldAssessmentNotes.resMatchRecommendsOff(
-                isNvidia,
-                display.supportsResolutionSwitching
-            )
             items += AssessmentItem(
                 key = "res_match",
                 title = s(R.string.assessment_item_res_match),
@@ -769,8 +771,11 @@ object DeviceAssessmentEngine {
                 autoBytes > 0L && settings.vodCacheSizeMode != VodCacheSizeMode.AUTO
             },
             frameRateMatchingMode = afrPlan,
-            // Preference row: never written (see the res_match item above).
-            resolutionMatchingEnabled = null,
+            // Written only where the row advises off (2019 Shield); elsewhere a preference, never written.
+            resolutionMatchingEnabled = ShieldAssessmentNotes.resMatchPlan(
+                resOffOnShield,
+                settings.resolutionMatchingEnabled
+            ),
             dv7HandlingMode = Dv7HandlingMode.AUTO.takeIf {
                 policy.hdrCapsKnown && settings.dv7HandlingMode != Dv7HandlingMode.AUTO &&
                     !(settings.dv7HandlingMode == Dv7HandlingMode.NATIVE_FEL && facts.nativeFelUsable)
