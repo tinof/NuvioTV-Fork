@@ -178,7 +178,7 @@ object DolbyVisionBaseLayerPolicy {
             hdrTypes?.contains(Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS) == true
         val displayHlg = hdrTypes?.contains(Display.HdrCapabilities.HDR_TYPE_HLG) == true
 
-        val decoderProfiles = queryDvDecoderProfileSupport()
+        val decoderProfiles = decoderProfileSupport()
 
         return resolveFromCapabilities(
             hdrCapsKnown = hdrCapsKnown,
@@ -200,21 +200,64 @@ object DolbyVisionBaseLayerPolicy {
     private data class DvDecoderProfileSupport(
         val dvheDtb: Boolean,   // P7
         val dvheStn: Boolean,   // P5
-        val dvheSt: Boolean     // P8
+        val dvheSt: Boolean,    // P8
+        /** Lowercased names of every decoder that lists video/dolby-vision. */
+        val decoderNames: Set<String> = emptySet()
     )
+
+    private val NO_DV_DECODER = DvDecoderProfileSupport(false, false, false)
+
+    /** The codec list does not change while the process lives; enumerating it costs tens of ms. */
+    @Volatile
+    private var cachedDecoderProfiles: DvDecoderProfileSupport? = null
+
+    /** Fills the decoder cache off the playback path. Safe to call from any thread. */
+    fun warmUp() {
+        runCatching { decoderProfileSupport() }
+    }
+
+    private fun decoderProfileSupport(): DvDecoderProfileSupport {
+        cachedDecoderProfiles?.let { return it }
+        // Only a successful enumeration is kept: a transient failure must not pin all-false.
+        val fresh = queryDvDecoderProfileSupport() ?: return NO_DV_DECODER
+        cachedDecoderProfiles = fresh
+        return fresh
+    }
+
+    /**
+     * Whether [decoderName] is one of the decoders that list video/dolby-vision. Null when the
+     * name is unknown. On boxes where the HEVC decoder also takes DV the list decides; the name
+     * hints only apply when the codec list could not be read.
+     */
+    fun isDolbyVisionDecoder(decoderName: String?): Boolean? {
+        if (decoderName.isNullOrBlank()) return null
+        val known = runCatching { decoderProfileSupport().decoderNames }.getOrDefault(emptySet())
+        return isDolbyVisionDecoderName(decoderName, known)
+    }
+
+    internal fun isDolbyVisionDecoderName(decoderName: String, knownDvDecoders: Set<String>): Boolean {
+        val name = decoderName.trim().lowercase().removeSuffix(".secure")
+        if (knownDvDecoders.isNotEmpty()) {
+            return knownDvDecoders.any { it.removeSuffix(".secure") == name }
+        }
+        return DV_DECODER_NAME_HINTS.any { it in name }
+    }
+
+    private val DV_DECODER_NAME_HINTS = listOf("dolby", "dovi", ".dv.", "dvhe")
 
     /**
      * Enumerates the platform's decoders and reports which DV profiles they advertise.
-     * Returns all-false on any error or pre-N devices.
+     * All-false on pre-N devices; null when the codec list could not be read.
      */
-    private fun queryDvDecoderProfileSupport(): DvDecoderProfileSupport {
+    private fun queryDvDecoderProfileSupport(): DvDecoderProfileSupport? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            return DvDecoderProfileSupport(false, false, false)
+            return NO_DV_DECODER
         }
         return runCatching {
             var dvheDtb = false
             var dvheStn = false
             var dvheSt = false
+            val names = mutableSetOf<String>()
             val list = MediaCodecList(MediaCodecList.REGULAR_CODECS)
             for (info in list.codecInfos) {
                 if (info.isEncoder) continue
@@ -222,6 +265,7 @@ object DolbyVisionBaseLayerPolicy {
                     type.equals(DOLBY_VISION_MIME, ignoreCase = true)
                 }
                 if (!supportsDvMime) continue
+                names += info.name.lowercase()
                 val caps: MediaCodecInfo.CodecCapabilities = runCatching {
                     info.getCapabilitiesForType(DOLBY_VISION_MIME)
                 }.getOrNull() ?: continue
@@ -234,8 +278,8 @@ object DolbyVisionBaseLayerPolicy {
                     }
                 }
             }
-            DvDecoderProfileSupport(dvheDtb, dvheStn, dvheSt)
-        }.getOrDefault(DvDecoderProfileSupport(false, false, false))
+            DvDecoderProfileSupport(dvheDtb, dvheStn, dvheSt, names)
+        }.getOrNull()
     }
 
     private const val DOLBY_VISION_MIME = "video/dolby-vision"
