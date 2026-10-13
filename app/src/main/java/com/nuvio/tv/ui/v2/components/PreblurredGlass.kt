@@ -61,7 +61,7 @@ internal fun preblurredGlassWanted(
 
 /**
  * The same checks as the live blur source in [nuvioGlass]. Dialogs sit in their own window, where the
- * page offset does not apply, and focused cards never blur.
+ * page offset does not apply, so dialog windows provide no [LocalPreblurredGlass]; focused cards never blur.
  */
 internal fun preblurredGlassAllowed(
     wanted: Boolean,

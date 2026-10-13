@@ -29,6 +29,16 @@ class DeviceProfileTest {
     }
 
     @Test
+    fun shield2019IsMdarcyAndSifOnly() {
+        assertTrue(DeviceProfile.isShield2019("NVIDIA", "mdarcy"))
+        assertTrue(DeviceProfile.isShield2019("NVIDIA", " SIF "))
+        assertFalse(DeviceProfile.isShield2019("NVIDIA", "darcy"))
+        assertFalse(DeviceProfile.isShield2019("NVIDIA", "foster"))
+        assertFalse(DeviceProfile.isShield2019("Amazon", "sif"))
+        assertFalse(DeviceProfile.isShield2019(null, null))
+    }
+
+    @Test
     fun nvidiaMatchIgnoresCaseAndBlanks() {
         assertTrue(DeviceProfile.isNvidia(" NVIDIA "))
         assertTrue(DeviceProfile.isNvidia("Nvidia"))
