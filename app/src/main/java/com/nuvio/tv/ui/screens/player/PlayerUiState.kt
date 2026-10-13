@@ -230,6 +230,8 @@ data class PlayerUiState(
     val aspectMode: AspectMode = AspectMode.ORIGINAL,
     val tunneledSurfaceFill: Boolean = false,
     val tunnelingEnabled: Boolean = false,
+    // What the player applied after track selection; tunnelingEnabled is only the request.
+    val tunnelingApplied: Boolean = false,
     val showAspectRatioIndicator: Boolean = false,
     val aspectRatioIndicatorText: String = "",
     // Stream info overlay
