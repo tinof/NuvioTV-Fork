@@ -105,8 +105,12 @@ internal fun resolveRouteUnderIdleBluetooth(
 internal fun idleBluetoothPinSurvives(
     pin: HdmiRouteUnderIdleBluetooth,
     changedBluetoothRouteKeys: Collection<String>,
-    added: Boolean = false
-): Boolean = if (added) {
+    added: Boolean = false,
+    nonBluetoothSinkRemoved: Boolean = false
+): Boolean = if (nonBluetoothSinkRemoved) {
+    // The HDMI sink the pin stands for may be the one that went away (TV off, input switch).
+    false
+} else if (added) {
     changedBluetoothRouteKeys.isEmpty()
 } else {
     changedBluetoothRouteKeys.all { it == pin.idleBluetoothRouteKey }
@@ -230,13 +234,21 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
     val changedBluetoothRouteKeys = devices
         .filter { it.isSink && AudioOutputRouteDetector.isBluetoothType(it.type) }
         .map { AudioOutputRouteDetector.routeOf(it).key }
+    val nonBluetoothSinkRemoved = reason == "removed" &&
+        devices.any { it.isSink && !AudioOutputRouteDetector.isBluetoothType(it.type) }
     audioRouteChangeJob?.cancel()
     audioRouteChangeJob = scope.launch {
         delay(AUDIO_ROUTE_CHANGE_DEBOUNCE_MS)
         if (isReleasingPlayer) return@launch
 
         hdmiRouteUnderIdleBluetooth?.let { pin ->
-            if (!idleBluetoothPinSurvives(pin, changedBluetoothRouteKeys, added = reason == "added")) {
+            if (!idleBluetoothPinSurvives(
+                    pin,
+                    changedBluetoothRouteKeys,
+                    added = reason == "added",
+                    nonBluetoothSinkRemoved = nonBluetoothSinkRemoved
+                )
+            ) {
                 hdmiRouteUnderIdleBluetooth = null
             }
         }
