@@ -108,7 +108,8 @@ internal object UnsupportedFormatMpvFallbackPolicy {
 
     fun isLegacyVideoMime(mimeType: String?): Boolean =
         DecodeOrderTimestamps.maxReorderFramesFor(mimeType, null) != null ||
-            Vc1VideoFormatHeuristics.isLikelyVc1(sampleMimeType = mimeType)
+            Vc1VideoFormatHeuristics.isLikelyVc1(sampleMimeType = mimeType) ||
+            mimeType.equals(MimeTypes.VIDEO_MPEG2, ignoreCase = true)
 }
 
 /** Switches the current stream to MPV. Returns false when the stream already took this route once. */

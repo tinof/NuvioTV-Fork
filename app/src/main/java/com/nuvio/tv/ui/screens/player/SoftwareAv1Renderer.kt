@@ -20,7 +20,10 @@ private const val SOFTWARE_AV1_MAX_SHORT_SIDE = 1088
 
 internal enum class HardwareAv1Support { NONE, BEYOND_LIMITS, HANDLES }
 
-/** dav1d only takes 8-bit AV1 that no hardware decoder takes, and above 1080p only when the box has none. */
+/**
+ * dav1d only takes 8-bit AV1 that no hardware decoder takes, and just above 1080p only when the box has none.
+ * Wider than 1920 it never keeps up, so without hardware such a track is left to MPV (see [withoutAndroidSoftwareAv1]).
+ */
 internal fun softwareAv1FormatSupport(
     format: Format,
     decoderSupport: Int,
@@ -32,7 +35,8 @@ internal fun softwareAv1FormatSupport(
     return when {
         hardwareSupport == HardwareAv1Support.HANDLES -> C.FORMAT_UNSUPPORTED_SUBTYPE
         !exceedsSoftwareAv1Size(format) -> C.FORMAT_HANDLED
-        hardwareSupport == HardwareAv1Support.NONE -> C.FORMAT_EXCEEDS_CAPABILITIES
+        hardwareSupport == HardwareAv1Support.NONE && !aboveSoftwareAv1Envelope(format) ->
+            C.FORMAT_EXCEEDS_CAPABILITIES
         else -> C.FORMAT_UNSUPPORTED_SUBTYPE
     }
 }
@@ -41,6 +45,12 @@ internal fun exceedsSoftwareAv1Size(format: Format): Boolean {
     if (format.width == Format.NO_VALUE || format.height == Format.NO_VALUE) return false
     return max(format.width, format.height) > SOFTWARE_AV1_MAX_LONG_SIDE ||
         min(format.width, format.height) > SOFTWARE_AV1_MAX_SHORT_SIDE
+}
+
+/** Too big for AV1 software decoding on these boxes at any bit depth: longer than 1920 on either side. */
+internal fun aboveSoftwareAv1Envelope(format: Format): Boolean {
+    if (format.width == Format.NO_VALUE || format.height == Format.NO_VALUE) return false
+    return max(format.width, format.height) > SOFTWARE_AV1_MAX_LONG_SIDE
 }
 
 internal fun isHighBitDepthAv1(format: Format): Boolean {
@@ -91,15 +101,26 @@ internal fun dav1dTakesOverFromAndroid(format: Format): Boolean =
         !isHighBitDepthAv1(format) &&
         !exceedsSoftwareAv1Size(format)
 
+/**
+ * Leaves Android's software AV1 decoders out of MediaCodec's list where they would win but should not: for streams
+ * dav1d takes over, and for streams above the software envelope on a box without a hardware AV1 decoder. The second
+ * leaves the track with no decoder at all, so the player hands it to MPV instead of stuttering through it.
+ */
 internal fun withoutAndroidSoftwareAv1(
     selector: MediaCodecSelector,
     format: Format,
     dav1dLoaded: () -> Boolean,
 ): MediaCodecSelector {
-    if (!dav1dTakesOverFromAndroid(format) || !dav1dLoaded()) return selector
+    val aboveEnvelope = format.sampleMimeType == MimeTypes.VIDEO_AV1 && aboveSoftwareAv1Envelope(format)
+    if (!aboveEnvelope && (!dav1dTakesOverFromAndroid(format) || !dav1dLoaded())) return selector
     return MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
         val decoders = selector.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
-        if (mimeType == MimeTypes.VIDEO_AV1) decoders.filterNot(::isSoftwareDecoder) else decoders
+        when {
+            mimeType != MimeTypes.VIDEO_AV1 -> decoders
+            // A hardware decoder beyond its limits keeps today's list: Android's software decoder stays as its fallback.
+            aboveEnvelope && selector.getDecoderInfos(mimeType, false, false).any { !isSoftwareDecoder(it) } -> decoders
+            else -> decoders.filterNot(::isSoftwareDecoder)
+        }
     }
 }
 

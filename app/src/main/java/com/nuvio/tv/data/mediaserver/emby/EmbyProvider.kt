@@ -8,13 +8,21 @@ import com.nuvio.tv.data.mediaserver.mediabrowser.Endpoint
 import com.nuvio.tv.data.mediaserver.mediabrowser.MediaBrowserProvider
 import com.nuvio.tv.data.mediaserver.mediabrowser.PublicInfo
 import com.nuvio.tv.data.mediaserver.mediabrowser.ServerClientIdentity
+import com.nuvio.tv.data.mediaserver.mediabrowser.hasHardwareAv1Decoder
 import com.nuvio.tv.data.mediaserver.mediabrowser.pathSegment
 import okhttp3.OkHttpClient
 
 internal class EmbyProvider(
     http: OkHttpClient,
-    identity: ServerClientIdentity
-) : MediaBrowserProvider(authorizationHeader = "X-Emby-Authorization", apiPath = "/emby", http = http, identity = identity) {
+    identity: ServerClientIdentity,
+    hardwareAv1Decoder: () -> Boolean = ::hasHardwareAv1Decoder
+) : MediaBrowserProvider(
+    authorizationHeader = "X-Emby-Authorization",
+    apiPath = "/emby",
+    http = http,
+    identity = identity,
+    hardwareAv1Decoder = hardwareAv1Decoder
+) {
     override val id: String = "emby"
     override val displayName: String = "Emby"
     override val minimumVersion: String = "4.7"
