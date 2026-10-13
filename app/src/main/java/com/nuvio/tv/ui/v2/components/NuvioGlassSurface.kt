@@ -25,6 +25,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import com.nuvio.tv.ui.v2.quality.LocalVisualQuality
 import com.nuvio.tv.domain.model.GlassTintMode
 import com.nuvio.tv.domain.model.VisualStyle
 import com.nuvio.tv.ui.theme.NuvioTheme
@@ -117,7 +128,16 @@ fun Modifier.nuvioGlass(
         !smoked && !neutralBackdrop && !playback && !dark &&
             (it === popupBackdrop?.state || it?.areas?.isNotEmpty() == true)
     }
-    val frosted = tokens.liveBlur && source != null
+    // Without live blur, the page's artwork comes pre-blurred instead (Android 11 boxes).
+    val preblur = LocalPreblurredGlass.current
+    val quality = LocalVisualQuality.current
+    val preblurAllowed = preblur != null && preblurredGlassAllowed(
+        wanted = preblurredGlassWanted(quality.tier, quality.supportsLiveBlur, playback, cinematic),
+        role = role, dark = dark, neutralBackdrop = neutralBackdrop, smoked = smoked
+    )
+    val preblurReady by remember(preblur) { derivedStateOf { preblur?.picture != null } }
+    val preblurShown = preblurAllowed && preblurReady
+    val frosted = (tokens.liveBlur && source != null) || preblurShown
     val artwork = com.nuvio.tv.ui.v2.appearance.LocalArtworkAccent.current
     val adaptive = appearance?.accentMode == com.nuvio.tv.domain.model.AccentMode.ADAPTIVE_ARTWORK
     val neutralGlass = NuvioTheme.currentTheme == com.nuvio.tv.domain.model.AppTheme.GLASS
@@ -160,7 +180,11 @@ fun Modifier.nuvioGlass(
     }
     val smokeFill = if (clearGlass) Color.Black else if (neutralGlass) Color(0xFF080A0C) else Color(0xFF0C0E11)
     val smokeFillAlpha = if (smoke != null) smokedGlassFillAlpha(bodyAlpha, transparency) else 0f
+    val surfaceOrigin = remember { mutableStateOf(Offset.Zero) }
+    val rootSize = remember { mutableStateOf(IntSize.Zero) }
     return clip(shape)
+            .then(if (preblurShown && preblur != null) Modifier.preblurredGlass(preblur, surfaceOrigin, rootSize, clearGlass)
+                else Modifier)
             .v2GlassBlur(role, tokens, source, refreshVideo = (popupBackdrop?.liveTrailers ?: 0) > 0)
             .background(background, shape)
             .drawWithCache {
@@ -221,4 +245,44 @@ fun Modifier.nuvioGlass(
                     if (focused) drawOutline(outline, accentBrush, alpha = if (clearGlass) .18f else .8f, style = stroke)
                 }
             }
+}
+
+/**
+ * Paints the page's pre-blurred artwork under the glass body, lined up with the page: window-sized,
+ * offset by where this surface sits. Position and picture are read in drawing only, so a moved surface
+ * redraws without recomposition.
+ */
+private fun Modifier.preblurredGlass(
+    holder: PreblurredGlassBackdrop,
+    surfaceOrigin: MutableState<Offset>,
+    rootSize: MutableState<IntSize>,
+    clearGlass: Boolean
+): Modifier = onGloballyPositioned {
+    surfaceOrigin.value = it.positionInRoot()
+    rootSize.value = it.findRootCoordinates().size
+}.drawWithCache {
+    val picture = holder.picture
+    val root = rootSize.value
+    val origin = surfaceOrigin.value
+    val placement = picture?.let {
+        preblurredGlassPlacement(it.image.width, it.image.height, root.width.toFloat(), root.height.toFloat(), origin.x, origin.y)
+    }
+    // The page base and shade from V2Atmosphere, in window coordinates.
+    val shadeColor = if (clearGlass) Color.Black else Color(0xFF040B13)
+    val shade = Brush.horizontalGradient(
+        listOf(shadeColor.copy(alpha = .93f), shadeColor.copy(alpha = .25f), shadeColor.copy(alpha = .44f)),
+        startX = -origin.x, endX = root.width - origin.x
+    )
+    onDrawBehind {
+        if (picture == null || placement == null) return@onDrawBehind
+        drawRect(shadeColor)
+        drawImage(
+            picture.image,
+            dstOffset = IntOffset(placement.left, placement.top),
+            dstSize = IntSize(placement.width, placement.height),
+            alpha = .82f,
+            filterQuality = FilterQuality.Low
+        )
+        drawRect(shade)
+    }
 }
