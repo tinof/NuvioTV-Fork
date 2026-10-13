@@ -598,20 +598,37 @@ internal fun PlayerRuntimeController.scheduleOwnedPlaybackRecovery(
     cancelStartupWatchdog()
     pendingResumeProgress = null
     showRecoveryOverlay()
+    // The HDMI override set for this rebuild is for this rebuild only: a recovery that stops
+    // before initializePlayer drops it, so a later start reads the route afresh.
+    val hdmiOverride = hdmiRouteUnderBluetoothPin
+    fun dropHdmiOverride() {
+        if (hdmiOverride != null && hdmiRouteUnderBluetoothPin === hdmiOverride) hdmiRouteUnderBluetoothPin = null
+    }
     playbackRecoveryJob?.cancel()
     val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
         kotlinx.coroutines.yield()
-        if (!playbackRecoveryGate.isCurrent(generation, url, headers)) return@launch
+        if (!playbackRecoveryGate.isCurrent(generation, url, headers)) {
+            dropHdmiOverride()
+            return@launch
+        }
         releasePlayer(flushPlaybackState = false, preserveRecovery = true)
         delay(delayMs)
-        if (!playbackRecoveryGate.isCurrent(generation, url, headers) || currentStreamUrl != url || currentHeaders != headers) return@launch
+        if (!playbackRecoveryGate.isCurrent(generation, url, headers) || currentStreamUrl != url || currentHeaders != headers) {
+            dropHdmiOverride()
+            return@launch
+        }
         if (awaitOutputFor != null) {
             val waited = awaitAudioOutputForRetry(awaitOutputFor) {
                 playbackRecoveryGate.isCurrent(generation, url, headers)
-            } ?: return@launch
+            }
+            if (waited == null) {
+                dropHdmiOverride()
+                return@launch
+            }
             if (waited) route = runCatching { AudioOutputRouteDetector.detect(context)?.key }.getOrNull()
         }
         if (runCatching { AudioOutputRouteDetector.detect(context)?.key }.getOrNull() != route) {
+            dropHdmiOverride()
             _uiState.update { it.copy(error = "Audio output changed during recovery. Start playback again.", showLoadingOverlay = false) }
             return@launch
         }
