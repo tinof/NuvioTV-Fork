@@ -4394,8 +4394,4 @@ private fun PlayerView.videoBoundsFraction(aspectRatio: Float): RectF? {
 }
 
 /** Reads an Android system property (debug.* switches settable with adb, no root); null if unavailable. */
-private fun am9SystemProperty(name: String): String? = runCatching {
-    Class.forName("android.os.SystemProperties")
-        .getMethod("get", String::class.java)
-        .invoke(null, name) as? String
-}.getOrNull()
+private fun am9SystemProperty(name: String): String? = com.nuvio.tv.core.util.DebugSwitches.property(name)
