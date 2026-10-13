@@ -482,10 +482,18 @@ internal fun PlayerRuntimeController.initializePlayer(
             // rebuild it asked for, once: a later wrong pin is caught again after the first frame.
             val hdmiRouteOverride = hdmiRouteUnderBluetoothPin?.takeIf { it.first == url }?.second
             hdmiRouteUnderBluetoothPin = null
-            if (hdmiRouteOverride != null && currentAudioOutputRoute?.isBluetooth == true) {
-                currentAudioOutputRoute = AudioOutputRouteDetector.routeOf(hdmiRouteOverride)
-            }
-            if (rememberAudioDelayPerDeviceEnabled) {
+            // The HDMI route holds for this stream while detect() still names the same idle sink;
+            // every other build starts from what detect() reports, as the sink is built from it.
+            hdmiRouteUnderIdleBluetooth = null
+            val idleBluetoothRoute = currentAudioOutputRoute?.takeIf { it.isBluetooth }
+            if (hdmiRouteOverride != null && idleBluetoothRoute != null) {
+                val hdmiRoute = AudioOutputRouteDetector.routeOf(hdmiRouteOverride)
+                currentAudioOutputRoute = hdmiRoute
+                hdmiRouteUnderIdleBluetooth = HdmiRouteUnderIdleBluetooth(url, hdmiRoute, idleBluetoothRoute.key)
+                if (rememberAudioDelayPerDeviceEnabled) {
+                    applyStoredAudioDelayForCurrentRouteIfEnabled(hdmiRoute)
+                }
+            } else if (rememberAudioDelayPerDeviceEnabled) {
                 applyStoredAudioDelayForCurrentRouteIfEnabled()
             }
             currentAudioOutputRoute?.let { route ->
@@ -1493,6 +1501,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                 preferFfmpegAudio = preferFfmpegAudioActive,
                 bluetoothForcePcm = isBluetoothAudioOutput,
                 hdmiRoutedDevice = hdmiRouteOverride?.takeIf { !isBluetoothAudioOutput },
+                // Read on the playback thread. The stream can change while this sink lives on (source
+                // switch, reused player), and a pin is written for the current stream.
+                outputRouteKey = { detectAudioOutputRouteForStream()?.key },
                 nativeFelActive = nativeFelActive,
                 onNativeSelectionChanged = { selected -> nativeVideoSelection.update(nativeSelectionOwner, selected) },
                 nativeMelEnabled = am9SystemProperty("debug.nuvio.native_dv7_mel") != "0",
@@ -3400,6 +3411,8 @@ private class SubtitleOffsetRenderersFactory(
     private val bluetoothForcePcm: Boolean = false,
     /** HDMI device the output was seen on under a wrong Bluetooth pin; media3 judges it instead of the device list. */
     private val hdmiRoutedDevice: android.media.AudioDeviceInfo? = null,
+    /** The media route key for the IEC sink's route gate: detect(), corrected by the idle-Bluetooth HDMI pin. */
+    private val outputRouteKey: () -> String?,
     /** Native FEL: put [com.nuvio.tv.core.player.amlfel.AmlDvFelVideoRenderer] first (claims DV P7 only). */
     private val nativeFelActive: Boolean = false,
     private val onNativeSelectionChanged: (Boolean) -> Unit = {},
@@ -3574,7 +3587,7 @@ private class SubtitleOffsetRenderersFactory(
             onDiagnosticEvent = onAudioDiagnosticEvent,
             audioOutputReady = { PassthroughOutputReturn.outputReadyNow(context) },
             dtsHdIecEnabled = !dtsHdTvPassthrough,
-            outputRouteKey = { AudioOutputRouteDetector.detect(context)?.key }
+            outputRouteKey = outputRouteKey
         )
         val playbackSpeedAwareAudioSink = PlaybackSpeedAwareAudioSink(
             sink = iecAudioSink,

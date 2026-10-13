@@ -287,7 +287,7 @@ class PlayerRuntimeController(
     internal var currentVideoWidth: Int? = null
     internal var currentVideoHeight: Int? = null
     internal var currentVideoBitrate: Int? = null
-    internal var currentStreamUrl: String
+    @Volatile internal var currentStreamUrl: String
     internal var reportedServerUrl: String? = null
     internal var serverAudioChosenByUser = false
     internal var currentStreamResponseHeaders: Map<String, String> = emptyMap()
@@ -759,6 +759,10 @@ class PlayerRuntimeController(
     internal val passthroughReturnRebuilds: MutableMap<String, Int> = mutableMapOf()
     /** Stream URL and the HDMI device its track played on while the sink was pinned to PCM for Bluetooth. */
     internal var hdmiRouteUnderBluetoothPin: Pair<String, android.media.AudioDeviceInfo>? = null
+    /** HDMI route this stream plays on while an idle Bluetooth sink is listed; detect() would report the sink. */
+    @Volatile internal var hdmiRouteUnderIdleBluetooth: HdmiRouteUnderIdleBluetooth? = null
+    /** In-place unpins of the Bluetooth PCM pin, per stream URL. */
+    internal val hdmiInPlaceUnpins: MutableMap<String, Int> = mutableMapOf()
     internal var hdmiRouteCheckJob: Job? = null
     internal var busyOutputCheckJob: Job? = null
     internal var busyOutputCheckStreamUrl: String? = null
