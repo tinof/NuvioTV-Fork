@@ -570,6 +570,12 @@ class PlayerViewModel @Inject constructor(
         // Only for a DV stream: a late write from the previous title's loader (after the per-playback reset)
         // must not put DV rows on a non-DV title.
         val dvStream = dvDetail
+        // Whether the active decoder is one that lists Dolby Vision. "no" on a DV stream means
+        // the HEVC decoder plays the base layer only.
+        if (!dvDiag.dvSourceProfile.isNullOrBlank()) {
+            com.nuvio.tv.core.player.DolbyVisionBaseLayerPolicy.isDolbyVisionDecoder(hud.videoDecoderName)
+                ?.let { rows += StatsRow("DV decoder", if (it) "yes" else "no") }
+        }
         val dmLive = if (dvStream) player?.let { DolbyVisionConversionStats.liveDmAt(it.currentPosition * 1000L) } else null
         val dmFirst = if (dvStream) DolbyVisionConversionStats.getFirstDm() else null
         (dmLive ?: dmFirst)?.let { dm ->

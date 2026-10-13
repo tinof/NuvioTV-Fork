@@ -126,6 +126,11 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
 
         // Expire stored seek thumbnails even when nothing is played.
         com.nuvio.tv.core.player.thumbnail.SeekThumbnails.scheduleStartupHousekeeping(this)
+
+        // Read the Dolby Vision decoder list now, so the first playback does not enumerate it.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+            com.nuvio.tv.core.player.DolbyVisionBaseLayerPolicy.warmUp()
+        }
     }
 
     private fun dirBytes(name: String): Long {

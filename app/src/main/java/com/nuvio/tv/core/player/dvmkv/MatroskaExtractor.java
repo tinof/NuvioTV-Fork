@@ -3661,8 +3661,11 @@ public class MatroskaExtractor implements Extractor {
                 mimeType = MimeTypes.VIDEO_H265;
               }
             }
+            // Only profiles 7 and 8 carry an HDR10-compatible base layer. Profile 5 decoded as
+            // plain HEVC loses its reshaping (wrong colours), so it keeps the DV decoder.
             if (MimeTypes.VIDEO_DOLBY_VISION.equals(mimeType) && hevcCodecsString != null) {
-              if (DolbyVisionCompatibility.isHdr10BaseLayerModeActive()) {
+              if (DolbyVisionCompatibility.isHdr10BaseLayerModeActive()
+                  && DolbyVisionCompatibility.hasHevcBaseLayer(dolbyVisionConfig.profile)) {
                 mimeType = MimeTypes.VIDEO_H265;
                 codecs = hevcCodecsString;
               }
