@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.player
 
+import androidx.media3.common.MimeTypes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -263,17 +264,44 @@ class PlayerTunnelAvSyncPolicyTest {
     @Test
     fun ledgerMatches_keyedEntriesHoldOnlyForTheirDecoder() {
         val entries = setOf("audio/eac3@OMX.a.tunneled")
-        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "audio/eac3", "OMX.a.tunneled"))
-        assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "audio/eac3", "OMX.b.tunneled"))
-        assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "pcm", "OMX.a.tunneled"))
+        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "audio/eac3", setOf("OMX.a.tunneled")))
+        assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "audio/eac3", setOf("OMX.b.tunneled")))
+        assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "pcm", setOf("OMX.a.tunneled")))
+    }
+
+    @Test
+    fun ledgerMatches_anyCandidateDecoderMatches() {
+        // DV on an HDR10-only TV: Media3 decoded with the HEVC decoder, the selector lists the DV one first.
+        val entries = setOf("audio/eac3@OMX.Nvidia.h265.decode")
+        assertTrue(
+            PlayerTunnelAvSyncPolicy.ledgerMatches(
+                entries,
+                "audio/eac3",
+                setOf("OMX.Nvidia.DOVI.decode", "OMX.Nvidia.h265.decode")
+            )
+        )
+        assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(entries, "audio/eac3", setOf("OMX.Nvidia.DOVI.decode")))
     }
 
     @Test
     fun ledgerMatches_oldBareEntriesAndAnUnknownDecoderMatchEveryDecoder() {
-        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(setOf("pcm"), "pcm", "OMX.b.tunneled"))
+        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(setOf("pcm"), "pcm", setOf("OMX.b.tunneled")))
         assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(setOf("pcm"), "pcm", null))
         assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(setOf("pcm@OMX.a.tunneled"), "pcm", null))
+        assertTrue(PlayerTunnelAvSyncPolicy.ledgerMatches(setOf("pcm@OMX.a.tunneled"), "pcm", emptySet()))
         assertFalse(PlayerTunnelAvSyncPolicy.ledgerMatches(emptySet(), "pcm", null))
+    }
+
+    @Test
+    fun tunnelDecoderCandidateMimes_dolbyVisionAddsTheHevcAndAvcDecoders() {
+        assertEquals(
+            listOf(MimeTypes.VIDEO_DOLBY_VISION, MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264),
+            PlayerTunnelAvSyncPolicy.tunnelDecoderCandidateMimes(MimeTypes.VIDEO_DOLBY_VISION)
+        )
+        assertEquals(
+            listOf(MimeTypes.VIDEO_H265),
+            PlayerTunnelAvSyncPolicy.tunnelDecoderCandidateMimes(MimeTypes.VIDEO_H265)
+        )
     }
 
     @Test
