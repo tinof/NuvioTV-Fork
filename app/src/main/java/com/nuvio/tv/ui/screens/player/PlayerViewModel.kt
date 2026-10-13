@@ -124,6 +124,9 @@ class PlayerViewModel @Inject constructor(
         // Release trailer player codec resources so the full-screen player can
         // claim hardware decoders without contention (prevents black screen).
         trailerPlayerPool.yield()
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            com.nuvio.tv.core.player.DecoderInventoryLog.logOnce()
+        }
     }
 
     internal val controller = PlayerRuntimeController(
