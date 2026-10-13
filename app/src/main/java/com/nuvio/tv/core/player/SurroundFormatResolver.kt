@@ -19,6 +19,36 @@ object SurroundFormatResolver {
         val dtsHd: Boolean
     )
 
+    data class ProbeInputs(val direct: DirectSupport?, val maxPcmChannels: Int?)
+
+    /**
+     * What the surround decision reads from the chain probe. By default the 5.1 probe and the
+     * API 31+ PCM channel read, as before. With debug.nuvio.audio_probe_union=1 ([union]) a
+     * format counts when it opens in any probed layout, and the HDMI plug intent's channel
+     * count fills a missing PCM read.
+     */
+    fun decisionInputs(
+        direct: DirectSupport?,
+        maxPcmChannels: Int?,
+        directAnyLayout: DirectSupport?,
+        plugMaxChannels: Int?,
+        union: Boolean
+    ): ProbeInputs {
+        if (!union) return ProbeInputs(direct, maxPcmChannels)
+        val merged = when {
+            direct == null -> directAnyLayout
+            directAnyLayout == null -> direct
+            else -> DirectSupport(
+                ac3 = direct.ac3 || directAnyLayout.ac3,
+                eac3 = direct.eac3 || directAnyLayout.eac3,
+                trueHd = direct.trueHd || directAnyLayout.trueHd,
+                dts = direct.dts || directAnyLayout.dts,
+                dtsHd = direct.dtsHd || directAnyLayout.dtsHd
+            )
+        }
+        return ProbeInputs(merged, maxPcmChannels ?: plugMaxChannels)
+    }
+
     data class Resolution(
         val policy: AudioPassthroughPolicy,
         val transcodePreferred: Boolean,
