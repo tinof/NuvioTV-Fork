@@ -882,6 +882,7 @@
     <string name="playback_player_auto_desc">ExoPlayer for Movies &amp; TV Shows · MPV for Anime</string>
     <string name="playback_engine_exoplayer_desc">Best compatibility with current Nuvio Arc features.</string>
     <string name="playback_engine_mvplayer_desc">Uses libmpv with Nuvio Arc OSD controls. Experimental.</string>
+    <string name="playback_engine_mvplayer_shield_note">On a Shield, libmpv draws the picture on the GPU: no HDR output and no AI upscaling.</string>
 
     <string name="video_section">Video</string>
     <string name="playback_true_black_letterbox">True black bars</string>
@@ -3732,6 +3733,7 @@
     <string name="assessment_grounds_afr_on">Display reports multiple refresh rates at the current resolution (%1$s)</string>
     <string name="assessment_grounds_afr_already">Already on - Start vs Start &amp; stop is preference: fewer HDMI resyncs vs the UI returning to 60 Hz</string>
     <string name="assessment_grounds_afr_single">Single-rate display at the current resolution - nothing to switch to</string>
+    <string name="assessment_grounds_afr_shield">On a Shield, turn off its own Match frame rate setting (Shield Experience 9.2 and later) while this is on: both switch the display and work against each other</string>
     <string name="assessment_grounds_res_on">Display exposes multiple resolutions (%1$s)</string>
     <string name="assessment_grounds_res_single">Single-resolution display - nothing to switch to</string>
     <string name="assessment_grounds_display_unknown">Couldn\'t inspect the display from this screen - leave as is and verify by eye</string>
@@ -3801,6 +3803,8 @@
     <string name="assessment_item_ac3">Force AC-3 Transcoding (Optical/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Audio route is %1$s (%2$s) - on an HDMI chain this setting only turns lossless passthrough into lossy AC-3</string>
     <string name="assessment_grounds_ac3_unknown">Couldn\'t confirm an optical route from here - this setting only belongs on Optical/SPDIF outputs</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio Processing</string>
+    <string name="assessment_grounds_shield_dolby">No app can read this Shield setting. If sound drifts out of sync or Atmos drops out, turn off Dolby audio processing in the Shield\'s sound settings and test again</string>
 
 
     <!-- Device Settings Assessment: apply/revert -->
@@ -3818,6 +3822,7 @@
     <string name="assessment_profile_suggested_tag">Suggested</string>
     <string name="assessment_grounds_res_choice">Display exposes multiple resolutions (%1$s) - matching lets the panel\'s scaler handle upscaling instead of this box\'s; which looks better is panel-dependent, so this stays your call</string>
     <string name="assessment_grounds_res_inert">Single-resolution display - this setting is inert here</string>
+    <string name="assessment_grounds_res_shield">On a Shield, matching the resolution sends lower-resolution video to the TV as it is, so the Shield\'s AI upscaling never runs - leave it off to keep AI upscaling</string>
 
     <string name="assessment_already_set">\u2713 Already set</string>
 
