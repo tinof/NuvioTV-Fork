@@ -646,17 +646,32 @@ internal fun PlayerRuntimeController.scheduleOwnedPlaybackRecovery(
     cancelStartupWatchdog()
     pendingResumeProgress = null
     showRecoveryOverlay()
+    // The HDMI override set for this rebuild is for this rebuild only: a recovery that stops
+    // before initializePlayer drops it, so a later start reads the route afresh.
+    val hdmiOverride = hdmiRouteUnderBluetoothPin
+    fun dropHdmiOverride() {
+        if (hdmiOverride != null && hdmiRouteUnderBluetoothPin === hdmiOverride) hdmiRouteUnderBluetoothPin = null
+    }
     playbackRecoveryJob?.cancel()
     val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
         kotlinx.coroutines.yield()
-        if (!playbackRecoveryGate.isCurrent(generation, url, headers)) return@launch
+        if (!playbackRecoveryGate.isCurrent(generation, url, headers)) {
+            dropHdmiOverride()
+            return@launch
+        }
         releasePlayer(flushPlaybackState = false, preserveRecovery = true)
         delay(delayMs)
-        if (!playbackRecoveryGate.isCurrent(generation, url, headers) || currentStreamUrl != url || currentHeaders != headers) return@launch
+        if (!playbackRecoveryGate.isCurrent(generation, url, headers) || currentStreamUrl != url || currentHeaders != headers) {
+            dropHdmiOverride()
+            return@launch
+        }
         val waited = if (awaitOutputFor != null) {
             awaitAudioOutputForRetry(awaitOutputFor) {
                 playbackRecoveryGate.isCurrent(generation, url, headers)
-            } ?: return@launch
+            } ?: run {
+                dropHdmiOverride()
+                return@launch
+            }
         } else {
             false
         }
@@ -672,10 +687,12 @@ internal fun PlayerRuntimeController.scheduleOwnedPlaybackRecovery(
         ) {
             RecoveryRouteCheck.Action.RETRY -> Unit
             RecoveryRouteCheck.Action.RETRY_PCM -> {
+                dropHdmiOverride()
                 Log.w(PlayerRuntimeController.TAG, "RECOVERY output changed $stableRoute -> $routeNow, decoding to PCM")
                 markAudioPcmFallbackTried()
             }
             RecoveryRouteCheck.Action.STOP -> {
+                dropHdmiOverride()
                 _uiState.update { it.copy(error = "Audio output changed during recovery. Start playback again.", showLoadingOverlay = false) }
                 return@launch
             }
