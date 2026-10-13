@@ -340,6 +340,7 @@ open class MainActivity : ComponentActivity() {
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
     private lateinit var jankStats: JankStats
+    private var lastJankLogNanos = 0L
     private val qualityGovernor = com.nuvio.tv.ui.v2.quality.AutomaticQualityGovernor()
 
     /** Activity-level launcher for external video players. Survives all navigation changes. */
@@ -1409,10 +1410,15 @@ open class MainActivity : ComponentActivity() {
                 System.nanoTime(), frameData.frameDurationUiNanos, frameData.isJank
             )
             if (frameData.isJank) {
-                Log.w(
-                    "JankStats",
-                    "JANK: ${frameData.frameDurationUiNanos / 1_000_000}ms | states: ${frameData.states}"
-                )
+                // A slow box can miss most frames; release builds keep logcat to one line a second.
+                val now = System.nanoTime()
+                if (BuildConfig.IS_DEBUG_BUILD || now - lastJankLogNanos >= 1_000_000_000L) {
+                    lastJankLogNanos = now
+                    Log.w(
+                        "JankStats",
+                        "JANK: ${frameData.frameDurationUiNanos / 1_000_000}ms | states: ${frameData.states}"
+                    )
+                }
             }
         }
     }
@@ -1474,6 +1480,7 @@ open class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_UP) {
             qualityGovernor.input(System.nanoTime(), event.keyCode, event.action == KeyEvent.ACTION_DOWN)
+            com.nuvio.tv.ui.util.KeyHoldState.onKey(event.action == KeyEvent.ACTION_DOWN, event.repeatCount)
         }
         // OLED screensaver: while the dim overlay is visible, the first key press wakes
         // it and the whole press (down, repeats, and the matching up) is swallowed so

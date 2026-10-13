@@ -181,7 +181,11 @@ class TrailerPlayerPool @Inject constructor(
                     .setMaxVideoSizeSd()
                     .clearVideoSizeConstraints()
                     .setForceHighestSupportedBitrate(true)
-                    .setMaxVideoSize(Integer.MAX_VALUE, Integer.MAX_VALUE)
+                    // Trailers play in a TextureView; above 1080p the GPU copy costs more than it shows.
+                    .setMaxVideoSize(
+                        com.nuvio.tv.data.trailer.TRAILER_MAX_VIDEO_WIDTH,
+                        com.nuvio.tv.data.trailer.TRAILER_MAX_VIDEO_HEIGHT
+                    )
             )
         }
         return ExoPlayer.Builder(context)

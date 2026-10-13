@@ -1,7 +1,5 @@
 package com.nuvio.tv.ui.screens.home
 
-import com.nuvio.tv.ui.theme.NuvioMotion
-
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.v2.components.v2GlassSource
 import dev.chrisbanes.haze.hazeSource
@@ -80,6 +78,9 @@ import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 import com.nuvio.tv.ui.components.TrailerPlayer
 import androidx.compose.ui.res.stringResource
 
+/** Hero picture and trailer fades; shorter than the shared overlay token so focus feels direct. */
+private const val HERO_FADE_MS = 280
+
 private data class ModernHeroSecondaryMeta(
     val highlightText: String?,
     val ageRating: String?,
@@ -103,8 +104,10 @@ internal fun ModernHeroScene(
     // This source attaches only while the glass sidebar is visible. Home stops trailers
     // on sidebar entry; other glass controls retain their existing capture/quality policy.
     val sidebarSource = com.nuvio.tv.ui.v2.components.LocalSidebarBackdropSource.current
-    Box(modifier.then(if (sidebarSource != null) Modifier.hazeSource(sidebarSource) else Modifier)
-        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
+    // The offscreen buffer only gives the sidebar capture one flattened layer; without
+    // a capture it is a full-screen buffer for nothing.
+    Box(modifier.then(if (sidebarSource != null) Modifier.hazeSource(sidebarSource)
+        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen } else Modifier)) {
         ModernHeroMediaLayer(
             artwork = state().artwork,
             featheredTrailer = state().featheredTrailer,
@@ -157,7 +160,7 @@ internal fun ModernHeroMediaLayer(
     val trailerRendered by remember { derivedStateOf { heroTrailerFirstFrameRendered() } }
     val transitionProgressState = animateFloatAsState(
         targetValue = if (shouldPlay && trailerRendered) 1f else 0f,
-        animationSpec = tween(durationMillis = 480),
+        animationSpec = tween(durationMillis = HERO_FADE_MS),
         label = "heroBackdropTrailerCrossfadeProgress"
     )
     val localContext = LocalContext.current
@@ -202,7 +205,9 @@ internal fun ModernHeroMediaLayer(
             val cached = localContext.imageLoader.memoryCache?.get(coil3.memory.MemoryCache.Key(ticket.url))?.image
             // Back and warmed A-B-A should display ready artwork without a focus
             // debounce. Coil still validates the actual request/cache compatibility.
-            if (cached == null || cached.width < requestWidthPx || cached.height < requestHeightPx) delay(250)
+            // The rows already debounce a single press; only a held key needs the extra wait.
+            if (com.nuvio.tv.ui.util.KeyHoldState.held &&
+                (cached == null || cached.width < requestWidthPx || cached.height < requestHeightPx)) delay(250)
             val request = ImageRequest.Builder(localContext)
                 .data(ticket.url)
                 .size(requestWidthPx, requestHeightPx)
@@ -254,7 +259,7 @@ internal fun ModernHeroMediaLayer(
         key(artwork.ownerKey) {
         androidx.compose.animation.Crossfade(
             targetState = artworkState.ready,
-            animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.overlay),
+            animationSpec = tween(durationMillis = HERO_FADE_MS),
             label = "heroBackdropCrossfade"
         ) { painter ->
             if (painter != null) Image(

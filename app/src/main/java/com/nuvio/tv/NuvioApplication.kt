@@ -276,8 +276,10 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache").toOkioPath())
-                    // Fixed size like the official app; boxes under ~3.3 GB of RAM get 200 MB.
-                    .maxSizeBytes(if (memoryInfo.totalMem >= 3_300L * 1024 * 1024) 300L * 1024 * 1024 else 200L * 1024 * 1024)
+                    .maxSizeBytes(com.nuvio.tv.core.image.imageDiskCacheBytes(
+                        com.nuvio.tv.core.performance.DeviceProfile.ramClass(memoryInfo.totalMem),
+                        com.nuvio.tv.core.image.freeBytesOn(cacheDir)
+                    ))
                     .build()
             }
             .crossfade(false)
