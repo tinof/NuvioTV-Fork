@@ -128,6 +128,28 @@ class TunnelStallExpiryTest {
         assertEquals(setOf("pcm"), settings.playerSettings.first().tunnelDeadAudioClasses)
     }
 
+    @Test fun `entries keyed by decoder sit next to old bare entries and expire with them`() = withSettings { settings, store, _ ->
+        var now = start
+        settings.tunnelStallClock = { now }
+        settings.tunnelStallAppVersion = { 1462 }
+        store.updateData { prefs ->
+            prefs.toMutablePreferences().apply {
+                this[classesKey] = setOf("audio/eac3")
+                this[signatureKey] = "chain-a"
+                this[savedAtKey] = start
+                this[versionKey] = 1462
+            }
+        }
+        settings.recordTunnelDeadAudioClass("pcm@OMX.vendor.avc.tunneled", "chain-a")
+        assertEquals(
+            setOf("audio/eac3", "pcm@OMX.vendor.avc.tunneled"),
+            settings.playerSettings.first().tunnelDeadAudioClasses
+        )
+        now += TUNNEL_STALL_MAX_AGE_MS + 1
+        assertEquals(setOf("audio/eac3", "pcm@OMX.vendor.avc.tunneled"), settings.expireTunnelDeadAudioClasses())
+        assertNoStallKeys(store.data.value)
+    }
+
     @Test fun `forget and the tunneling switch still clear everything`() = withSettings { settings, store, active ->
         settings.tunnelStallClock = { start }
         settings.tunnelStallAppVersion = { 1462 }
