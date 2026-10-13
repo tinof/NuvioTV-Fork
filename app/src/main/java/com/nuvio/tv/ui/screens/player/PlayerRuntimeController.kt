@@ -956,7 +956,7 @@ class PlayerRuntimeController(
     internal var currentVideoTrackMimeType: String? = null
     internal var currentVideoTrackCodecs: String? = null
     // Video MediaCodec queueing asked of the last ExoPlayer build (HUD); null before one.
-    internal var videoCodecAsyncRequested: Boolean? = null
+    internal var videoCodecQueueingRequested: VideoCodecQueueing? = null
     // Negotiated audio output path, from onAudioTrackInitialized.
     // e.g. "TrueHD -> Passthrough (TrueHD, 48 kHz, 8ch)" / "DTS-HD -> PCM decode".
     internal var currentAudioPathDescription: String? = null
