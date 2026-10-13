@@ -736,6 +736,10 @@ class PlayerRuntimeController(
     internal val passthroughReturnRebuilds: MutableMap<String, Int> = mutableMapOf()
     /** Stream URL and the HDMI device its track played on while the sink was pinned to PCM for Bluetooth. */
     internal var hdmiRouteUnderBluetoothPin: Pair<String, android.media.AudioDeviceInfo>? = null
+    /** HDMI route this stream plays on while an idle Bluetooth sink is listed; detect() would report the sink. */
+    internal var hdmiRouteUnderIdleBluetooth: HdmiRouteUnderIdleBluetooth? = null
+    /** In-place unpins of the Bluetooth PCM pin, per stream URL. */
+    internal val hdmiInPlaceUnpins: MutableMap<String, Int> = mutableMapOf()
     internal var hdmiRouteCheckJob: Job? = null
     internal var busyOutputCheckJob: Job? = null
     internal var busyOutputCheckStreamUrl: String? = null

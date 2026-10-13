@@ -134,7 +134,8 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
                             isSelected = isSelected,
                             sampleRate = format.sampleRate.takeIf { it > 0 },
                             title = format.label?.trim()?.takeIf { it.isNotEmpty() },
-                            role = trackRoleFromRoleFlags(format.roleFlags, format.containerMimeType)
+                            role = trackRoleFromRoleFlags(format.roleFlags, format.containerMimeType),
+                            sampleMimeType = format.sampleMimeType
                         )
                     )
                 }
