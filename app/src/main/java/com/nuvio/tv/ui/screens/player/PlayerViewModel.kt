@@ -578,6 +578,9 @@ class PlayerViewModel @Inject constructor(
         }
 
         hud.videoDecoderName?.let { rows += StatsRow("Decoder", it) }
+        controller.videoCodecAsyncRequested?.let { queueAsync ->
+            rows += StatsRow("Video codec queue (requested)", if (queueAsync) "async" else "sync")
+        }
 
         val videoPresentation = sampleVideoPresentation()
         val tunnelled = videoPresentation.isTunnelled
