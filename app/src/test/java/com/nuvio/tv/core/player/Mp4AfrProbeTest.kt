@@ -118,6 +118,15 @@ class Mp4AfrProbeTest {
     }
 
     @Test
+    fun `a 64-bit size near Long MAX_VALUE is a cut-off box, not a wrap-around`() {
+        // pos + size would overflow to a negative end and walk the parser backwards.
+        val hostile = u32(1) + ascii("free") + byteArrayOf(0x7F, -1, -1, -1, -1, -1, -1, -16) + ByteArray(64)
+        assertNull(parse(ftyp + hostile))
+        val huge = u32(1) + ascii("moov") + byteArrayOf(-1, -1, -1, -1, -1, -1, -1, -1) + ByteArray(64)
+        assertNull(parse(ftyp + huge))
+    }
+
+    @Test
     fun `no rate without a moov in the head, a video track or an MP4 at all`() {
         // moov at the end: the window holds ftyp and the start of mdat only.
         val mdatFirst = ftyp + u32(50_000_000) + ascii("mdat") + ByteArray(1_024)
