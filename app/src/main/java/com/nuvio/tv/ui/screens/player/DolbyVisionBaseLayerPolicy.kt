@@ -211,6 +211,16 @@ object DolbyVisionBaseLayerPolicy {
     @Volatile
     private var cachedDecoderProfiles: DvDecoderProfileSupport? = null
 
+    /** System.nanoTime() of the last failed enumeration, or null. */
+    @Volatile
+    private var lastQueryFailureNanos: Long? = null
+
+    private const val QUERY_FAILURE_RETRY_NANOS = 30_000_000_000L
+
+    /** Whether a failed enumeration at [failedAtNanos] is recent enough to skip a new query. */
+    internal fun isQueryFailureFresh(nowNanos: Long, failedAtNanos: Long?): Boolean =
+        failedAtNanos != null && nowNanos - failedAtNanos < QUERY_FAILURE_RETRY_NANOS
+
     /** Fills the decoder cache off the playback path. Safe to call from any thread. */
     fun warmUp() {
         runCatching { decoderProfileSupport() }
@@ -218,11 +228,25 @@ object DolbyVisionBaseLayerPolicy {
 
     private fun decoderProfileSupport(): DvDecoderProfileSupport {
         cachedDecoderProfiles?.let { return it }
-        // Only a successful enumeration is kept: a transient failure must not pin all-false.
-        val fresh = queryDvDecoderProfileSupport() ?: return NO_DV_DECODER
+        // Only a successful enumeration is cached for good: a transient failure must not pin
+        // all-false. A failure is held for 30 s so main-thread callers (stats HUD ticks) do not
+        // enumerate the codec list again on every call.
+        if (isQueryFailureFresh(System.nanoTime(), lastQueryFailureNanos)) return NO_DV_DECODER
+        val fresh = queryDvDecoderProfileSupport()
+        if (fresh == null) {
+            lastQueryFailureNanos = System.nanoTime()
+            return NO_DV_DECODER
+        }
         cachedDecoderProfiles = fresh
+        lastQueryFailureNanos = null
         return fresh
     }
+
+    /**
+     * Whether any decoder lists video/dolby-vision, from a codec list already read (no query).
+     * Null when it has not been read yet or the read failed.
+     */
+    fun hasDolbyVisionDecoder(): Boolean? = cachedDecoderProfiles?.decoderNames?.isNotEmpty()
 
     /**
      * Whether [decoderName] is one of the decoders that list video/dolby-vision. Null when the
@@ -237,6 +261,8 @@ object DolbyVisionBaseLayerPolicy {
 
     internal fun isDolbyVisionDecoderName(decoderName: String, knownDvDecoders: Set<String>): Boolean {
         val name = decoderName.trim().lowercase().removeSuffix(".secure")
+        // The Amlogic dual-layer port (native FEL) decodes Dolby Vision outside MediaCodecList.
+        if (name.startsWith(com.nuvio.tv.core.player.amlfel.AmlDvFelVideoRenderer.DECODER_NAME)) return true
         if (knownDvDecoders.isNotEmpty()) {
             return knownDvDecoders.any { it.removeSuffix(".secure") == name }
         }

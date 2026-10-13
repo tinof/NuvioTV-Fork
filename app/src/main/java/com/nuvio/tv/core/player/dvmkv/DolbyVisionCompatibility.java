@@ -41,6 +41,17 @@ public final class DolbyVisionCompatibility {
 
   private static volatile boolean isHdr10BaseLayerModeActive;
 
+  /** Whether the box has any Dolby Vision decoder; true while unknown. */
+  private static volatile boolean dolbyVisionDecoderPresent = true;
+
+  public static void setDolbyVisionDecoderPresent(boolean present) {
+    dolbyVisionDecoderPresent = present;
+  }
+
+  public static boolean isDolbyVisionDecoderPresent() {
+    return dolbyVisionDecoderPresent;
+  }
+
   public static void setHdr10BaseLayerModeActive(boolean active) {
     isHdr10BaseLayerModeActive = active;
   }
@@ -89,6 +100,16 @@ public final class DolbyVisionCompatibility {
   /** True for the Dolby Vision profiles whose base layer plays as HDR10 HEVC (7 and 8). */
   public static boolean hasHevcBaseLayer(int dolbyVisionProfile) {
     return dolbyVisionProfile == 7 || dolbyVisionProfile == 8;
+  }
+
+  /**
+   * Whether HDR10 base-layer mode plays this profile on the HEVC decoder. Profiles 7 and 8
+   * always do. Profile 5 does only when the box has no Dolby Vision decoder at all: Media3 has
+   * no HEVC alternative for it, so without the remap nothing could decode it (wrong colours
+   * beat no picture).
+   */
+  public static boolean remapsToHevcBaseLayer(int dolbyVisionProfile, boolean dvDecoderPresent) {
+    return hasHevcBaseLayer(dolbyVisionProfile) || (dolbyVisionProfile == 5 && !dvDecoderPresent);
   }
 
   public static boolean isStaleContainerDolbyVisionConfig(

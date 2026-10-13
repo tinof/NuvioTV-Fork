@@ -50,15 +50,27 @@ internal object PlayerTunnelAvSyncPolicy {
         if (decoderName.isNullOrBlank()) audioClass else "$audioClass$LEDGER_DECODER_SEPARATOR$decoderName"
 
     /**
-     * Whether the ledger rules out tunneling for this sound type with this decoder. Entries saved
-     * before keys named a decoder, and an unknown decoder, match every entry of the sound type.
+     * Whether the ledger rules out tunneling for this sound type with any of [decoderNames], the
+     * decoders Media3 may pick for the video track. Entries saved before keys named a decoder,
+     * and an unknown (null or empty) candidate set, match every entry of the sound type.
      */
-    fun ledgerMatches(entries: Collection<String>, audioClass: String, decoderName: String?): Boolean =
+    fun ledgerMatches(entries: Collection<String>, audioClass: String, decoderNames: Collection<String>?): Boolean =
         entries.any { entry ->
             val entryClass = entry.substringBefore(LEDGER_DECODER_SEPARATOR)
             val entryDecoder = entry.substringAfter(LEDGER_DECODER_SEPARATOR, "")
             entryClass == audioClass &&
-                (entryDecoder.isEmpty() || decoderName.isNullOrBlank() || entryDecoder == decoderName)
+                (entryDecoder.isEmpty() || decoderNames.isNullOrEmpty() || entryDecoder in decoderNames)
+        }
+
+    /**
+     * Mimes whose tunneling decoders Media3 may use for a [sampleMimeType] track. A Dolby Vision
+     * track on a display without DV plays on the HEVC or AVC decoder (Media3's alternative mime).
+     */
+    fun tunnelDecoderCandidateMimes(sampleMimeType: String): List<String> =
+        if (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) {
+            listOf(MimeTypes.VIDEO_DOLBY_VISION, MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264)
+        } else {
+            listOf(sampleMimeType)
         }
 
     private val CLASS_LABELS: List<Pair<String, String>> = listOf(

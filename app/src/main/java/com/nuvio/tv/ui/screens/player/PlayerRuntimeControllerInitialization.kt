@@ -533,6 +533,13 @@ internal fun PlayerRuntimeController.initializePlayer(
             runCatching { deviceLocalPlayerPreferences.tunnelFrameReportDecoders.first() }
                 .getOrNull()?.let { PlayerTunnelAvSyncPolicy.frameReportDecoders.addAll(it) }
             if (initializationGeneration != playbackRecoveryGate.generation) return@launch
+            // Seeded from what this build asks the track selector for, so a tunnelled start keeps the
+            // tunnel surface layout from frame 0; onTracksChanged corrects it to the player's answer.
+            val tunnelingRequested = playerSettings.effectiveTunnelingEnabled &&
+                !tunnelingBlockedByUsbAudio &&
+                effectiveInternalPlayerEngine != InternalPlayerEngine.MVP_PLAYER &&
+                !safeAudioForcedStreamUrls.contains(url) &&
+                !tunnelingDisabledStreamUrls.contains(url)
             _uiState.update {
                 it.copy(
                     internalPlayerEngine = effectiveInternalPlayerEngine,
@@ -543,7 +550,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                     playbackIssueReportsEnabled = IssueReports.available && playerSettings.playbackIssueReportsEnabled,
                     tunnelingEnabled = tunnelingActive &&
                             effectiveInternalPlayerEngine != InternalPlayerEngine.MVP_PLAYER,
-                    tunnelingApplied = false
+                    tunnelingApplied = tunnelingRequested
                 )
             }
 
@@ -1098,10 +1105,10 @@ internal fun PlayerRuntimeController.initializePlayer(
                         ffmpegRendererName = ffmpegAudioRenderer?.name,
                         audioSink = playbackSpeedAwareAudioSink,
                         deadClockAudioClasses = PlayerTunnelAvSyncPolicy.deadAudioClasses,
-                        tunnelVideoDecoderName = if (PlayerTunnelAvSyncPolicy.deadAudioClasses.isEmpty()) {
+                        tunnelVideoDecoderNames = if (PlayerTunnelAvSyncPolicy.deadAudioClasses.isEmpty()) {
                             null
                         } else {
-                            predictTunnelVideoDecoderName(
+                            predictTunnelVideoDecoderNames(
                                 mappedTrackInfo,
                                 rendererFormatSupports,
                                 tunnelPredictionCodecSelector
@@ -1292,6 +1299,10 @@ internal fun PlayerRuntimeController.initializePlayer(
                         effectiveDv7Mode == Dv7HandlingMode.STRIP_DV
             }
             com.nuvio.tv.core.player.dvmkv.DolbyVisionCompatibility.setHdr10BaseLayerModeActive(isHdr10BaseLayerModeActive)
+            // Unknown (codec list not read) counts as present, which keeps DV5 on the DV decoder.
+            com.nuvio.tv.core.player.dvmkv.DolbyVisionCompatibility.setDolbyVisionDecoderPresent(
+                DolbyVisionBaseLayerPolicy.hasDolbyVisionDecoder() != false
+            )
             isMapDv7ToHevcActiveForCurrentPlayback = mapDv7ToHevcEnabled
             // Key this off the effective mode, not the AUTO policy
             // result. dv7AutoResult is null in every manual mode, so gating on it
@@ -1440,12 +1451,12 @@ internal fun PlayerRuntimeController.initializePlayer(
                         "mimes=${deniedTranscodeMimes.joinToString(",")}"
                 )
             }
-            val asyncVideoQueueing = asyncVideoCodecQueueing(
+            val videoQueueing = videoCodecQueueing(
                 switch = DebugSwitches.flag("debug.nuvio.async_codec"),
                 manufacturer = Build.MANUFACTURER,
                 sdkInt = Build.VERSION.SDK_INT
             )
-            videoCodecAsyncRequested = asyncVideoQueueing
+            videoCodecQueueingRequested = videoQueueing
             val nativeSelectionOwner = Any()
             val renderersFactory = SubtitleOffsetRenderersFactory(
                 audioPassthroughPolicy = surroundResolution.policy,
@@ -1489,7 +1500,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 initialForcePcm = hasTriedAudioPcmFallback || isBluetoothAudioOutput,
                 vendorUnstablePts = am9SystemProperty("debug.nuvio.aml_unstable_pts") == "1",
                 forceSoftwareAv1 = am9SystemProperty("debug.nuvio.sw_av1") == "1",
-                asyncVideoCodecQueueing = asyncVideoQueueing,
+                videoCodecQueueing = videoQueueing,
                 mapDv7ToHevc = mapDv7ToHevcEnabled,
                 onPlaybackSpeedAwareAudioSinkCreated = { playbackSpeedAwareAudioSink = it },
                 onAudioDiagnosticEvent = { line -> queuePlaybackRawEventLine(line) },
@@ -3331,13 +3342,38 @@ internal fun videoExtensionRendererMode(extensionRendererMode: Int): Int =
         extensionRendererMode
     }
 
+/** How the video decoder's MediaCodec queues buffers. */
+internal enum class VideoCodecQueueing {
+    /** DefaultMediaCodecAdapterFactory.forceEnableAsynchronous(). */
+    FORCE_ASYNC,
+    /** DefaultMediaCodecAdapterFactory.forceDisableAsynchronous(). */
+    FORCE_SYNC,
+    /** Media3's own choice: async from API 31 (and on Fire TV from API 28), sync below. */
+    DEFAULT
+}
+
 /**
- * Asynchronous MediaCodec queueing for the video decoder. Media3 turns it on by itself
- * only from API 31, so Android 11 Shields run synchronous; debug.nuvio.async_codec=1/0
- * forces it either way for an A/B.
+ * MediaCodec queueing for the video decoder. Media3 turns async on by itself only from
+ * API 31, so Android 11 Shields are forced async; debug.nuvio.async_codec=1/0 forces it
+ * either way for an A/B, and every other box keeps Media3's default.
  */
-internal fun asyncVideoCodecQueueing(switch: Boolean?, manufacturer: String?, sdkInt: Int): Boolean =
-    switch ?: (DeviceProfile.isNvidia(manufacturer) && sdkInt < 31)
+internal fun videoCodecQueueing(switch: Boolean?, manufacturer: String?, sdkInt: Int): VideoCodecQueueing =
+    when (switch) {
+        true -> VideoCodecQueueing.FORCE_ASYNC
+        false -> VideoCodecQueueing.FORCE_SYNC
+        null -> if (DeviceProfile.isNvidia(manufacturer) && sdkInt < 31) {
+            VideoCodecQueueing.FORCE_ASYNC
+        } else {
+            VideoCodecQueueing.DEFAULT
+        }
+    }
+
+/** Stats HUD text for [mode]. The default row ignores Media3's Fire TV (API 28+) async case. */
+internal fun videoCodecQueueingLabel(mode: VideoCodecQueueing, sdkInt: Int): String = when (mode) {
+    VideoCodecQueueing.FORCE_ASYNC -> "async (forced)"
+    VideoCodecQueueing.FORCE_SYNC -> "sync (forced)"
+    VideoCodecQueueing.DEFAULT -> if (sdkInt >= 31) "default (async on API 31+)" else "default (sync)"
+}
 
 private class SubtitleOffsetRenderersFactory(
     context: Context,
@@ -3370,7 +3406,7 @@ private class SubtitleOffsetRenderersFactory(
     private val nativeMelEnabled: Boolean = true,
     private val vendorUnstablePts: Boolean = false,
     private val forceSoftwareAv1: Boolean = false,
-    private val asyncVideoCodecQueueing: Boolean = false,
+    private val videoCodecQueueing: VideoCodecQueueing = VideoCodecQueueing.DEFAULT,
     private val mapDv7ToHevc: Boolean = false,
     private val playbackSpeedProvider: () -> Float,
     private val initialForcePcm: Boolean = false,
@@ -3421,10 +3457,10 @@ private class SubtitleOffsetRenderersFactory(
             )
         }
         // Video only: audio keeps the shared factory and its default queueing mode.
-        val videoCodecAdapterFactory = if (asyncVideoCodecQueueing) {
-            DefaultMediaCodecAdapterFactory(context).forceEnableAsynchronous()
-        } else {
-            getCodecAdapterFactory()
+        val videoCodecAdapterFactory = when (videoCodecQueueing) {
+            VideoCodecQueueing.FORCE_ASYNC -> DefaultMediaCodecAdapterFactory(context).forceEnableAsynchronous()
+            VideoCodecQueueing.FORCE_SYNC -> DefaultMediaCodecAdapterFactory(context).forceDisableAsynchronous()
+            VideoCodecQueueing.DEFAULT -> getCodecAdapterFactory()
         }
         // Decode-order time repair (AVI, VC-1, XviD/DivX): replace ONLY the platform MediaCodec
         // video renderer with the repairing subclass; extension renderers (VP9/AV1) and their
@@ -4125,7 +4161,7 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
     ffmpegRendererName: String?,
     audioSink: PlaybackSpeedAwareAudioSink?,
     deadClockAudioClasses: Set<String>,
-    tunnelVideoDecoderName: String?,
+    tunnelVideoDecoderNames: Set<String>?,
     hbrTunnelAllowed: Boolean
 ) {
     for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
@@ -4143,7 +4179,7 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
                         if (PlayerTunnelAvSyncPolicy.ledgerMatches(
                                 deadClockAudioClasses,
                                 PlaybackSpeedAwareAudioSink.TUNNEL_AUDIO_CLASS_PCM,
-                                tunnelVideoDecoderName
+                                tunnelVideoDecoderNames
                             )
                         ) {
                             "dead-tunnel-clock"
@@ -4160,7 +4196,7 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
                         PlayerTunnelAvSyncPolicy.ledgerMatches(
                             deadClockAudioClasses,
                             audioSink.tunnelAudioClass(format),
-                            tunnelVideoDecoderName
+                            tunnelVideoDecoderNames
                         ) -> "dead-tunnel-clock"
                     else -> null
                 } ?: continue
@@ -4250,15 +4286,17 @@ private fun demoteVideoTunnelingWhereFramesNeedTheApp(
 }
 
 /**
- * The decoder a tunnelled video track would get: the selector's first tunneling decoder for the
- * first playable video track. Null when there is none or the query fails; the stall ledger then
- * treats every entry of a sound type as a match.
+ * The decoders a tunnelled video track may get: every tunneling decoder the selector lists for
+ * the first playable video track's mime (for Dolby Vision also the HEVC and AVC ones, which
+ * Media3 uses on a display without DV). Media3 re-sorts and can fall back, so any of them may
+ * be the one in a ledger key. Null when the query fails; the stall ledger then treats every
+ * entry of a sound type as a match.
  */
-private fun predictTunnelVideoDecoderName(
+private fun predictTunnelVideoDecoderNames(
     mappedTrackInfo: androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo,
     rendererFormatSupports: Array<out Array<out IntArray>>,
     codecSelector: MediaCodecSelector?
-): String? {
+): Set<String>? {
     codecSelector ?: return null
     for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
         if (mappedTrackInfo.getRendererType(rendererIndex) != C.TRACK_TYPE_VIDEO) continue
@@ -4270,8 +4308,12 @@ private fun predictTunnelVideoDecoderName(
                 if (RendererCapabilities.getFormatSupport(supports[groupIndex][trackIndex]) != C.FORMAT_HANDLED) continue
                 val format = group.getFormat(trackIndex)
                 val mime = format.sampleMimeType ?: continue
+                val secure = format.drmInitData != null
                 return runCatching {
-                    codecSelector.getDecoderInfos(mime, format.drmInitData != null, true).firstOrNull()?.name
+                    PlayerTunnelAvSyncPolicy.tunnelDecoderCandidateMimes(mime)
+                        .flatMap { candidateMime -> codecSelector.getDecoderInfos(candidateMime, secure, true) }
+                        .map { it.name }
+                        .toSet()
                 }.getOrNull()
             }
         }
