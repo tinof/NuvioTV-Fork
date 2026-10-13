@@ -588,6 +588,7 @@ internal fun shouldBlurEpisodeOverlayBackdrop(
 
 private const val TMDB_IMAGE_SIZE_PREFIX = "/t/p/"
 private const val OVERLAY_BLUR_MAX_WIDTH_PX = 480
+internal const val OVERLAY_BLUR_RADIUS_PX = 25
 
 internal fun episodeOverlayBackdropUrl(thumbnail: String?): String? {
     return thumbnail?.takeIf { it.isNotBlank() }?.let(::upgradeTmdbImageUrl)
@@ -606,13 +607,16 @@ internal fun episodeOverlayBackdropDecodeSize(
     return blurredWidth to blurredHeight
 }
 
+/** The explicit key replaces the transformation's own, so another blur radius needs its own key. */
 internal fun episodeOverlayBackdropMemoryCacheKey(
     url: String,
     widthPx: Int,
     heightPx: Int,
-    blur: Boolean
+    blur: Boolean,
+    blurRadiusPx: Int = OVERLAY_BLUR_RADIUS_PX
 ): String {
-    return "${url}_${widthPx}x${heightPx}_blur$blur"
+    val radius = if (blur && blurRadiusPx != OVERLAY_BLUR_RADIUS_PX) "_r$blurRadiusPx" else ""
+    return "${url}_${widthPx}x${heightPx}_blur$blur$radius"
 }
 
 internal fun episodeOverlayBackdropRequest(
@@ -631,7 +635,7 @@ internal fun episodeOverlayBackdropRequest(
         .crossfade(true)
         .size(width = widthPx, height = heightPx)
         .apply {
-            if (blur) transformations(BlurTransformation())
+            if (blur) transformations(BlurTransformation(OVERLAY_BLUR_RADIUS_PX))
         }
         .build()
 }

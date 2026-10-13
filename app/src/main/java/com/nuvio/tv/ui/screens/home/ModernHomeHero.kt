@@ -192,13 +192,21 @@ internal fun ModernHeroMediaLayer(
     androidx.compose.runtime.DisposableEffect(menuBackdrop) {
         onDispose { publishMenuUrl(null) }
     }
+    // The full-screen picture that glass without live blur shows pre-blurred.
+    var glassArtworkUrl by remember { mutableStateOf<String?>(null) }
     // Start from the focused title's available artwork, without the metadata gate.
     // Render the decoded result directly: no second image request/cache lookup.
     LaunchedEffect(ticket, artwork.ownerKey, requestWidthPx, requestHeightPx, fullScreenBackdrop) {
         val pageSelection = HeroBackdropState.selectPageArtwork(artwork.ownerKey, ticket?.url)
-        if (ticket == null || !fullScreenBackdrop) publishMenuUrl(null)
+        if (ticket == null || !fullScreenBackdrop) {
+            publishMenuUrl(null)
+            glassArtworkUrl = null
+        }
         if (ticket != null && ticket == recalledTicket) {
-            if (fullScreenBackdrop) publishMenuUrl(ticket.url)
+            if (fullScreenBackdrop) {
+                publishMenuUrl(ticket.url)
+                glassArtworkUrl = ticket.url
+            }
             HeroBackdropState.recordDisplayedArtwork(pageSelection, ticket.url)
             artworkAccent?.imageLoaded(ticket.url)
         } else if (ticket != null) {
@@ -219,7 +227,10 @@ internal fun ModernHeroMediaLayer(
                 artworkState = artworkState.loaded(ticket, result.image.asPainter(localContext))
                 shownOnce = true
                 shownHeroImage.keep(ticket.url, requestWidthPx, requestHeightPx, result.image)
-                if (fullScreenBackdrop) publishMenuUrl(ticket.url)
+                if (fullScreenBackdrop) {
+                    publishMenuUrl(ticket.url)
+                    glassArtworkUrl = ticket.url
+                }
                 HeroBackdropState.recordDisplayedArtwork(pageSelection, ticket.url)
                 artworkAccent?.imageLoaded(ticket.url)
             } else {
@@ -228,6 +239,10 @@ internal fun ModernHeroMediaLayer(
             }
         }
     }
+    // A full-screen trailer covers the picture, so the still blur would not match what is behind the glass.
+    com.nuvio.tv.ui.v2.components.PublishPreblurredGlassArtwork(
+        glassArtworkUrl.takeIf { featheredTrailer || !(shouldPlay && trailerRendered) }
+    )
     val cinematic = com.nuvio.tv.ui.v2.appearance.LocalV2Appearance.current?.visualStyle ==
         com.nuvio.tv.domain.model.VisualStyle.CINEMATIC_GLASS
     val liveTrailerGlass = cinematic && com.nuvio.tv.ui.v2.quality.LocalGlassTokens.current.liveBlur &&
