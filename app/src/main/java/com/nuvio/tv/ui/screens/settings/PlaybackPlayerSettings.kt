@@ -1,9 +1,11 @@
 package com.nuvio.tv.ui.screens.settings
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.nuvio.tv.R
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.data.local.AutoSkipSegmentType
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import com.nuvio.tv.data.local.PlayerPreference
@@ -207,6 +209,10 @@ internal fun InternalPlayerEngineDialog(
     onEngineSelected: (InternalPlayerEngine) -> Unit,
     onDismiss: () -> Unit
 ) {
+    // On a Shield mpv's GPU output bypasses the video path that carries HDR and AI upscaling.
+    val nvidia = remember { DeviceProfile.isNvidia() }
+    val mpvDescription = stringResource(R.string.playback_engine_mvplayer_desc)
+    val mpvShieldNote = stringResource(R.string.playback_engine_mvplayer_shield_note)
     val options = listOf(
         SettingsPickerOption(
             InternalPlayerEngine.EXOPLAYER,
@@ -216,7 +222,7 @@ internal fun InternalPlayerEngineDialog(
         SettingsPickerOption(
             InternalPlayerEngine.MVP_PLAYER,
             stringResource(R.string.playback_engine_mvplayer),
-            stringResource(R.string.playback_engine_mvplayer_desc)
+            if (nvidia) "$mpvDescription $mpvShieldNote" else mpvDescription
         ),
         SettingsPickerOption(
             InternalPlayerEngine.AUTO,

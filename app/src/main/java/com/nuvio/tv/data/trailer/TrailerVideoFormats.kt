@@ -1,8 +1,6 @@
 package com.nuvio.tv.data.trailer
 
 import android.content.Context
-import android.hardware.display.DisplayManager
-import android.view.Display
 import androidx.media3.common.MimeTypes
 import com.nuvio.tv.core.player.VideoDecoderCapabilities
 
@@ -76,16 +74,12 @@ internal fun trailerVideoCodecRank(codec: TrailerVideoCodec?): Int = when (codec
     null -> 0
 }
 
+/**
+ * Trailers draw into a TextureView, which composes in SDR whatever the display supports, so an HDR trailer
+ * would only show washed out: they always pick an SDR stream.
+ */
+@Suppress("UNUSED_PARAMETER")
 internal fun deviceTrailerVideoLimits(context: Context): TrailerVideoLimits = TrailerVideoLimits(
     av1HardwareDecoder = VideoDecoderCapabilities.hasHardwareDecoder(MimeTypes.VIDEO_AV1),
-    hdrDisplay = displaySupportsHdr(context)
+    hdrDisplay = false
 )
-
-@Suppress("DEPRECATION")
-private fun displaySupportsHdr(context: Context): Boolean = runCatching {
-    context.getSystemService(DisplayManager::class.java)
-        ?.getDisplay(Display.DEFAULT_DISPLAY)
-        ?.hdrCapabilities
-        ?.supportedHdrTypes
-        ?.isNotEmpty() == true
-}.getOrDefault(false)
