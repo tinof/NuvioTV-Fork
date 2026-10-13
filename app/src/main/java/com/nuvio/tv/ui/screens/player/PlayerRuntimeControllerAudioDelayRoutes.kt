@@ -222,6 +222,10 @@ private fun PlayerRuntimeController.onAudioOutputRouteMaybeChanged(
                         "updating PCM policy in place (player stays running)"
                 )
                 applyBluetoothAudioRouteInPlace(isBluetooth)
+                if (isBluetooth) {
+                    hdmiRouteUnderBluetoothPin = null
+                    scheduleHdmiRouteUnderBluetoothPinCheck("device $reason")
+                }
             }
             BluetoothRoutePlaybackAction.UPDATE_MPV_IN_PLACE -> {
                 Log.i(
@@ -279,6 +283,78 @@ private fun PlayerRuntimeController.rebuildForReturnedPassthroughIfNeeded(reason
         "PASSTHROUGH_RETURN rebuild reason=$reason encoding=$encoding " +
             "pinned=${sink.pinnedOutputEncodings} live=$live route=${currentAudioOutputRoute?.key}"
     )
+    scheduleOwnedPlaybackRecovery(player.currentPosition, 0L)
+    return true
+}
+
+/**
+ * Below API 33 a listed but idle Bluetooth sink pins the player to PCM while the track plays on
+ * HDMI. Once the track has started, read its routed device; when that is HDMI and the output
+ * takes the current track as bitstream, rebuild with the Bluetooth pin dropped for this stream.
+ */
+internal fun PlayerRuntimeController.scheduleHdmiRouteUnderBluetoothPinCheck(reason: String) {
+    if (Build.VERSION.SDK_INT >= 33) return
+    if (_exoPlayer == null || isUsingMpvEngine()) return
+    if (playbackSpeedAwareAudioSink?.isBluetoothForcePcm() != true) return
+    // Only TVs pin capabilities at build time; elsewhere media3's live receiver decides.
+    if (!context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) return
+    hdmiRouteCheckJob?.cancel()
+    hdmiRouteCheckJob = scope.launch {
+        delay(PassthroughOutputReturn.SECOND_CHECK_DELAY_MS)
+        rebuildForHdmiRouteUnderBluetoothPin(reason)
+    }
+}
+
+private suspend fun PlayerRuntimeController.rebuildForHdmiRouteUnderBluetoothPin(reason: String): Boolean {
+    if (isReleasingPlayer || isInBackground || playbackRecoveryJob?.isActive == true) return false
+    if (isUsingMpvEngine()) return false
+    val player = _exoPlayer ?: return false
+    val sink = playbackSpeedAwareAudioSink ?: return false
+    val device = sink.routedDevice() ?: return false
+    if (!PassthroughOutputReturn.hdmiRoutedUnderBluetoothPin(
+            sdkInt = Build.VERSION.SDK_INT,
+            bluetoothPinned = sink.isBluetoothForcePcm(),
+            routedDeviceType = device.type
+        )
+    ) {
+        return false
+    }
+    if (sink.pinnedOutputEncodings != null) {
+        // Built with HDMI capabilities and pinned to PCM in place by a route event: unpin in place.
+        Log.i(
+            PlayerRuntimeController.TAG,
+            "PASSTHROUGH_RETURN hdmi-under-bluetooth-pin reason=$reason in place routed=${device.type}"
+        )
+        currentAudioOutputRoute = AudioOutputRouteDetector.routeOf(device)
+        applyBluetoothAudioRouteInPlace(false)
+        applySurroundResolutionInPlace("hdmi under bluetooth pin")
+        return true
+    }
+    val format = player.audioFormat ?: return false
+    val encoding = PassthroughOutputReturn.encodingOf(format) ?: return false
+    val live = PassthroughOutputReturn.liveEncodings(context, device)
+    val rebuildsSoFar = passthroughReturnRebuilds[currentStreamUrl] ?: 0
+    // The Bluetooth sink was built PCM-only, so nothing was pinned as bitstream.
+    val rebuild = PassthroughOutputReturn.shouldRebuild(
+        encoding = encoding,
+        pinned = emptySet(),
+        live = live,
+        alreadyBitstream = sink.isDirectPlaybackActive() || sink.isIecHbrActive(),
+        claimedByIec = false,
+        policyDenies = currentAudioPassthroughPolicy?.deniesPassthrough(format.sampleMimeType) == true,
+        forcedPcm = hasTriedAudioPcmFallback ||
+            _uiState.value.playbackSpeed != 1f ||
+            currentStreamUrl in preferFfmpegAudioStreamUrls,
+        rebuildsSoFar = rebuildsSoFar
+    )
+    Log.i(
+        PlayerRuntimeController.TAG,
+        "PASSTHROUGH_RETURN hdmi-under-bluetooth-pin reason=$reason rebuild=$rebuild encoding=$encoding " +
+            "routed=${device.type} live=$live route=${currentAudioOutputRoute?.key}"
+    )
+    if (!rebuild) return false
+    hdmiRouteUnderBluetoothPin = currentStreamUrl to device
+    passthroughReturnRebuilds[currentStreamUrl] = rebuildsSoFar + 1
     scheduleOwnedPlaybackRecovery(player.currentPosition, 0L)
     return true
 }
