@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.nuvio.tv.core.player.DeniedTranscodePlanner
 import com.nuvio.tv.core.player.SurroundFormatResolver
+import com.nuvio.tv.core.util.DebugSwitches
 import com.nuvio.tv.data.local.AudioOutputChannels
 import com.nuvio.tv.data.local.DeniedCodecHandling
 import com.nuvio.tv.data.local.PlayerSettings
@@ -37,7 +38,15 @@ internal fun resolveSurroundForRoute(
     val surroundResolution = if (inputs.isBluetooth) {
         SurroundFormatResolver.Resolution.INERT
     } else {
-        val chainSnapshot = AudioChainProbe.snapshot(context, currentRouteKey)
+        val probeUnion = DebugSwitches.flag("debug.nuvio.audio_probe_union") == true
+        val chainSnapshot = AudioChainProbe.snapshot(context, currentRouteKey, withUnion = probeUnion)
+        val probe = SurroundFormatResolver.decisionInputs(
+            direct = chainSnapshot.direct,
+            maxPcmChannels = chainSnapshot.maxPcmChannels,
+            directAnyLayout = chainSnapshot.directUnion,
+            plugMaxChannels = chainSnapshot.plugMaxChannels,
+            union = probeUnion
+        )
         val learnedDeniedGroups = AudioRejectionReverifier.ledger.learnedFor(
             currentRouteKey,
             playerSettings.audioRejectionsConfirmed
@@ -57,8 +66,8 @@ internal fun resolveSurroundForRoute(
                 SurroundChannelTarget.CH_5_1 -> 6
                 SurroundChannelTarget.CH_7_1 -> 8
             },
-            direct = chainSnapshot.direct,
-            rawMaxPcmChannels = chainSnapshot.maxPcmChannels,
+            direct = probe.direct,
+            rawMaxPcmChannels = probe.maxPcmChannels,
             routeIsBluetooth = false,
             routeIsHdmiArc = SurroundFormatResolver.routeKeyIsHdmiArc(currentRouteKey),
             softwareDecodersAvailable = inputs.softwareDecodersAvailable,
