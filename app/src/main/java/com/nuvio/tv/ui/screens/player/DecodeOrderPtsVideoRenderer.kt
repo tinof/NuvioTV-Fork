@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import com.nuvio.tv.core.player.DecodeOrderTimestamps
+import com.nuvio.tv.core.player.DolbyVisionCodecFallback
 import java.nio.ByteBuffer
 
 /**
@@ -47,12 +48,15 @@ internal class DecodeOrderPtsVideoRenderer(
         mediaCodecSelector: MediaCodecSelector,
         format: Format,
         requiresSecureDecoder: Boolean
-    ): List<MediaCodecInfo> = hardwareFirstVideoDecoders(
+    ): List<MediaCodecInfo> = DolbyVisionCodecFallback.dvDecodersFirst(
         format,
-        super.getDecoderInfos(
-            withoutAndroidSoftwareAv1(mediaCodecSelector, format, dav1dLoaded),
+        hardwareFirstVideoDecoders(
             format,
-            requiresSecureDecoder
+            super.getDecoderInfos(
+                withoutAndroidSoftwareAv1(mediaCodecSelector, format, dav1dLoaded),
+                format,
+                requiresSecureDecoder
+            )
         )
     )
 
