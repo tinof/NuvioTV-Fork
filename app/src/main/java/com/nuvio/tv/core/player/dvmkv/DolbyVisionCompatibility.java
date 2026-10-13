@@ -86,6 +86,11 @@ public final class DolbyVisionCompatibility {
     return profile == 7;
   }
 
+  /** True for the Dolby Vision profiles whose base layer plays as HDR10 HEVC (7 and 8). */
+  public static boolean hasHevcBaseLayer(int dolbyVisionProfile) {
+    return dolbyVisionProfile == 7 || dolbyVisionProfile == 8;
+  }
+
   public static boolean isStaleContainerDolbyVisionConfig(
       boolean hasColorInfo, @C.ColorTransfer int colorTransfer) {
     return hasColorInfo && colorTransfer == C.COLOR_TRANSFER_SDR;
