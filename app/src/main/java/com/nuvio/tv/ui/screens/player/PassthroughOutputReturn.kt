@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.content.Context
+import android.media.AudioDeviceInfo
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -38,14 +39,18 @@ internal object PassthroughOutputReturn {
         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
         .build()
 
-    fun capabilities(context: Context): AudioCapabilities =
-        AudioCapabilities.getCapabilities(context, movieAttributes, null)
+    /**
+     * With a [routedDevice], media3 judges that device; without one it treats any listed
+     * Bluetooth output as the route and answers PCM only.
+     */
+    fun capabilities(context: Context, routedDevice: AudioDeviceInfo? = null): AudioCapabilities =
+        AudioCapabilities.getCapabilities(context, movieAttributes, routedDevice)
 
     fun encodingsOf(capabilities: AudioCapabilities): Set<Int> =
         ENCODINGS.filterTo(mutableSetOf()) { capabilities.supportsEncoding(it) }
 
-    fun liveEncodings(context: Context): Set<Int> =
-        runCatching { encodingsOf(capabilities(context)) }.getOrDefault(emptySet())
+    fun liveEncodings(context: Context, routedDevice: AudioDeviceInfo? = null): Set<Int> =
+        runCatching { encodingsOf(capabilities(context, routedDevice)) }.getOrDefault(emptySet())
 
     fun encodingOf(format: Format?): Int? {
         val mime = format?.sampleMimeType ?: return null
@@ -102,4 +107,18 @@ internal object PassthroughOutputReturn {
     }
 
     fun isHdmiRoute(routeKey: String?): Boolean = routeKey?.startsWith("type:hdmi") == true
+
+    private val HDMI_DEVICE_TYPES = setOf(
+        AudioDeviceInfo.TYPE_HDMI,
+        AudioDeviceInfo.TYPE_HDMI_ARC,
+        AudioDeviceInfo.TYPE_HDMI_EARC
+    )
+
+    /**
+     * Below API 33 the route detector (and media3) take any listed Bluetooth output as the
+     * route, so a paired but idle headset can pin the sink to PCM while the AudioTrack plays
+     * on HDMI. The track's routed device is the real answer.
+     */
+    fun hdmiRoutedUnderBluetoothPin(sdkInt: Int, bluetoothPinned: Boolean, routedDeviceType: Int?): Boolean =
+        sdkInt < 33 && bluetoothPinned && routedDeviceType != null && routedDeviceType in HDMI_DEVICE_TYPES
 }
