@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import com.nuvio.tv.core.player.FrameRateUtils
+import com.nuvio.tv.core.util.DebugSwitches
 import com.nuvio.tv.data.local.FrameRateMatchingMode
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,14 @@ private const val TRACK_AFR_ABSOLUTE_DEADLINE_MS = 8_000L
 // AFR_EXO_SETTLE_HOLD_MS on the preflight path: don't start the A/V pipeline
 // inside the mode transition.
 private const val TRACK_AFR_SETTLE_HOLD_MS = 2_000L
+
+// Ceiling for the debug.nuvio.afr_settle_ms test switch: the absolute
+// deadline above must still cover the mode-switch wait before the hold.
+private const val TRACK_AFR_SETTLE_HOLD_MAX_MS = 4_000L
+
+/** Settle hold after a real switch; `adb shell setprop debug.nuvio.afr_settle_ms <ms>` overrides it for A/B tests. */
+internal fun trackAfrSettleHoldMs(overrideMs: Int?): Long =
+    overrideMs?.toLong()?.coerceIn(0L, TRACK_AFR_SETTLE_HOLD_MAX_MS) ?: TRACK_AFR_SETTLE_HOLD_MS
 
 /**
  * Frame-rate matching from ExoPlayer's reported track format instead of a
@@ -195,6 +204,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                     switchStartElapsedMs = android.os.SystemClock.elapsedRealtime()
                 }
 
+                val switchRequestedAtMs = android.os.SystemClock.elapsedRealtime()
                 val result = FrameRateUtils.matchFrameRateAndWait(
                     activity = activity,
                     frameRate = targetFrameRate,
@@ -218,11 +228,14 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                     }
                     if (switchedDisplayMode) {
                         displayModeSwitched = true
+                        val switchToStableMs = android.os.SystemClock.elapsedRealtime() - switchRequestedAtMs
+                        val settleHoldMs = trackAfrSettleHoldMs(DebugSwitches.int("debug.nuvio.afr_settle_ms"))
                         Log.d(
                             PlayerRuntimeController.TAG,
-                            "Track AFR: display mode switched; holding playback start ${TRACK_AFR_SETTLE_HOLD_MS}ms"
+                            "Track AFR: display mode switched; switchToStableMs=$switchToStableMs " +
+                                "holding playback start ${settleHoldMs}ms"
                         )
-                        delay(TRACK_AFR_SETTLE_HOLD_MS)
+                        delay(settleHoldMs)
                         val sinceSwitchMs = if (switchStartElapsedMs > 0L) {
                             android.os.SystemClock.elapsedRealtime() - switchStartElapsedMs
                         } else {

@@ -1,8 +1,6 @@
 package com.nuvio.tv.data.trailer
 
 import android.content.Context
-import android.hardware.display.DisplayManager
-import android.view.Display
 
 /** Trailers play on top of the UI through a TextureView; this cap holds on every device. */
 internal const val TRAILER_MAX_VIDEO_HEIGHT = 1080
@@ -79,16 +77,12 @@ internal fun trailerVideoCodecRank(codec: TrailerVideoCodec?): Int = when (codec
     null -> 0
 }
 
+/**
+ * Trailers draw into a TextureView, which composes in SDR whatever the display supports, so an HDR trailer
+ * would only show washed out: they always pick an SDR stream.
+ */
+@Suppress("UNUSED_PARAMETER")
 internal fun deviceTrailerVideoLimits(context: Context): TrailerVideoLimits = TrailerVideoLimits(
     canDecode = VideoDecoderSupport::canDecode,
-    hdrDisplay = displaySupportsHdr(context)
+    hdrDisplay = false
 )
-
-@Suppress("DEPRECATION")
-private fun displaySupportsHdr(context: Context): Boolean = runCatching {
-    context.getSystemService(DisplayManager::class.java)
-        ?.getDisplay(Display.DEFAULT_DISPLAY)
-        ?.hdrCapabilities
-        ?.supportedHdrTypes
-        ?.isNotEmpty() == true
-}.getOrDefault(false)
