@@ -226,7 +226,8 @@ class TrailerPlayerPool @Inject constructor(
                     .setInitialBitrateEstimate(50_000_000L) // 50 Mbps – force highest HLS variant from start
                     .build()
             )
-            .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
+            // Trailers never ask the display for a new rate; only the full player's AFR does.
+            .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
             .build()
             .apply {
                 repeatMode = Player.REPEAT_MODE_OFF
