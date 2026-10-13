@@ -7,7 +7,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -68,7 +70,10 @@ fun V2Atmosphere(
                 .build()
         }
     }
-    com.nuvio.tv.ui.v2.components.PublishPreblurredGlassArtwork(artwork.url.takeIf { request != null })
+    // Published once this page's own image has loaded: the pre-blur reads only the disk cache, which
+    // the load below fills, and it does not try a URL again.
+    var loadedArtworkUrl by remember(artwork) { mutableStateOf<String?>(null) }
+    com.nuvio.tv.ui.v2.components.PublishPreblurredGlassArtwork(loadedArtworkUrl.takeIf { request != null })
     Box(modifier.fillMaxSize().background(base).v2GlassSource().v2StaticBackdrop()) {
         if (background == SettingsBackground.POSTERS) {
             com.nuvio.tv.ui.v2.profile.ProfilePosterWallBackground(pageBackground = true)
@@ -76,7 +81,8 @@ fun V2Atmosphere(
         if (showArtwork && request != null) {
             key(artwork) {
                 AsyncImage(request, contentDescription = null, contentScale = ContentScale.Crop,
-                    alpha = .82f, modifier = Modifier.fillMaxSize())
+                    alpha = .82f, modifier = Modifier.fillMaxSize(),
+                    onSuccess = { loadedArtworkUrl = artwork.url })
             }
         }
         Box(Modifier.fillMaxSize().drawWithCache {

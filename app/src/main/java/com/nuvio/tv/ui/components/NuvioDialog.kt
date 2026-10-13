@@ -95,7 +95,9 @@ fun NuvioDialog(
             LocalDensity provides if (v2) dialogDensity else LocalDensity.current,
             com.nuvio.tv.ui.v2.components.LocalGlassBackdrop provides
                 (com.nuvio.tv.ui.v2.components.LocalPopupGlassBackdrop.current?.state
-                    ?: com.nuvio.tv.ui.v2.components.LocalGlassBackdrop.current)
+                    ?: com.nuvio.tv.ui.v2.components.LocalGlassBackdrop.current),
+            // The pre-blurred page artwork is placed against the page's window, not this one.
+            com.nuvio.tv.ui.v2.components.LocalPreblurredGlass provides null
         ) {
             Box(
                 modifier = Modifier
