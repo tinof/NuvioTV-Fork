@@ -3,6 +3,7 @@ package com.nuvio.tv.core.assessment
 import com.nuvio.tv.data.local.FrameRateMatchingMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,10 +19,18 @@ class ShieldAssessmentNotesTest {
     }
 
     @Test
-    fun `resolution matching is advised off only on a Shield whose display can switch`() {
-        assertTrue(ShieldAssessmentNotes.resMatchRecommendsOff(isNvidia = true, displaySwitchesResolution = true))
-        assertFalse(ShieldAssessmentNotes.resMatchRecommendsOff(isNvidia = true, displaySwitchesResolution = false))
-        assertFalse(ShieldAssessmentNotes.resMatchRecommendsOff(isNvidia = false, displaySwitchesResolution = true))
+    fun `resolution matching is advised off only on a 2019 Shield whose display can switch`() {
+        assertTrue(ShieldAssessmentNotes.resMatchRecommendsOff(isShield2019 = true, displaySwitchesResolution = true))
+        assertFalse(ShieldAssessmentNotes.resMatchRecommendsOff(isShield2019 = true, displaySwitchesResolution = false))
+        assertFalse(ShieldAssessmentNotes.resMatchRecommendsOff(isShield2019 = false, displaySwitchesResolution = true))
+    }
+
+    @Test
+    fun `apply turns resolution matching off only where the row advises it and it is on`() {
+        assertEquals(false, ShieldAssessmentNotes.resMatchPlan(recommendsOff = true, resolutionMatchingEnabled = true))
+        assertNull(ShieldAssessmentNotes.resMatchPlan(recommendsOff = true, resolutionMatchingEnabled = false))
+        assertNull(ShieldAssessmentNotes.resMatchPlan(recommendsOff = false, resolutionMatchingEnabled = true))
+        assertNull(ShieldAssessmentNotes.resMatchPlan(recommendsOff = false, resolutionMatchingEnabled = false))
     }
 
     @Test
