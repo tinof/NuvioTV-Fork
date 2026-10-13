@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.player
 import com.nuvio.tv.core.player.SurroundFormatResolver
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -77,6 +78,27 @@ class TunnelDeadClockMemoTest {
         val seeded = PlayerTunnelAvSyncPolicy.seedFromStore(setOf("pcm"), signature, other)
         assertTrue(seeded.isEmpty())
         assertTrue(PlayerTunnelAvSyncPolicy.deadAudioClasses.isEmpty())
+    }
+
+    @Test
+    fun seed_restoresDecoderKeyedEntriesAsStored() {
+        val stored = setOf("pcm@OMX.vendor.avc.tunneled", "audio/eac3")
+        assertEquals(stored, PlayerTunnelAvSyncPolicy.seedFromStore(stored, signature, signature))
+        assertTrue(
+            PlayerTunnelAvSyncPolicy.ledgerMatches(
+                PlayerTunnelAvSyncPolicy.deadAudioClasses, "pcm", "OMX.vendor.avc.tunneled"
+            )
+        )
+        assertFalse(
+            PlayerTunnelAvSyncPolicy.ledgerMatches(
+                PlayerTunnelAvSyncPolicy.deadAudioClasses, "pcm", "OMX.vendor.hevc.tunneled"
+            )
+        )
+        assertTrue(
+            PlayerTunnelAvSyncPolicy.ledgerMatches(
+                PlayerTunnelAvSyncPolicy.deadAudioClasses, "audio/eac3", "OMX.vendor.hevc.tunneled"
+            )
+        )
     }
 
     @Test
