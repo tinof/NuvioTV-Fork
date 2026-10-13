@@ -908,6 +908,8 @@ class PlayerRuntimeController(
     internal val vc1TrackSelectionBypassStreamUrls: MutableSet<String> = mutableSetOf()
     internal val vc1DecoderRetryStreamUrls: MutableSet<String> = mutableSetOf()
     internal val mpvFormatFallbackStreamUrls: MutableSet<String> = mutableSetOf()
+    // Streams MPV starts with hwdec=no (H.264 High 10 the hardware decoders cannot take).
+    internal val mpvSoftwareDecodeStreamUrls: MutableSet<String> = mutableSetOf()
     internal val safeAudioForcedStreamUrls: MutableSet<String> = mutableSetOf()
     // Own IEC output failures per stream; from the second one, rebuilds leave HD audio to the system sink.
     internal val iecFailureStrikes: MutableMap<String, Int> = mutableMapOf()

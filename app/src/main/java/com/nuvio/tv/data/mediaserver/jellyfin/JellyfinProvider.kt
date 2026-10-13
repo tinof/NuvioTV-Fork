@@ -8,13 +8,21 @@ import com.nuvio.tv.data.mediaserver.mediabrowser.MediaBrowserProvider
 import com.nuvio.tv.data.mediaserver.mediabrowser.ProfileCondition
 import com.nuvio.tv.data.mediaserver.mediabrowser.ServerClientIdentity
 import com.nuvio.tv.data.mediaserver.mediabrowser.TranscodingProfile
+import com.nuvio.tv.data.mediaserver.mediabrowser.hasHardwareAv1Decoder
 import com.nuvio.tv.data.mediaserver.mediabrowser.pathSegment
 import okhttp3.OkHttpClient
 
 internal open class JellyfinProvider(
     http: OkHttpClient,
-    identity: ServerClientIdentity
-) : MediaBrowserProvider(authorizationHeader = "Authorization", apiPath = "", http = http, identity = identity) {
+    identity: ServerClientIdentity,
+    hardwareAv1Decoder: () -> Boolean = ::hasHardwareAv1Decoder
+) : MediaBrowserProvider(
+    authorizationHeader = "Authorization",
+    apiPath = "",
+    http = http,
+    identity = identity,
+    hardwareAv1Decoder = hardwareAv1Decoder
+) {
     override val id: String = "jellyfin"
     override val displayName: String = "Jellyfin"
     override val minimumVersion: String = "10.9"

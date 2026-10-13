@@ -246,6 +246,20 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
             retryCurrentStreamWithVc1TrackSelectionBypass(currentPosition)
             return
         }
+        if (UnsupportedFormatMpvFallbackPolicy.shouldSwitchForHighBitDepthH264(
+                exoPlayerActive = isExoPlayerActiveForFormatFallback,
+                alreadySwitched = currentStreamUrl in mpvFormatFallbackStreamUrls,
+                videoMimeType = currentVideoTrackMimeType,
+                codecs = currentVideoTrackCodecs,
+                videoFormatSupport = currentVideoTrackBestSupport
+            )
+        ) {
+            // MPV's hardware path would hand it to the same decoders, so it starts in software.
+            val url = currentStreamUrl
+            mpvSoftwareDecodeStreamUrls.add(url)
+            if (switchToMpvForUnsupportedFormat("h264-high10")) return
+            mpvSoftwareDecodeStreamUrls.remove(url)
+        }
         if (UnsupportedFormatMpvFallbackPolicy.shouldSwitchForUnplayableVideoTrack(
                 exoPlayerActive = isExoPlayerActiveForFormatFallback,
                 alreadySwitched = currentStreamUrl in mpvFormatFallbackStreamUrls,
