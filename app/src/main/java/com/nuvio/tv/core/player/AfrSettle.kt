@@ -22,30 +22,47 @@ object AfrSettle {
     private const val HDMI_EXTRA_WAIT_MS = 3_000L
     private const val POLL_MS = 100L
 
-    fun minimumMs(userDelayMs: Long): Long = max(MIN_SETTLE_MS, userDelayMs.coerceIn(0L, MAX_USER_DELAY_MS))
+    /**
+     * [floorMs] replaces [MIN_SETTLE_MS] as the least wait; the fork passes its own settle hold
+     * (trackAfrSettleHoldMs) here. The viewer's delay still wins when it is longer.
+     */
+    fun minimumMs(userDelayMs: Long, floorMs: Long = MIN_SETTLE_MS): Long =
+        max(floorMs, userDelayMs.coerceIn(0L, MAX_USER_DELAY_MS))
 
-    fun capMs(userDelayMs: Long): Long = minimumMs(userDelayMs) + HDMI_EXTRA_WAIT_MS
+    fun capMs(userDelayMs: Long, floorMs: Long = MIN_SETTLE_MS): Long =
+        minimumMs(userDelayMs, floorMs) + HDMI_EXTRA_WAIT_MS
 
     /** [hdmiPlugState]: 1 up, 0 down, null when the box gives no report. */
-    internal fun settled(sinceRequestMs: Long, hdmiPlugState: Int?, userDelayMs: Long): Boolean = when {
-        sinceRequestMs >= capMs(userDelayMs) -> true
-        sinceRequestMs < minimumMs(userDelayMs) -> false
+    internal fun settled(
+        sinceRequestMs: Long,
+        hdmiPlugState: Int?,
+        userDelayMs: Long,
+        floorMs: Long = MIN_SETTLE_MS
+    ): Boolean = when {
+        sinceRequestMs >= capMs(userDelayMs, floorMs) -> true
+        sinceRequestMs < minimumMs(userDelayMs, floorMs) -> false
         else -> hdmiPlugState != 0
     }
 
     /** Suspends until the TV is taken to have settled after a request made at [requestedAtElapsed]. */
-    suspend fun awaitSettled(context: Context, requestedAtElapsed: Long, userDelayMs: Long): Long {
+    suspend fun awaitSettled(
+        context: Context,
+        requestedAtElapsed: Long,
+        userDelayMs: Long,
+        floorMs: Long = MIN_SETTLE_MS
+    ): Long {
+        val minimum = minimumMs(userDelayMs, floorMs)
         while (true) {
             val since = SystemClock.elapsedRealtime() - requestedAtElapsed
-            if (since >= minimumMs(userDelayMs)) {
+            if (since >= minimum) {
                 val state = hdmiPlugState(context)
-                if (settled(since, state, userDelayMs)) {
+                if (settled(since, state, userDelayMs, floorMs)) {
                     Log.d(TAG, "settled after ${since}ms (hdmiAudio=${state ?: "no report"})")
                     return since
                 }
                 delay(POLL_MS)
             } else {
-                delay(minimumMs(userDelayMs) - since)
+                delay(minimum - since)
             }
         }
     }

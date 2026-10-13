@@ -8,6 +8,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import com.nuvio.tv.core.player.FrameRateUtils
+import com.nuvio.tv.core.util.DebugSwitches
 import com.nuvio.tv.data.local.FrameRateMatchingMode
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import kotlinx.coroutines.Dispatchers
@@ -20,12 +21,27 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 // Absolute ceiling on the whole track-AFR step: the mode switch wait (up to 4 s), the settle wait
-// (AfrSettle cap) and a margin. Timer-released, so it cannot deadlock startup.
+// (AfrSettle cap, from the settle floor) and a margin. Timer-released, so it cannot deadlock startup.
 private const val TRACK_AFR_SWITCH_WAIT_MS = 4_000L
 private const val TRACK_AFR_MARGIN_MS = 1_000L
 
-internal fun trackAfrDeadlineMs(userDelayMs: Long): Long =
-    TRACK_AFR_SWITCH_WAIT_MS + com.nuvio.tv.core.player.AfrSettle.capMs(userDelayMs) + TRACK_AFR_MARGIN_MS
+internal fun trackAfrDeadlineMs(
+    userDelayMs: Long,
+    floorMs: Long = com.nuvio.tv.core.player.AfrSettle.MIN_SETTLE_MS
+): Long =
+    TRACK_AFR_SWITCH_WAIT_MS + com.nuvio.tv.core.player.AfrSettle.capMs(userDelayMs, floorMs) + TRACK_AFR_MARGIN_MS
+
+// Ceiling for the debug.nuvio.afr_settle_ms test switch. trackAfrDeadlineMs grows with the
+// floor, so the deadline still covers the mode-switch wait and the whole settle wait.
+private const val TRACK_AFR_SETTLE_HOLD_MAX_MS = 4_000L
+
+/**
+ * Minimum settle hold after a real switch (the [com.nuvio.tv.core.player.AfrSettle] floor);
+ * `adb shell setprop debug.nuvio.afr_settle_ms <ms>` overrides it for A/B tests.
+ */
+internal fun trackAfrSettleHoldMs(overrideMs: Int?): Long =
+    overrideMs?.toLong()?.coerceIn(0L, TRACK_AFR_SETTLE_HOLD_MAX_MS)
+        ?: com.nuvio.tv.core.player.AfrSettle.MIN_SETTLE_MS
 
 // How long playback waits to learn the rate of an MKV that declares none.
 private const val UNDECLARED_RATE_PROBE_TIMEOUT_MS = 6_000L
@@ -203,6 +219,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
         )
     } ?: true
     val userDelayMs = (settingsNow?.afrSettleDelaySeconds ?: 0) * 1000L
+    val settleFloorMs = trackAfrSettleHoldMs(DebugSwitches.int("debug.nuvio.afr_settle_ms"))
 
     trackAfrAttemptedForCurrentStream = true
     afrTrackSwitchInFlight = needsSwitch
@@ -224,7 +241,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
 
     scope.launch {
         try {
-            withTimeoutOrNull(trackAfrDeadlineMs(userDelayMs)) {
+            withTimeoutOrNull(trackAfrDeadlineMs(userDelayMs, settleFloorMs)) {
                 val playerSettings = playerSettingsDataStore.playerSettings.first()
                 val snapped = FrameRateUtils.snapToStandardRate(rawFps)
                 val prefer23976TrackBias = FrameRateUtils.prefers23976(rawFps)
@@ -290,6 +307,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                     switchStartElapsedMs = android.os.SystemClock.elapsedRealtime()
                 }
 
+                val switchRequestedAtMs = android.os.SystemClock.elapsedRealtime()
                 val result = FrameRateUtils.matchFrameRateAndWait(
                     activity = activity,
                     frameRate = targetFrameRate,
@@ -313,11 +331,17 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                     }
                     if (switchedDisplayMode) {
                         displayModeSwitched = true
-                        Log.d(PlayerRuntimeController.TAG, "Track AFR: display mode switched; holding playback until the TV settles")
+                        val switchToStableMs = android.os.SystemClock.elapsedRealtime() - switchRequestedAtMs
+                        Log.d(
+                            PlayerRuntimeController.TAG,
+                            "Track AFR: display mode switched; switchToStableMs=$switchToStableMs " +
+                                "holding playback until the TV settles (floor ${settleFloorMs}ms)"
+                        )
                         com.nuvio.tv.core.player.AfrSettle.awaitSettled(
                             context,
                             FrameRateUtils.lastSwitchRequestedAtElapsed,
-                            playerSettings.afrSettleDelaySeconds * 1000L
+                            playerSettings.afrSettleDelaySeconds * 1000L,
+                            settleFloorMs
                         )
                         val sinceSwitchMs = if (switchStartElapsedMs > 0L) {
                             android.os.SystemClock.elapsedRealtime() - switchStartElapsedMs
@@ -334,7 +358,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                 }
             } ?: Log.w(
                 PlayerRuntimeController.TAG,
-                "Track AFR exceeded absolute deadline (${trackAfrDeadlineMs(userDelayMs)}ms); releasing start gate"
+                "Track AFR exceeded absolute deadline (${trackAfrDeadlineMs(userDelayMs, settleFloorMs)}ms); releasing start gate"
             )
         } finally {
             // Act only if this coroutine still belongs to the current
