@@ -140,6 +140,8 @@ class AudioShieldPassTest {
         // Media follows a newly connected A2DP sink, so a Bluetooth add always drops the pin.
         assertFalse(idleBluetoothPinSurvives(pin, listOf(idleSpeaker.key), added = true))
         assertTrue(idleBluetoothPinSurvives(pin, emptyList(), added = true))
+        // An HDMI sink going away may be the one the pin stands for.
+        assertFalse(idleBluetoothPinSurvives(pin, emptyList(), nonBluetoothSinkRemoved = true))
     }
 
     // --- debug.nuvio.hbr_buffer_scale ---
