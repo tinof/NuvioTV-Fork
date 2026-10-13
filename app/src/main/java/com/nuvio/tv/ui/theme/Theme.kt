@@ -141,6 +141,7 @@ fun NuvioTheme(
     CompositionLocalProvider(
         com.nuvio.tv.ui.v2.components.LocalPopupGlassBackdrop provides remember { com.nuvio.tv.ui.v2.components.PopupGlassBackdrop() },
         com.nuvio.tv.ui.v2.components.LocalGlassBackdrop provides remember { dev.chrisbanes.haze.HazeState() },
+        com.nuvio.tv.ui.v2.components.LocalPreblurredGlass provides remember { com.nuvio.tv.ui.v2.components.PreblurredGlassBackdrop() },
         LocalV2Appearance provides appearance,
         LocalVisualQuality provides quality,
         LocalGlassTokens provides glassTokens,
@@ -160,6 +161,7 @@ fun NuvioTheme(
         },
         LocalNuvioFocusRingStyle provides focusRingStyle
     ) {
+        com.nuvio.tv.ui.v2.components.PreblurredGlassDecoder()
         val baseDensity = LocalDensity.current
         val scaledDensity = remember(baseDensity, uiScalePercent) {
             Density(

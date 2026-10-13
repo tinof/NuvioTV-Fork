@@ -68,6 +68,7 @@ fun V2Atmosphere(
                 .build()
         }
     }
+    com.nuvio.tv.ui.v2.components.PublishPreblurredGlassArtwork(artwork.url.takeIf { request != null })
     Box(modifier.fillMaxSize().background(base).v2GlassSource().v2StaticBackdrop()) {
         if (background == SettingsBackground.POSTERS) {
             com.nuvio.tv.ui.v2.profile.ProfilePosterWallBackground(pageBackground = true)
