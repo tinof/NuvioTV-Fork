@@ -114,6 +114,19 @@ class ForgetTunnelStallsTest {
     }
 
     @Test
+    fun `subtitle names a sound type once whether or not its entries name a decoder`() {
+        val remembered = { formats: String -> "Tunnel off for: $formats" }
+        assertEquals(
+            "Tunnel off for: E-AC-3, PCM",
+            tunnelStallSubtitle(
+                setOf("pcm@OMX.a.tunneled", "pcm@OMX.b.tunneled", "audio/eac3"),
+                remembered,
+                "Nothing remembered."
+            )
+        )
+    }
+
+    @Test
     fun `remembered classes combine the stored list with stalls found this run`() {
         PlayerTunnelAvSyncPolicy.deadAudioClasses.add("pcm")
         val classes = rememberedTunnelStallClasses(PlayerSettings(tunnelDeadAudioClasses = setOf("audio/eac3")))
