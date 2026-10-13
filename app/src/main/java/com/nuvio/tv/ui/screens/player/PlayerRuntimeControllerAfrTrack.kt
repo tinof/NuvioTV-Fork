@@ -179,8 +179,10 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                 // before the switch removes the live-track teardown entirely.
                 // Skip under an already-audio-disabled stream (don't fight the
                 // existing state machine) and under tunneling (the tunnel
-                // clock is the audio track).
-                if (!isAudioDisabledForCurrentPlayback && !playerSettings.effectiveTunnelingEnabled) {
+                // clock is the audio track). The player's applied state, not the
+                // preference: track selection can turn tunneling off for a stream.
+                val tunnelingApplied = withContext(Dispatchers.Main) { _exoPlayer?.isTunnelingEnabled == true }
+                if (!isAudioDisabledForCurrentPlayback && !tunnelingApplied) {
                     withContext(Dispatchers.Main) {
                         _exoPlayer?.let { p ->
                             p.trackSelectionParameters = p.trackSelectionParameters

@@ -499,7 +499,7 @@ internal fun PlayerRuntimeController.tryAudioTrackPcmFallback(
 internal fun PlayerRuntimeController.audioTrackPcmFallbackAvailable(): Boolean =
     !hasTriedAudioPcmFallback &&
         cachedDecoderPriority == 1 && // Only for EXTENSION_RENDERER_MODE_ON
-        !_uiState.value.tunnelingEnabled
+        !_uiState.value.tunnelingApplied
 
 /** Bounded retry of a verified bitstream sink configuration; delays are policy, not a root-cause claim. */
 internal fun PlayerRuntimeController.tryBitstreamAudioTrackSameConfigRetry(error: PlaybackException): Boolean {

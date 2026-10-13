@@ -105,7 +105,7 @@ internal fun PlayerRuntimeController.selectAudioTrack(trackIndex: Int) {
  */
 internal fun PlayerRuntimeController.maybeRebuildForTunneledAudioSwitch(trackIndex: Int): Boolean {
     if (isUsingMpvEngine()) return false
-    if (!_uiState.value.tunnelingEnabled) return false
+    if (!_uiState.value.tunnelingApplied) return false
     val player = _exoPlayer ?: return false
     val track = _uiState.value.audioTracks.getOrNull(trackIndex) ?: return false
     if (track.isSelected) return false
