@@ -89,11 +89,41 @@ class DolbyVisionDecoderChoiceTest {
     }
 
     @Test
+    fun `profile 5 remaps to hevc only on a box without any dv decoder`() {
+        assertTrue(DolbyVisionCompatibility.remapsToHevcBaseLayer(5, false))
+        assertFalse(DolbyVisionCompatibility.remapsToHevcBaseLayer(5, true))
+        assertTrue(DolbyVisionCompatibility.remapsToHevcBaseLayer(7, true))
+        assertTrue(DolbyVisionCompatibility.remapsToHevcBaseLayer(8, false))
+        assertFalse(DolbyVisionCompatibility.remapsToHevcBaseLayer(4, false))
+        assertFalse(DolbyVisionCompatibility.remapsToHevcBaseLayer(9, false))
+    }
+
+    @Test
+    fun `dv decoder presence defaults to present until the player sets it`() {
+        assertTrue(DolbyVisionCompatibility.isDolbyVisionDecoderPresent())
+    }
+
+    @Test
     fun `dv decoder name matches the codec list, secure suffix ignored`() {
         val known = setOf("omx.nvidia.dovi.decode", "c2.amlogic.dolby-vision.dvhe.decoder")
         assertTrue(DolbyVisionBaseLayerPolicy.isDolbyVisionDecoderName("OMX.Nvidia.DOVI.decode", known))
         assertTrue(DolbyVisionBaseLayerPolicy.isDolbyVisionDecoderName("OMX.Nvidia.DOVI.decode.secure", known))
         assertFalse(DolbyVisionBaseLayerPolicy.isDolbyVisionDecoderName("OMX.Nvidia.h265.decode", known))
+    }
+
+    @Test
+    fun `the amlogic native fel port counts as a dv decoder`() {
+        val known = setOf("c2.amlogic.dolby-vision.dvhe.decoder")
+        assertTrue(DolbyVisionBaseLayerPolicy.isDolbyVisionDecoderName("amstream_dves_hevc", known))
+        assertTrue(DolbyVisionBaseLayerPolicy.isDolbyVisionDecoderName("amstream_dves_hevc.sideband", known))
+        assertTrue(DolbyVisionBaseLayerPolicy.isDolbyVisionDecoderName("amstream_dves_hevc", emptySet()))
+    }
+
+    @Test
+    fun `a failed codec list read is held for 30 seconds`() {
+        assertFalse(DolbyVisionBaseLayerPolicy.isQueryFailureFresh(nowNanos = 5L, failedAtNanos = null))
+        assertTrue(DolbyVisionBaseLayerPolicy.isQueryFailureFresh(nowNanos = 29_999_999_999L, failedAtNanos = 0L))
+        assertFalse(DolbyVisionBaseLayerPolicy.isQueryFailureFresh(nowNanos = 30_000_000_000L, failedAtNanos = 0L))
     }
 
     @Test
