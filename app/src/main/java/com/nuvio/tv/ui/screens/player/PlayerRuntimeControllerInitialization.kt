@@ -3287,6 +3287,23 @@ internal fun videoCodecQueueing(switch: Boolean?, manufacturer: String?, sdkInt:
         }
     }
 
+/**
+ * Whether the fork's IEC61937 packer may claim TrueHD/DTS-HD. Optical, a Bluetooth route
+ * and a stream whose IEC path already failed always keep it off. debug.nuvio.hbr_iec=1/0
+ * forces it on or off; unset, the "System passthrough" setting decides (on by default on
+ * Nvidia, see defaultUseSystemPassthrough).
+ */
+internal fun hbrIecEnabled(
+    switch: Boolean?,
+    useSystemPassthrough: Boolean,
+    forceOpticalPassthrough: Boolean,
+    bluetoothForcePcm: Boolean,
+    iecOff: Boolean
+): Boolean {
+    if (forceOpticalPassthrough || bluetoothForcePcm || iecOff) return false
+    return switch ?: !useSystemPassthrough
+}
+
 /** Stats HUD text for [mode]. The default row ignores Media3's Fire TV (API 28+) async case. */
 internal fun videoCodecQueueingLabel(mode: VideoCodecQueueing, sdkInt: Int): String = when (mode) {
     VideoCodecQueueing.FORCE_ASYNC -> "async (forced)"
@@ -3481,7 +3498,13 @@ private class SubtitleOffsetRenderersFactory(
         var speedAwareSink: PlaybackSpeedAwareAudioSink? = null
         val iecAudioSink = IecPassthroughAudioSink(
             sink = baseAudioSink,
-            hbrIecEnabled = !useSystemPassthrough && !forceOpticalPassthrough && !bluetoothForcePcm && !iecOff,
+            hbrIecEnabled = hbrIecEnabled(
+                switch = DebugSwitches.flag("debug.nuvio.hbr_iec"),
+                useSystemPassthrough = useSystemPassthrough,
+                forceOpticalPassthrough = forceOpticalPassthrough,
+                bluetoothForcePcm = bluetoothForcePcm,
+                iecOff = iecOff
+            ),
             onIecBecameReady = {
                 Handler(Looper.getMainLooper()).post {
                     speedAwareSink?.notifyAudioProcessingRequirementChanged()
