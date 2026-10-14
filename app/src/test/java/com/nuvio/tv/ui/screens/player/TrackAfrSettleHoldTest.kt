@@ -11,6 +11,12 @@ class TrackAfrSettleHoldTest {
     @Test
     fun `unset switch keeps the two second hold`() {
         assertEquals(2_000L, trackAfrSettleHoldMs(null))
+        assertEquals(2_000L, trackAfrSettleHoldMs(null, manufacturer = "Amlogic"))
+    }
+
+    @Test
+    fun `unset switch holds 1200 ms on nvidia`() {
+        assertEquals(1_200L, trackAfrSettleHoldMs(null, manufacturer = "NVIDIA"))
     }
 
     @Test
@@ -35,5 +41,11 @@ class TrackAfrSettleHoldTest {
     fun `the track deadline grows with the settle floor`() {
         assertEquals(10_000L, trackAfrDeadlineMs(0L))
         assertEquals(12_000L, trackAfrDeadlineMs(0L, 4_000L))
+    }
+
+    @Test
+    fun `switch value wins over the nvidia hold`() {
+        assertEquals(2_000L, trackAfrSettleHoldMs(2_000, manufacturer = "NVIDIA"))
+        assertEquals(800L, trackAfrSettleHoldMs(800, manufacturer = "NVIDIA"))
     }
 }
