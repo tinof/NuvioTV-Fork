@@ -310,16 +310,19 @@ private fun PlayerRuntimeController.disposeExoPlayerBeforeRebuild(): Boolean {
 /**
  * Holds the start of [player] until the TV has settled after the pre-start mode switch (see [AfrSettle]).
  * The first frame and READY both stand down meanwhile; this starts playback at the end if one of them has
- * already arrived, otherwise the normal start site does it with the hold released.
+ * already arrived, otherwise the normal start site does it with the hold released. The minimum is
+ * trackAfrSettleHoldMs, counted from [afrSettleAnchorElapsed].
  */
 private fun PlayerRuntimeController.beginAfrSettleHold(player: ExoPlayer, userDelayMs: Long) {
     afrSettleJob?.cancel()
     afrSettleHolding = true
     val token = ++afrSettleToken
-    val requestedAt = FrameRateUtils.lastSwitchRequestedAtElapsed
+    val floorMs = trackAfrSettleHoldMs(DebugSwitches.int("debug.nuvio.afr_settle_ms"))
+    val requestedAt = afrSettleAnchorElapsed()
     afrSettleJob = scope.launch {
         try {
-            AfrSettle.awaitSettled(context, requestedAt, userDelayMs)
+            val waitedMs = AfrSettle.awaitSettled(context, requestedAt, userDelayMs, floorMs)
+            Log.i(PlayerRuntimeController.TAG, "Preflight AFR settle complete: holdMs=$floorMs waitedMs=$waitedMs")
         } finally {
             // A reused player for the next stream is the same object; only the newest hold may release.
             if (token == afrSettleToken && _exoPlayer === player) {
@@ -345,12 +348,14 @@ private fun PlayerRuntimeController.beginAfrSettleHold(player: ExoPlayer, userDe
  *    start is suppressed; resumePlaybackAfterTrackAfrIfHeld() (deadline-bounded, with
  *    its own settle delay) resumes playback when the gate releases.
  *  - Display-AFR settle hold:
- *    when the preflight actually changed the display mode, hold the first start
- *    ~2 s so the A/V pipeline does not begin inside the HDMI mode transition. On
- *    QMS-capable chains the seamless switch reports complete almost instantly, so
- *    an immediate start can otherwise start the hardware clock mid-transition and
- *    latch bad frame pacing for the whole title. Timer-released, never event-gated,
- *    so it cannot deadlock startup; no-switch starts are unaffected.
+ *    when the preflight actually changed the display mode, every start stands down
+ *    while afrSettleHolding, so the A/V pipeline does not begin inside the HDMI mode
+ *    transition. beginAfrSettleHold waits through AfrSettle with trackAfrSettleHoldMs
+ *    as its minimum: 1.2 s on Nvidia from the stabilized switch, 2 s elsewhere from
+ *    the request. debug.nuvio.afr_settle_ms overrides it, and the user's "Delay after
+ *    refresh rate change" wins when longer. Then it waits for the HDMI audio link,
+ *    capped at minimum + 3 s, and starts playback itself. No-switch starts are
+ *    unaffected.
  */
 private fun PlayerRuntimeController.startPlaybackThroughAfrGates(
     player: ExoPlayer,
