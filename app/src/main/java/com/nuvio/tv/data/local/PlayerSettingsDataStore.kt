@@ -302,7 +302,7 @@ data class PlayerSettings(
     val stripHdr10PlusSei: Boolean = false,
     // On the DV strip path, inject HDR10 static-metadata SEI (MDCV/CLLI)
     // derived from the source RPU so non-DV HDR10 sinks tone-map correctly.
-    // Default off; only affects P7/P8.1 strip output.
+    // Default off (on for Nvidia when never saved); only affects P7/P8.1 strip output.
     val injectHdr10MetadataOnStrip: Boolean = false,
     val mpvHi10pGnextSoftwareFallbackEnabled: Boolean = false,
     val mpvHardwareDecodeMode: MpvHardwareDecodeMode = MpvHardwareDecodeMode.AUTO_SAFE,
@@ -595,6 +595,15 @@ internal fun storedFrameRateMatchingMode(
 
 internal fun defaultFrameRateMatchingMode(manufacturer: String? = Build.MANUFACTURER): FrameRateMatchingMode =
     if (DeviceProfile.isNvidia(manufacturer)) FrameRateMatchingMode.START_STOP else FrameRateMatchingMode.OFF
+
+/** HDR10 metadata injection on the DV strip path as stored; without a saved choice it is on for Nvidia only. */
+internal fun storedInjectHdr10MetadataOnStrip(
+    stored: Boolean?,
+    manufacturer: String? = Build.MANUFACTURER
+): Boolean = stored ?: defaultInjectHdr10MetadataOnStrip(manufacturer)
+
+internal fun defaultInjectHdr10MetadataOnStrip(manufacturer: String? = Build.MANUFACTURER): Boolean =
+    DeviceProfile.isNvidia(manufacturer)
 
 /**
  * "System passthrough" when nothing is saved: on Nvidia the platform sink bitstreams
@@ -1216,7 +1225,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 },
                 dv7LibdoviModeOverride = (prefs[dv7LibdoviModeOverrideKey] ?: -1).coerceIn(-1, 4),
                 stripHdr10PlusSei = prefs[stripHdr10PlusSeiKey] ?: false,
-                injectHdr10MetadataOnStrip = prefs[injectHdr10MetadataOnStripKey] ?: false,
+                injectHdr10MetadataOnStrip = storedInjectHdr10MetadataOnStrip(prefs[injectHdr10MetadataOnStripKey]),
                 mpvHi10pGnextSoftwareFallbackEnabled =
                     prefs[mpvHi10pGnextSoftwareFallbackEnabledKey] ?: false,
                 mpvHardwareDecodeMode = parseMpvHardwareDecodeMode(prefs[mpvHardwareDecodeModeKey]),
