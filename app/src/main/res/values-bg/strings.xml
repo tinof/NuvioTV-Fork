@@ -608,6 +608,8 @@
     <string name="playback_player_auto_desc">ExoPlayer за филми и сериали · MPV за аниме</string>
     <string name="playback_engine_exoplayer_desc">Най-добра съвместимост с текущите функции на Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Използва libmpv с Nuvio Arc OSD контроли. Експериментално.</string>
+    <string name="playback_engine_mvplayer_shield_note">На Shield libmpv рисува картината на GPU: без HDR изход и без AI мащабиране.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">На Shield libmpv рисува картината на GPU: без HDR изход.</string>
 
     <string name="video_section">Видео</string>
     <string name="audio_trailer_section">Трейлър</string>
@@ -634,7 +636,7 @@
     <string name="audio_decoder_priority">Приоритет на декодера</string>
     <string name="audio_enable_downmix_title">Включи downmix</string>
     <string name="audio_tunneled">Tunneled възпроизвеждане</string>
-    <string name="audio_tunneled_sub">Синхронизация на аудио/видео на хардуерно ниво. Може да подобри възпроизвеждането на някои Android TV устройства</string>
+    <string name="audio_tunneled_sub">Синхронизация на аудио/видео на хардуерно ниво. Може да подобри възпроизвеждането на някои Android TV устройства. Аудиото без загуби TrueHD и DTS-HD винаги се възпроизвежда без нея. Докато е включена, скоростта на възпроизвеждане не може да се променя, а съотношението е само Побери или Запълни</string>
     <!-- DV7 Handling Mode -->
     <string name="dv7_handling_title">Обработка на Dolby Vision</string>
     <string name="dv7_handling_dialog_subtitle">Избери как DV потоците да се обработват по време на възпроизвеждане.</string>
@@ -3015,6 +3017,7 @@
     <string name="assessment_grounds_afr_on">Дисплеят отчита няколко честоти на опресняване при текущата резолюция (%1$s)</string>
     <string name="assessment_grounds_afr_already">Вече е включено - „при стартиране“ или „при стартиране и спиране“ е въпрос на предпочитание: по-малко HDMI ресинхронизации срещу връщане на интерфейса към 60 Hz</string>
     <string name="assessment_grounds_afr_single">Дисплей с една честота при текущата резолюция - няма към какво да се превключи</string>
+    <string name="assessment_grounds_afr_shield">На Shield изключете собствената му настройка за съвпадение на кадровата честота (Shield Experience 9.2 и по-нови), докато това е включено: и двете превключват дисплея и си пречат</string>
     <string name="assessment_grounds_res_on">Дисплеят предлага няколко резолюции (%1$s)</string>
     <string name="assessment_grounds_res_single">Дисплей с една резолюция - няма към какво да се превключи</string>
     <string name="assessment_grounds_display_unknown">Дисплеят не можа да се провери от този екран - остави както е и провери на око</string>
@@ -3076,6 +3079,8 @@
     <string name="assessment_item_ac3">Принудително AC-3 транскодиране (Optical/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Аудио маршрутът е %1$s (%2$s) - при HDMI верига тази настройка само превръща lossless passthrough в AC-3 със загуби</string>
     <string name="assessment_grounds_ac3_unknown">Оттук не може да се потвърди оптичен маршрут - тази настройка е само за Optical/SPDIF изходи</string>
+    <string name="assessment_item_shield_dolby">Dolby Audio обработка на Shield</string>
+    <string name="assessment_grounds_shield_dolby">Никое приложение не може да прочете тази настройка на Shield. Ако звукът се разсинхронизира или Atmos прекъсва, изключете Dolby обработката на звука в звуковите настройки на Shield и тествайте отново</string>
     <string name="assessment_apply_title">Приложи препоръчаните настройки</string>
     <string name="assessment_apply_arm_sub">Записва измерените и изчислените редове плюс избрания профил - редовете за проверка не се пипат. Пази се снимка за връщане.</string>
     <string name="assessment_apply_confirm_sub">Натисни отново за потвърждение - ще бъдат записани около %1$d настройки</string>
@@ -3088,6 +3093,7 @@
     <string name="assessment_profile_suggested_tag">Препоръчан</string>
     <string name="assessment_grounds_res_choice">Дисплеят предлага няколко резолюции (%1$s) - при съответствие мащабирането се прави от панела, а не от това устройство; кое изглежда по-добре зависи от панела, затова изборът е твой</string>
     <string name="assessment_grounds_res_inert">Дисплей с една резолюция - тук тази настройка няма ефект</string>
+    <string name="assessment_grounds_res_shield">На Shield съвпадението на резолюцията изпраща видеото с по-ниска резолюция към телевизора без промяна, така че AI мащабирането на Shield никога не работи - оставете го изключено, за да запазите AI мащабирането</string>
     <string name="assessment_already_set">\u2713 Вече е зададено</string>
     <string name="player_pill_play">Пусни</string>
     <string name="player_pill_pause">Пауза</string>

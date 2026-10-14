@@ -319,6 +319,7 @@
     <string name="assessment_grounds_afr_on">显示器在当前分辨率下报告了多个刷新率 (%1$s)</string>
     <string name="assessment_grounds_afr_already">已开启 -「开始时」还是「开始和停止时」取决于偏好：减少 HDMI 重新同步，还是让界面回到 60 Hz</string>
     <string name="assessment_grounds_afr_single">显示器在当前分辨率下只有一个刷新率 - 没有可切换的选项</string>
+    <string name="assessment_grounds_afr_shield">在 Shield 上，开启此项时请关闭 Shield 自身的帧率匹配设置（Shield Experience 9.2 及更高版本）：两者都会切换显示模式，会相互冲突</string>
     <string name="assessment_grounds_res_on">显示器提供多个分辨率 (%1$s)</string>
     <string name="assessment_grounds_res_single">显示器只有一个分辨率 - 没有可切换的选项</string>
     <string name="assessment_grounds_display_unknown">无法从此画面检查显示器 - 保持不变并自行目视确认</string>
@@ -380,6 +381,8 @@
     <string name="assessment_item_ac3">强制 AC-3 转码 (光纤/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">音频路由为 %1$s (%2$s) - 在 HDMI 链路上，此设置只会把无损穿透变成有损的 AC-3</string>
     <string name="assessment_grounds_ac3_unknown">无法从这里确认光纤路由 - 此设置只适用于光纤/SPDIF 输出</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio 处理</string>
+    <string name="assessment_grounds_shield_dolby">任何应用都无法读取此 Shield 设置。如果声音不同步或 Atmos 中断，请在 Shield 的声音设置中关闭 Dolby 音频处理后再测试</string>
     <string name="assessment_apply_title">应用推荐设置</string>
     <string name="assessment_apply_arm_sub">写入测量行和计算行以及所选方案 - 确认行绝不会被改动。会保留一份用于还原的快照。</string>
     <string name="assessment_apply_confirm_sub">再按一次确认 - 将写入约 %1$d 项设置</string>
@@ -392,6 +395,7 @@
     <string name="assessment_profile_suggested_tag">建议</string>
     <string name="assessment_grounds_res_choice">显示器提供多个分辨率 (%1$s) - 匹配后由面板的缩放器而非此设备负责放大；哪个效果更好取决于面板，因此由您决定</string>
     <string name="assessment_grounds_res_inert">显示器只有一个分辨率 - 此设置在这里不起作用</string>
+    <string name="assessment_grounds_res_shield">在 Shield 上，匹配分辨率会将较低分辨率的视频原样发送给电视，因此 Shield 的 AI 超分辨率永远不会运行 - 若要保留 AI 超分辨率请保持关闭</string>
     <string name="assessment_already_set">\u2713 已设置</string>
     <string name="player_pill_play">播放</string>
     <string name="player_pill_pause">暂停</string>
@@ -672,4 +676,6 @@
     <string name="party_avatar_set_thumbs">大拇指</string>
     <string name="party_invite_leaves_current">加入后会离开您当前所在的派对。</string>
     <string name="search_row_updating">正在更新</string>
+    <string name="playback_engine_mvplayer_shield_note">在 Shield 上，libmpv 使用 GPU 绘制画面：没有 HDR 输出，也没有 AI 超分辨率。</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">在 Shield 上，libmpv 使用 GPU 绘制画面：没有 HDR 输出。</string>
 </resources>

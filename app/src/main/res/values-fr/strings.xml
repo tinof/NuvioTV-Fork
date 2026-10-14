@@ -539,6 +539,8 @@
     <string name="playback_player_auto_desc">ExoPlayer pour les films et séries · MPV pour les animés</string>
     <string name="playback_engine_exoplayer_desc">Meilleure compatibilité avec les fonctionnalités actuelles de Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Utilise libmpv avec les contrôles OSD de Nuvio Arc. Expérimental.</string>
+    <string name="playback_engine_mvplayer_shield_note">Sur une Shield, libmpv dessine l\'image sur le GPU : pas de sortie HDR ni d\'upscaling IA.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Sur une Shield, libmpv dessine l\'image sur le GPU : pas de sortie HDR.</string>
 
     <!-- PlaybackAudioSettings -->
     <string name="video_section">Vidéo</string>
@@ -563,7 +565,7 @@
     <string name="audio_decoder_prefer_app">Préférer les décodeurs de l’application (FFmpeg)</string>
     <string name="audio_decoder_priority">Priorité du décodeur</string>
     <string name="audio_tunneled">Lecture tunnelisée</string>
-    <string name="audio_tunneled_sub">Synchronisation audio/vidéo au niveau matériel. Peut améliorer la lecture sur certains appareils Android TV</string>
+    <string name="audio_tunneled_sub">Synchronisation audio/vidéo au niveau matériel. Peut améliorer la lecture sur certains appareils Android TV. L\'audio sans perte TrueHD et DTS-HD est toujours lu sans elle. Tant qu\'elle est activée, la vitesse de lecture ne peut pas être modifiée et le format est limité à Ajuster ou Remplir</string>
     <string name="audio_force_optical_passthrough">Forcer le transcodage AC-3 (optique/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Transcode les formats multicanaux (TrueHD, DTS, AAC, etc.) en Dolby Digital 5.1 en temps réel pour les connexions optiques/SPDIF.</string>
     <string name="audio_mpv_hwdec_title">Décodage matériel (MPV uniquement)</string>
@@ -3225,6 +3227,7 @@
     <string name="assessment_grounds_afr_on">L\'écran déclare plusieurs fréquences de rafraîchissement à la résolution actuelle (%1$s)</string>
     <string name="assessment_grounds_afr_already">Déjà activé - Démarrage ou Démarrage &amp; arrêt est une préférence : moins de resynchronisations HDMI ou une interface qui revient à 60 Hz</string>
     <string name="assessment_grounds_afr_single">Écran à fréquence unique à la résolution actuelle - rien vers quoi basculer</string>
+    <string name="assessment_grounds_afr_shield">Sur une Shield, désactivez son propre réglage de correspondance de la fréquence d\'images (Shield Experience 9.2 et ultérieur) tant que ceci est activé : les deux changent le mode de l\'écran et se contrarient</string>
     <string name="assessment_grounds_res_on">L\'écran propose plusieurs résolutions (%1$s)</string>
     <string name="assessment_grounds_res_single">Écran à résolution unique - rien vers quoi basculer</string>
     <string name="assessment_grounds_display_unknown">Impossible d\'inspecter l\'écran depuis cette page - laissez tel quel et vérifiez à l\'œil</string>
@@ -3286,6 +3289,8 @@
     <string name="assessment_item_ac3">Forcer le transcodage AC-3 (optique/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">La sortie audio est %1$s (%2$s) - sur une chaîne HDMI, ce réglage ne fait que transformer le passthrough sans perte en AC-3 avec perte</string>
     <string name="assessment_grounds_ac3_unknown">Impossible de confirmer une sortie optique d\'ici - ce réglage ne concerne que les sorties optique/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Traitement Dolby Audio de la Shield</string>
+    <string name="assessment_grounds_shield_dolby">Aucune application ne peut lire ce réglage de la Shield. Si le son se désynchronise ou si Atmos décroche, désactivez le traitement audio Dolby dans les réglages son de la Shield et testez à nouveau</string>
     <string name="assessment_apply_title">Appliquer les réglages recommandés</string>
     <string name="assessment_apply_arm_sub">Écrit les lignes mesurées et calculées plus le profil sélectionné - les lignes à vérifier ne sont jamais modifiées. Une sauvegarde est conservée pour pouvoir rétablir.</string>
     <string name="assessment_apply_confirm_sub">Appuyez à nouveau pour confirmer - environ %1$d réglages seront écrits</string>
@@ -3298,6 +3303,7 @@
     <string name="assessment_profile_suggested_tag">Suggéré</string>
     <string name="assessment_grounds_res_choice">L\'écran propose plusieurs résolutions (%1$s) - l\'adaptation laisse la mise à l\'échelle au téléviseur plutôt qu\'à ce boîtier ; le meilleur rendu dépend de la dalle, ce choix vous revient donc</string>
     <string name="assessment_grounds_res_inert">Écran à résolution unique - ce réglage est sans effet ici</string>
+    <string name="assessment_grounds_res_shield">Sur une Shield, faire correspondre la résolution envoie la vidéo de plus basse résolution telle quelle au téléviseur, donc l\'upscaling IA de la Shield ne s\'exécute jamais - laissez désactivé pour garder l\'upscaling IA</string>
     <string name="assessment_already_set">\u2713 Déjà réglé</string>
     <string name="player_pill_play">Lecture</string>
     <string name="player_pill_pause">Pause</string>

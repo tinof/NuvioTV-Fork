@@ -566,6 +566,8 @@
     <string name="playback_player_auto_desc">ExoPlayer za filme in TV-serije · MPV za anime</string>
     <string name="playback_engine_exoplayer_desc">Najboljša združljivost s trenutnimi funkcijami Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Uporablja libmpv s kontrolniki Nuvio Arc OSD. Eksperimentalno.</string>																								  
+    <string name="playback_engine_mvplayer_shield_note">Na Shieldu libmpv riše sliko na GPU: brez izhoda HDR in brez AI-povečave.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Na Shieldu libmpv riše sliko na GPU: brez izhoda HDR.</string>
     <!-- PlaybackAudioSettings -->
     <string name="audio_trailer_section">Napovednik</string>
     <string name="audio_autoplay_trailers">Samodejno predvajaj napovednike</string>
@@ -588,7 +590,7 @@
     <string name="audio_decoder_prefer_app">Preferiraj dekoderje aplikacije (FFmpeg)</string>
     <string name="audio_decoder_priority">Prioriteta dekoderja</string>
     <string name="audio_tunneled">Tunelirano predvajanje</string>
-    <string name="audio_tunneled_sub">Strojna sinhronizacija zvoka/videa. Lahko izboljša predvajanje na nekaterih napravah Android TV</string>
+    <string name="audio_tunneled_sub">Strojna sinhronizacija zvoka/videa. Lahko izboljša predvajanje na nekaterih napravah Android TV. Zvok brez izgub TrueHD in DTS-HD se vedno predvaja brez nje. Ko je vklopljena, hitrosti predvajanja ni mogoče spremeniti, razmerje stranic pa je le Prilagodi ali Zapolni</string>
     <string name="audio_mpv_hwdec_title">Strojno dekodiranje (samo MPV)</string>
     <string name="audio_mpv_hwdec_dialog_subtitle">Izberite, kako naj libmpv uporablja strojne dekoderje.</string>
     <string name="audio_mpv_hwdec_legacy_direct_copy">Podedovano (direct -&gt; copy)</string>
@@ -2499,6 +2501,7 @@
     <string name="assessment_grounds_afr_on">Zaslon pri trenutni ločljivosti sporoča več hitrosti osveževanja (%1$s)</string>
     <string name="assessment_grounds_afr_already">Že vklopljeno - Zagon ali Zagon in ustavitev je stvar izbire: manj ponovnih sinhronizacij HDMI ali vrnitev vmesnika na 60 Hz</string>
     <string name="assessment_grounds_afr_single">Zaslon z eno hitrostjo osveževanja pri trenutni ločljivosti - ni na kaj preklopiti</string>
+    <string name="assessment_grounds_afr_shield">Na Shieldu izklopite njegovo nastavitev ujemanja hitrosti sličic (Shield Experience 9.2 in novejše), dokler je to vklopljeno: obe preklapljata zaslon in si nasprotujeta</string>
     <string name="assessment_grounds_res_on">Zaslon ponuja več ločljivosti (%1$s)</string>
     <string name="assessment_grounds_res_single">Zaslon z eno ločljivostjo - ni na kaj preklopiti</string>
     <string name="assessment_grounds_display_unknown">Zaslona s tega mesta ni mogoče pregledati - pustite, kot je, in preverite na oko</string>
@@ -2560,6 +2563,8 @@
     <string name="assessment_item_ac3">Vsili prekodiranje v AC-3 (optični/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Zvočna pot je %1$s (%2$s) - na verigi HDMI ta nastavitev le spremeni prehod zvoka brez izgub v AC-3 z izgubami</string>
     <string name="assessment_grounds_ac3_unknown">Optične poti od tu ni mogoče potrditi - ta nastavitev sodi samo k optičnim/SPDIF izhodom</string>
+    <string name="assessment_item_shield_dolby">Obdelava Dolby Audio na Shieldu</string>
+    <string name="assessment_grounds_shield_dolby">Nobena aplikacija ne more prebrati te nastavitve Shielda. Če zvuk zamuja ali Atmos izpada, izklopite obdelavo zvoka Dolby v nastavitvah zvoka Shielda in preizkusite znova</string>
     <string name="assessment_apply_title">Uporabi priporočene nastavitve</string>
     <string name="assessment_apply_arm_sub">Zapiše izmerjene in izračunane vrstice ter izbrani profil - vrstice za preverjanje ostanejo nedotaknjene. Shrani se posnetek za povrnitev.</string>
     <string name="assessment_apply_confirm_sub">Za potrditev pritisnite znova - število nastavitev za zapis: približno %1$d</string>
@@ -2572,6 +2577,7 @@
     <string name="assessment_profile_suggested_tag">Predlagano</string>
     <string name="assessment_grounds_res_choice">Zaslon ponuja več ločljivosti (%1$s) - ujemanje prepusti povečevanje panelu namesto tej napravi; kaj je videti bolje, je odvisno od panela, zato to ostaja vaša izbira</string>
     <string name="assessment_grounds_res_inert">Zaslon z eno ločljivostjo - ta nastavitev tu nima učinka</string>
+    <string name="assessment_grounds_res_shield">Na Shieldu ujemanje ločljivosti pošlje video nižje ločljivosti na TV nespremenjen, zato AI-povečava Shielda nikoli ne deluje - pustite izklopljeno, da ohranite AI-povečavo</string>
     <string name="assessment_already_set">\u2713 Že nastavljeno</string>
     <string name="player_pill_play">Predvajaj</string>
     <string name="player_pill_pause">Premor</string>

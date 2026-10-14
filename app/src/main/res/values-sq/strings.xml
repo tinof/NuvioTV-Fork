@@ -664,6 +664,8 @@
     <string name="playback_player_auto_desc">ExoPlayer për filma dhe seriale · MPV për anime</string>
     <string name="playback_engine_exoplayer_desc">Përputhshmëria më e mirë me veçoritë aktuale të Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Përdor libmpv me kontrollet OSD të Nuvio Arc. Eksperimentale.</string>
+    <string name="playback_engine_mvplayer_shield_note">Në Shield, libmpv vizaton figurën në GPU: pa dalje HDR dhe pa zmadhim me AI.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Në Shield, libmpv vizaton figurën në GPU: pa dalje HDR.</string>
     <string name="video_section">Video</string>
     <string name="audio_trailer_section">Traileri</string>
     <string name="audio_autoplay_trailers">Luaj automatikisht trailerat</string>
@@ -690,7 +692,7 @@
     <string name="audio_enable_downmix_title">Aktivizo downmix</string>
     <string name="audio_enable_downmix_subtitle">Përdor rrugën downmix të FFmpeg. Kërkon Prefero dekoderët e aplikacionit (FFmpeg). Kur çaktivizohet, audio ndjek rrugën e mëparshme Android/pajisje.</string>
     <string name="audio_tunneled">Riprodhim tunneled</string>
-    <string name="audio_tunneled_sub">Sinkronizim audio/video në nivel hardueri. Mund të përmirësojë riprodhimin në disa pajisje Android TV</string>
+    <string name="audio_tunneled_sub">Sinkronizim audio/video në nivel hardueri. Mund të përmirësojë riprodhimin në disa pajisje Android TV. Audioja pa humbje TrueHD dhe DTS-HD luhet gjithmonë pa të. Sa kohë është aktiv, shpejtësia e riprodhimit nuk mund të ndryshohet dhe raporti është vetëm Përshtat ose Mbush</string>
     <string name="audio_force_optical_passthrough">Detyro transkodimin AC-3 (Optik/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Transkodon formatet shumëkanalëshe (TrueHD, DTS, AAC, etj.) në Dolby Digital 5.1 në kohë reale për lidhjet Optike/SPDIF.</string>
     <!-- DV7 Handling Mode -->
@@ -2903,4 +2905,8 @@
     <string name="stream_test_error_prefix">Gabim: %1$s</string>
     <string name="stream_test_video_bitrate">Bitrate mesatar i videos: %1$s</string>
     <string name="stream_test_error_connection">Lidhja dështoi. Lidhja e transmetimit të luajtur së fundi mund të ketë skaduar ose të jetë e paarritshme. Ju lutemi luajeni videon përsëri dhe provoni sërish.</string>
+    <string name="assessment_grounds_afr_shield">Në Shield, çaktivizo cilësimin e vet të përputhjes së shpejtësisë së kuadrove (Shield Experience 9.2 e më vonë) sa kohë që ky është aktiv: të dyja ndërrojnë ekranin dhe pengojnë njëra-tjetrën</string>
+    <string name="assessment_item_shield_dolby">Përpunimi Dolby Audio i Shield</string>
+    <string name="assessment_grounds_shield_dolby">Asnjë aplikacion nuk mund ta lexojë këtë cilësim të Shield. Nëse zëri del jashtë sinkronizimit ose Atmos ndërpritet, çaktivizo përpunimin e audios Dolby te cilësimet e zërit të Shield dhe provo përsëri</string>
+    <string name="assessment_grounds_res_shield">Në Shield, përputhja e rezolucionit dërgon videon me rezolucion më të ulët në TV ashtu siç është, kështu që zmadhimi me AI i Shield nuk punon kurrë - lëre të çaktivizuar për të mbajtur zmadhimin me AI</string>
 </resources>

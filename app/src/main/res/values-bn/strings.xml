@@ -758,6 +758,8 @@
     <string name="playback_player_auto_desc">মুভি এবং টিভি শোর জন্য ExoPlayer · অ্যানিমের জন্য MPV</string>
     <string name="playback_engine_exoplayer_desc">বর্তমান Nuvio Arc ফিচারের সাথে সেরা কম্প্যাটিবিলিটি।</string>
     <string name="playback_engine_mvplayer_desc">Nuvio Arc OSD কন্ট্রোলের সাথে libmpv ব্যবহার করে। পরীক্ষামূলক।</string>
+    <string name="playback_engine_mvplayer_shield_note">Shield-এ libmpv GPU-তে ছবি আঁকে: HDR আউটপুট নেই এবং AI আপস্কেলিং নেই।</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Shield-এ libmpv GPU-তে ছবি আঁকে: HDR আউটপুট নেই।</string>
     <string name="video_section">ভিডিও</string>
     <string name="playback_true_black_letterbox">ট্রু ব্ল্যাক বার</string>
     <string name="playback_true_black_letterbox_sub">ছবির চারপাশের বারগুলোকে আনপেইন্টেড রাখুন যাতে HDR ট্রু ব্ল্যাক থাকে। যদি বারগুলোতে একটি উজ্জ্বল রেখা দেখা যায় তবে এটি বন্ধ রাখুন।</string>
@@ -786,7 +788,7 @@
     <string name="audio_enable_downmix_title">ডাউনমিক্স চালু করুন</string>
     <string name="audio_enable_downmix_subtitle">FFmpeg ডাউনমিক্স পাথ ব্যবহার করে। প্রেফার অ্যাপ ডিকোডার (FFmpeg) প্রয়োজন। বন্ধ থাকলে, অডিও পূর্ববর্তী Android/ডিভাইস পাথ অনুসরণ করে।</string>
     <string name="audio_tunneled">টানেল প্লেব্যাক</string>
-    <string name="audio_tunneled_sub">হার্ডওয়্যার-স্তরের অডিও/ভিডিও সিঙ্ক। কিছু Android TV ডিভাইসে প্লেব্যাক উন্নত করতে পারে</string>
+    <string name="audio_tunneled_sub">হার্ডওয়্যার-স্তরের অডিও/ভিডিও সিঙ্ক। কিছু Android TV ডিভাইসে প্লেব্যাক উন্নত করতে পারে। লসলেস TrueHD ও DTS-HD অডিও সবসময় এটি ছাড়াই চলে। এটি চালু থাকলে প্লেব্যাকের গতি বদলানো যায় না এবং অ্যাসপেক্ট শুধু ফিট বা ফিল</string>
     <string name="audio_force_optical_passthrough">AC-3 ট্রান্সকোডিং ফোর্স করুন (Optical/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Optical/SPDIF কানেকশনের জন্য রিয়েল-টাইমে মাল্টিচ্যানেল ফরম্যাট (TrueHD, DTS, AAC, ইত্যাদি) Dolby Digital 5.1-এ ট্রান্সকোড করে।</string>
     <string name="dv7_handling_title">Dolby Vision হ্যান্ডলিং</string>
@@ -3129,4 +3131,8 @@
         <item quantity="one">%dটি নির্বাচিত</item>
         <item quantity="other">%dটি নির্বাচিত</item>
     </plurals>
-    </resources>
+        <string name="assessment_grounds_afr_shield">Shield-এ এটি চালু থাকাকালীন এর নিজস্ব ফ্রেম রেট মেলানোর সেটিং (Shield Experience 9.2 ও পরবর্তী) বন্ধ করুন: দুটোই ডিসপ্লে বদলায় এবং একে অপরের বিরুদ্ধে কাজ করে</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio প্রসেসিং</string>
+    <string name="assessment_grounds_shield_dolby">কোনো অ্যাপ এই Shield সেটিং পড়তে পারে না। শব্দ সিঙ্ক থেকে সরে গেলে বা Atmos বন্ধ হয়ে গেলে, Shield-এর সাউন্ড সেটিংসে Dolby অডিও প্রসেসিং বন্ধ করে আবার পরীক্ষা করুন</string>
+    <string name="assessment_grounds_res_shield">Shield-এ রেজোলিউশন মেলালে কম রেজোলিউশনের ভিডিও যেমন আছে তেমনই টিভিতে যায়, ফলে Shield-এর AI আপস্কেলিং কখনো চলে না - AI আপস্কেলিং রাখতে এটি বন্ধ রাখুন</string>
+</resources>
