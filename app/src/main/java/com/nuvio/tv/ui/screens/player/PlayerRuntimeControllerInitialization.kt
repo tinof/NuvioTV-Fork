@@ -1058,7 +1058,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             }
             // ── Track Selector Setup ──
             // Read once per build: the selector runs on the playback thread for every reselection.
-            val hbrTunnelAllowed = DebugSwitches.flag("debug.nuvio.hbr_tunnel") == true
+            val hbrTunnelOn = hbrTunnelAllowed(DebugSwitches.flag("debug.nuvio.hbr_tunnel"))
             val dvTunnelDropped = DebugSwitches.flag("debug.nuvio.dv_no_tunnel") == true
             // Set below once the codec selector exists; selection runs only after the player is built.
             var tunnelPredictionCodecSelector: MediaCodecSelector? = null
@@ -1109,7 +1109,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 displayDv = capsForDiagnostics.displayDv
                             )
                         },
-                        hbrTunnelAllowed = hbrTunnelAllowed
+                        hbrTunnelAllowed = hbrTunnelOn
                     )
                     if (isHls) {
                         for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
@@ -3343,6 +3343,13 @@ internal fun hbrIecEnabled(
     return switch ?: !useSystemPassthrough
 }
 
+/**
+ * Whether a TrueHD/DTS-HD track the platform sink plays directly keeps tunnelling instead of
+ * the hbr-format demotion. debug.nuvio.hbr_tunnel=1/0 forces it; unset, on for Nvidia only.
+ */
+internal fun hbrTunnelAllowed(switch: Boolean?, manufacturer: String? = Build.MANUFACTURER): Boolean =
+    switch ?: DeviceProfile.isNvidia(manufacturer)
+
 /** Stats HUD text for [mode]. The default row ignores Media3's Fire TV (API 28+) async case. */
 internal fun videoCodecQueueingLabel(mode: VideoCodecQueueing, sdkInt: Int): String = when (mode) {
     VideoCodecQueueing.FORCE_ASYNC -> "async (forced)"
@@ -4168,7 +4175,7 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
                         }
                     audioSink == null -> null
                     audioSink.demandsNonTunnelledVideo(format) -> "iec-hbr"
-                    // debug.nuvio.hbr_tunnel=1: let the platform sink try TrueHD/DTS-HD bitstream tunnelled.
+                    // hbrTunnelAllowed (Nvidia default, debug.nuvio.hbr_tunnel): let the platform sink try TrueHD/DTS-HD bitstream tunnelled.
                     audioSink.hbrDemandsNonTunnelledVideo(format) &&
                         !(hbrTunnelAllowed &&
                             audioSink.getFormatSupport(format) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY) -> "hbr-format"
