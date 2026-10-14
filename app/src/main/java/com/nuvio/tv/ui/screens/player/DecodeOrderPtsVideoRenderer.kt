@@ -13,7 +13,9 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import com.nuvio.tv.core.player.DecodeOrderTimestamps
 import com.nuvio.tv.core.player.DolbyVisionCodecFallback
+import com.nuvio.tv.core.util.DebugSwitches
 import java.nio.ByteBuffer
+import java.util.Locale
 
 /**
  * MediaCodec video renderer that repairs presentation times for AVI and VFW-style tracks (VC-1, XviD, DivX).
@@ -40,6 +42,10 @@ internal class DecodeOrderPtsVideoRenderer(
     private var timestamps: DecodeOrderTimestamps? = null
     private var consumed = 0L
     private var loggedEngage = false
+
+    // debug.nuvio.render_trace, read once per renderer: off, a frame costs one boolean check.
+    private val renderTrace = DebugSwitches.flag("debug.nuvio.render_trace") == true
+    private var renderedFrames = 0L
 
     override fun supportsFormat(mediaCodecSelector: MediaCodecSelector, format: Format): Int =
         super.supportsFormat(withoutAndroidSoftwareAv1(mediaCodecSelector, format, dav1dLoaded), format)
@@ -119,6 +125,24 @@ internal class DecodeOrderPtsVideoRenderer(
         return wasConsumed
     }
 
+    /**
+     * Media3 releases every rendered frame with a release time through here (tunneled playback does not).
+     * With the render trace on, every [RENDER_TRACE_EVERY]th frame logs how far ahead of System.nanoTime
+     * the release time is: SurfaceFlinger's "Timestamp ... seems implausible" on the Shield would mean
+     * the codec got a PTS-based time instead.
+     */
+    override fun renderOutputBufferV21(
+        codec: MediaCodecAdapter,
+        index: Int,
+        presentationTimeUs: Long,
+        releaseTimeNs: Long
+    ) {
+        val trace = renderTrace && renderTraceDue(++renderedFrames)
+        val nowNs = if (trace) System.nanoTime() else 0L
+        super.renderOutputBufferV21(codec, index, presentationTimeUs, releaseTimeNs)
+        if (trace) Log.i(RENDER_TAG, renderTraceLine(presentationTimeUs, releaseTimeNs, nowNs, renderedFrames))
+    }
+
     // Every codec flush: seeks, and the drop-to-keyframe path when playback falls far behind.
     override fun resetCodecStateForFlush() {
         timestamps?.flush()
@@ -175,8 +199,19 @@ internal class DecodeOrderPtsVideoRenderer(
     private companion object {
         const val TAG = "PTS_REPAIR"
         const val LOG_EVERY = 500L
+        const val RENDER_TAG = "NuvioRender"
     }
 }
+
+internal const val RENDER_TRACE_EVERY = 240L
+
+/** Whether rendered frame number [frames] (counted from 1) gets a RENDER_TRACE line. */
+internal fun renderTraceDue(frames: Long): Boolean = frames % RENDER_TRACE_EVERY == 0L
+
+/** releaseInMs: how far the release time lies ahead of [nowNs] (negative = late), one decimal. */
+internal fun renderTraceLine(ptsUs: Long, releaseTimeNs: Long, nowNs: Long, frames: Long): String =
+    "RENDER_TRACE: pts=$ptsUs releaseInMs=${String.format(Locale.US, "%.1f", (releaseTimeNs - nowNs) / 1e6)} " +
+        "frames=$frames"
 
 internal const val KEY_AMLOGIC_UNSTABLE_PTS = "vendor.unstable-pts.enable"
 internal const val KEY_AMLOGIC_AVI_DISCARD = "vendor.is-avi-discard.enable"
