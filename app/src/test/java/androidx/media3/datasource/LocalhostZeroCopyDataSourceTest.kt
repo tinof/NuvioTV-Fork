@@ -6,7 +6,6 @@ import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
-import org.junit.Ignore
 import org.junit.Test
 import java.net.ServerSocket
 import java.nio.ByteBuffer
@@ -185,7 +184,6 @@ class LocalhostZeroCopyDataSourceTest {
         }
     }
 
-    @Ignore("lib-datasource-release.aar reports 404 and 410 as 400; see app/libs/README.md")
     @Test
     fun testHttpError404() {
         val serverSocket = ServerSocket(0)
@@ -223,9 +221,7 @@ class LocalhostZeroCopyDataSourceTest {
             .setUri(mockUri)
             .build()
         
-        // Known failure: open() catches its own InvalidResponseCodeException and rethrows it wrapped
-        // in a plain HttpDataSourceException, and it reports every status other than 200, 206 and
-        // 416 as 400. Callers that act on 404 or 410 never see them.
+        // open() reports the server's own status unwrapped; the player acts on 404 and 410.
         try {
             val error = assertThrows(HttpDataSource.InvalidResponseCodeException::class.java) {
                 dataSource.open(dataSpec)
