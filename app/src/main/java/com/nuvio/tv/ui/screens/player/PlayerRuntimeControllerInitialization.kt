@@ -1299,9 +1299,10 @@ internal fun PlayerRuntimeController.initializePlayer(
                         effectiveDv7Mode == Dv7HandlingMode.STRIP_DV
             }
             com.nuvio.tv.core.player.dvmkv.DolbyVisionCompatibility.setHdr10BaseLayerModeActive(isHdr10BaseLayerModeActive)
-            // Unknown (codec list not read) counts as present, which keeps DV5 on the DV decoder.
+            // Same answer as the DV7 policy: a codec list that could not be read means no DV decoder,
+            // so DV5 goes to the HEVC remap.
             com.nuvio.tv.core.player.dvmkv.DolbyVisionCompatibility.setDolbyVisionDecoderPresent(
-                DolbyVisionBaseLayerPolicy.hasDolbyVisionDecoder() != false
+                DolbyVisionBaseLayerPolicy.dolbyVisionDecoderPresent()
             )
             isMapDv7ToHevcActiveForCurrentPlayback = mapDv7ToHevcEnabled
             // Key this off the effective mode, not the AUTO policy
