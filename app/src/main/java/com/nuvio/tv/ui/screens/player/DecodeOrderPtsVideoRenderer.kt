@@ -137,26 +137,22 @@ internal class DecodeOrderPtsVideoRenderer(
         codecOperatingRate: Float,
         deviceNeedsNoPostProcessWorkaround: Boolean,
         tunnelingAudioSessionId: Int
-    ): MediaFormat {
-        val mediaFormat = super.getMediaFormat(
-            format,
-            codecMimeType,
-            codecMaxValues,
-            codecOperatingRate,
-            deviceNeedsNoPostProcessWorkaround,
-            tunnelingAudioSessionId
-        )
-        if (vendorUnstablePts &&
-            DecodeOrderTimestamps.maxReorderFramesFor(format) != null
-        ) {
-            mediaFormat.setInteger(KEY_AMLOGIC_UNSTABLE_PTS, 1)
-            if (format.containerMimeType.equals(MimeTypes.VIDEO_AVI, ignoreCase = true)) {
-                mediaFormat.setInteger(KEY_AMLOGIC_AVI_DISCARD, 1)
-            }
-            Log.i(TAG, "vendor unstable-pts requested: mime=${format.sampleMimeType} container=${format.containerMimeType}")
-        }
-        return mediaFormat
-    }
+    ): MediaFormat = decodeOrderCodecMediaFormat<MediaFormat>(
+        format = format,
+        deviceNeedsNoPostProcessWorkaround = deviceNeedsNoPostProcessWorkaround,
+        vendorUnstablePts = vendorUnstablePts,
+        baseFormat = { noPostProcessWorkaround ->
+            super.getMediaFormat(
+                format,
+                codecMimeType,
+                codecMaxValues,
+                codecOperatingRate,
+                noPostProcessWorkaround,
+                tunnelingAudioSessionId
+            )
+        },
+        setInteger = { key, value -> setInteger(key, value) }
+    )
 
     private fun logProgress(repair: DecodeOrderTimestamps, format: Format) {
         consumed++
@@ -178,8 +174,37 @@ internal class DecodeOrderPtsVideoRenderer(
 
     private companion object {
         const val TAG = "PTS_REPAIR"
-        const val KEY_AMLOGIC_UNSTABLE_PTS = "vendor.unstable-pts.enable"
-        const val KEY_AMLOGIC_AVI_DISCARD = "vendor.is-avi-discard.enable"
         const val LOG_EVERY = 500L
     }
+}
+
+internal const val KEY_AMLOGIC_UNSTABLE_PTS = "vendor.unstable-pts.enable"
+internal const val KEY_AMLOGIC_AVI_DISCARD = "vendor.is-avi-discard.enable"
+
+/**
+ * The renderer's codec format: Media3's own ([baseFormat]), given [deviceNeedsNoPostProcessWorkaround]
+ * unchanged so Media3's Nvidia no-post-process / auto-frc=0 workaround still applies, plus the Amlogic
+ * unstable-pts keys for decode-order tracks when [vendorUnstablePts].
+ */
+internal inline fun <F> decodeOrderCodecMediaFormat(
+    format: Format,
+    deviceNeedsNoPostProcessWorkaround: Boolean,
+    vendorUnstablePts: Boolean,
+    baseFormat: (deviceNeedsNoPostProcessWorkaround: Boolean) -> F,
+    setInteger: F.(key: String, value: Int) -> Unit
+): F {
+    val mediaFormat = baseFormat(deviceNeedsNoPostProcessWorkaround)
+    if (vendorUnstablePts &&
+        DecodeOrderTimestamps.maxReorderFramesFor(format) != null
+    ) {
+        mediaFormat.setInteger(KEY_AMLOGIC_UNSTABLE_PTS, 1)
+        if (format.containerMimeType.equals(MimeTypes.VIDEO_AVI, ignoreCase = true)) {
+            mediaFormat.setInteger(KEY_AMLOGIC_AVI_DISCARD, 1)
+        }
+        Log.i(
+            "PTS_REPAIR",
+            "vendor unstable-pts requested: mime=${format.sampleMimeType} container=${format.containerMimeType}"
+        )
+    }
+    return mediaFormat
 }
