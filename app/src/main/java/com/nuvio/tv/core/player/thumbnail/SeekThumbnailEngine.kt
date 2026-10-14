@@ -1853,11 +1853,14 @@ object SeekThumbnails {
                 dropSpooled(kf)
                 tapHits++
             }
-            Log.d(TAG, "slot=${job.slot} P${job.priority} kf@${kfPts / 1000}ms slots=${slots.size} " +
-                (if (job.tapped) "src=tap(${job.auBytes / 1024}KB, #$tapHits) " else "") +
-                "req=${job.requests} kb=${job.bytes / 1024} fetch=${job.fetchMs}ms " +
-                "decode=${d.decodeMs}ms${if (d.cold) " (cold)" else ""} render=${d.renderMs}ms ${d.width}x${d.height} ${d.reason} " +
-                "waited=${job.waitedMs}ms lanes=${job.lanes}")
+            // One line per picture fills logd on a long title: slow decodes only, every one with the tag at DEBUG.
+            if (ThumbLog.perThumbnail(d.decodeMs, Log.isLoggable(TAG, Log.DEBUG))) {
+                Log.d(TAG, "slot=${job.slot} P${job.priority} kf@${kfPts / 1000}ms slots=${slots.size} " +
+                    (if (job.tapped) "src=tap(${job.auBytes / 1024}KB, #$tapHits) " else "") +
+                    "req=${job.requests} kb=${job.bytes / 1024} fetch=${job.fetchMs}ms " +
+                    "decode=${d.decodeMs}ms${if (d.cold) " (cold)" else ""} render=${d.renderMs}ms ${d.width}x${d.height} ${d.reason} " +
+                    "waited=${job.waitedMs}ms lanes=${job.lanes}")
+            }
             if (reserveHeld != null) reservePictures++
             // Small box, 4K settle target without funding: close the ~80 MB decoder at once, playback may be running.
             if (fourK && !MemoryGovernor.isStrongBox && job.priority == 0 && reserveHeld == null && !naturallyFunded) {
