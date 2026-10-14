@@ -59,6 +59,30 @@ class RemoteButtonMapTest {
     }
 
     @Test
+    fun `game controller shoulders seek, X plays and pauses, Y opens subtitles`() {
+        assertEquals(RemoteButtonJob.SEEK_BACK, default.overrideFor(KeyEvent.KEYCODE_BUTTON_L1)?.job)
+        assertEquals(RemoteButtonJob.SEEK_FORWARD, default.overrideFor(KeyEvent.KEYCODE_BUTTON_R1)?.job)
+        assertEquals(RemoteButtonJob.PLAY_PAUSE, default.overrideFor(KeyEvent.KEYCODE_BUTTON_X)?.job)
+        assertEquals(RemoteButtonJob.SUBTITLES, default.overrideFor(KeyEvent.KEYCODE_BUTTON_Y)?.job)
+        listOf(KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y)
+            .forEach {
+                assertEquals(RemoteKeyKind.ASSIGNABLE, RemoteButtonMap.kindOf(it))
+                assertTrue("shown on the settings page", it in default.rowKeys)
+                assertFalse(default.isCustomKey(it))
+            }
+    }
+
+    @Test
+    fun `game controller buttons can be rebound and set back`() {
+        val changed = default.with(KeyEvent.KEYCODE_BUTTON_Y, RemoteButtonBinding(RemoteButtonJob.AUDIO))
+        assertEquals(RemoteButtonJob.AUDIO, changed.overrideFor(KeyEvent.KEYCODE_BUTTON_Y)?.job)
+        assertEquals(changed, RemoteButtonMap.decode(changed.encode()))
+        assertEquals(default, changed.with(KeyEvent.KEYCODE_BUTTON_Y, RemoteButtonBinding(RemoteButtonJob.SUBTITLES)))
+        val off = default.with(KeyEvent.KEYCODE_BUTTON_L1, RemoteButtonBinding.NOTHING)
+        assertEquals(RemoteButtonJob.NOTHING, off.overrideFor(KeyEvent.KEYCODE_BUTTON_L1)?.job)
+    }
+
+    @Test
     fun `separate play and pause keys belong to the play pause row`() {
         assertEquals(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, RemoteButtonMap.learnTarget(KeyEvent.KEYCODE_MEDIA_PLAY))
         assertEquals(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, RemoteButtonMap.learnTarget(KeyEvent.KEYCODE_MEDIA_PAUSE))
