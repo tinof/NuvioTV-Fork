@@ -28,6 +28,10 @@ object DeviceProfile {
     fun isNvidia(manufacturer: String? = Build.MANUFACTURER): Boolean =
         manufacturer.orEmpty().trim().equals("NVIDIA", ignoreCase = true)
 
+    /** Fire TV and other Amazon devices. */
+    fun isAmazon(manufacturer: String? = Build.MANUFACTURER): Boolean =
+        manufacturer.orEmpty().trim().equals("Amazon", ignoreCase = true)
+
     fun isShield(
         manufacturer: String? = Build.MANUFACTURER,
         device: String? = Build.DEVICE,

@@ -3324,11 +3324,22 @@ internal fun hbrIecEnabled(
 internal fun hbrTunnelAllowed(switch: Boolean?, manufacturer: String? = Build.MANUFACTURER): Boolean =
     switch ?: DeviceProfile.isNvidia(manufacturer)
 
-/** Stats HUD text for [mode]. The default row ignores Media3's Fire TV (API 28+) async case. */
-internal fun videoCodecQueueingLabel(mode: VideoCodecQueueing, sdkInt: Int): String = when (mode) {
+/**
+ * Stats HUD text for [mode]. Media3's default is async from API 31, and on Fire TV from API 28
+ * (Amazon manufacturer stands in for its Fire TV feature check).
+ */
+internal fun videoCodecQueueingLabel(
+    mode: VideoCodecQueueing,
+    sdkInt: Int,
+    manufacturer: String? = Build.MANUFACTURER
+): String = when (mode) {
     VideoCodecQueueing.FORCE_ASYNC -> "async (forced)"
     VideoCodecQueueing.FORCE_SYNC -> "sync (forced)"
-    VideoCodecQueueing.DEFAULT -> if (sdkInt >= 31) "default (async on API 31+)" else "default (sync)"
+    VideoCodecQueueing.DEFAULT -> when {
+        DeviceProfile.isAmazon(manufacturer) && sdkInt >= 28 -> "default (async)"
+        sdkInt >= 31 -> "default (async on API 31+)"
+        else -> "default (sync)"
+    }
 }
 
 private class SubtitleOffsetRenderersFactory(
