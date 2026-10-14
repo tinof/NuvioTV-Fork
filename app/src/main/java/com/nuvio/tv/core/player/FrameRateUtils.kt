@@ -723,15 +723,6 @@ object FrameRateUtils {
                             "$candidateCount candidate modes"
                     }
                 )
-                // A restore that has not reached the display yet still asks the window
-                // for the UI mode; keep the window on the mode this playback wants.
-                val layoutParams = window.attributes
-                if (layoutParams.preferredDisplayModeId != 0 &&
-                    layoutParams.preferredDisplayModeId != activeMode.modeId
-                ) {
-                    layoutParams.preferredDisplayModeId = activeMode.modeId
-                    window.attributes = layoutParams
-                }
                 return@withContext Pair<Display.Mode?, DisplayModeSwitchResult?>(
                     null,
                     DisplayModeSwitchResult(activeMode)
