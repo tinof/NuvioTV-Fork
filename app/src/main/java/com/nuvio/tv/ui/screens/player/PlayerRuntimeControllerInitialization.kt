@@ -295,9 +295,6 @@ private fun PlayerRuntimeController.disposeExoPlayerBeforeRebuild(): Boolean {
     return releasedExistingPlayer
 }
 
-// AFR settle hold duration (Exo parity with mpvDelayStartAfterAfrSwitch).
-private const val AFR_EXO_SETTLE_HOLD_MS = 2_000L
-
 /**
  * Applies a [PlayerStartupPlaybackPolicy] start action through the fork's AFR gates:
  *
@@ -306,7 +303,9 @@ private const val AFR_EXO_SETTLE_HOLD_MS = 2_000L
  *    its own settle delay) resumes playback when the gate releases.
  *  - Display-AFR settle hold:
  *    when the preflight actually changed the display mode, hold the first start
- *    ~2 s so the A/V pipeline does not begin inside the HDMI mode transition. On
+ *    for trackAfrSettleHoldMs (1.2 s on Nvidia, 2 s elsewhere,
+ *    debug.nuvio.afr_settle_ms overrides it), the same hold as the track-AFR
+ *    path, so the A/V pipeline does not begin inside the HDMI mode transition. On
  *    QMS-capable chains the seamless switch reports complete almost instantly, so
  *    an immediate start can otherwise start the hardware clock mid-transition and
  *    latch bad frame pacing for the whole title. Timer-released, never event-gated,
@@ -321,9 +320,11 @@ private fun PlayerRuntimeController.startPlaybackThroughAfrGates(
     if (!setPlayWhenReady && !callPlay) return
     if (afrTrackSwitchInFlight) return
     if (holdForAfrSettle) {
+        val holdMs = trackAfrSettleHoldMs(DebugSwitches.int("debug.nuvio.afr_settle_ms"))
         scope.launch {
-            kotlinx.coroutines.delay(AFR_EXO_SETTLE_HOLD_MS)
+            kotlinx.coroutines.delay(holdMs)
             if (_exoPlayer === player && !userPausedManually && !isReleasingPlayer) {
+                Log.i(PlayerRuntimeController.TAG, "Preflight AFR settle complete: holdMs=$holdMs")
                 player.playWhenReady = true
                 player.play()
             }
