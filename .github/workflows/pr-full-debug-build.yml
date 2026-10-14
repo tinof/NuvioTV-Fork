@@ -38,6 +38,7 @@ jobs:
         env:
           LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
           LOCAL_DEV_PROPERTIES_BASE64: ${{ secrets.LOCAL_DEV_PROPERTIES_BASE64 }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ -n "$LOCAL_PROPERTIES_BASE64" ]; then
             printf '%s' "$LOCAL_PROPERTIES_BASE64" | base64 --decode > local.properties
@@ -50,6 +51,31 @@ jobs:
           else
             touch local.dev.properties
           fi
+
+          # Logs of this public repo are public: mask every value, then list the key names only.
+          keys=""
+          for file in local.properties local.dev.properties; do
+            while IFS='=' read -r key value || [ -n "$key" ]; do
+              key="$(printf '%s' "$key" | tr -d '[:space:]')"
+              case "$key" in ''|'#'*) continue ;; esac
+              value="$(printf '%s' "$value" | tr -d '\r')"
+              [ -n "$value" ] && echo "::add-mask::$value"
+              [ -n "$value" ] && keys="$keys $key"
+            done < "$file"
+          done
+          echo "Properties with values:${keys:- none}"
+
+          case " $keys " in
+            *" NUVIO_SUPABASE_URL "*) ;;
+            *)
+              message="NUVIO_SUPABASE_URL is not set (secret LOCAL_PROPERTIES_BASE64), so account login will not work in this APK."
+              if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+                echo "::error::$message"
+                exit 1
+              fi
+              echo "::warning::$message"
+              ;;
+          esac
 
       - name: Prepare CI signing config
         run: |
