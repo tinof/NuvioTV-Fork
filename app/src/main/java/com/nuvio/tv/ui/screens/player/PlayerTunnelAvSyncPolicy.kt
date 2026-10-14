@@ -1,6 +1,8 @@
 package com.nuvio.tv.ui.screens.player
 
+import android.os.Build
 import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.SurroundFormatResolver
 
 internal object PlayerTunnelAvSyncPolicy {
@@ -114,7 +116,15 @@ internal object PlayerTunnelAvSyncPolicy {
         decoderName?.takeIf { it.isNotBlank() }?.let { "$fingerprint|$it" }
 
     /**
-     * debug.nuvio.tunnel_real_first_frame=1: a decoder known to report tunnelled frames starts
+     * Whether a tunnelled start may wait for the real first frame: on by default on Nvidia,
+     * debug.nuvio.tunnel_real_first_frame=1/0 forces it either way. [waitsForRealFirstFrame]
+     * still requires a decoder seen reporting tunnelled frames.
+     */
+    fun realFirstFrameSwitchOn(switch: Boolean?, manufacturer: String? = Build.MANUFACTURER): Boolean =
+        switch ?: DeviceProfile.isNvidia(manufacturer)
+
+    /**
+     * With [realFirstFrameSwitchOn], a decoder known to report tunnelled frames starts
      * through the real first-frame callback instead of the synthetic start at READY.
      */
     fun waitsForRealFirstFrame(switchOn: Boolean, frameReportKey: String?, reportDecoders: Set<String>): Boolean =
