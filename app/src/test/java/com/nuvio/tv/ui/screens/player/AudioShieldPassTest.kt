@@ -19,6 +19,15 @@ class AudioShieldPassTest {
     // --- probe union (debug.nuvio.audio_probe_union) ---
 
     @Test
+    fun `probe union is on by default on nvidia only, the switch forces either side`() {
+        assertTrue(SurroundFormatResolver.probeUnionEnabled(null, "NVIDIA"))
+        assertFalse(SurroundFormatResolver.probeUnionEnabled(null, "Amlogic"))
+        assertFalse(SurroundFormatResolver.probeUnionEnabled(null, null))
+        assertFalse(SurroundFormatResolver.probeUnionEnabled(false, "NVIDIA"))
+        assertTrue(SurroundFormatResolver.probeUnionEnabled(true, "Amlogic"))
+    }
+
+    @Test
     fun `without the switch the decision reads the 5_1 probe and the API 31 pcm read`() {
         val inputs = SurroundFormatResolver.decisionInputs(fiveOne, null, anyLayout, 8, union = false)
         assertEquals(fiveOne, inputs.direct)
