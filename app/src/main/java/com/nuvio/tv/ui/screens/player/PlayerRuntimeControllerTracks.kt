@@ -235,7 +235,9 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
         }
         if (currentVideoTrackIsLikelyVc1 &&
             !currentVideoTrackSelected &&
-            !isVc1TrackSelectionBypassActiveForCurrentPlayback
+            !isVc1TrackSelectionBypassActiveForCurrentPlayback &&
+            // Unselected only while track-AFR has video off for the mode switch.
+            !afrAvQuiesceInFlight
         ) {
             val currentPosition = _exoPlayer?.currentPosition ?: 0L
             vc1TrackSelectionBypassStreamUrls.add(currentStreamUrl)
@@ -460,7 +462,8 @@ internal fun PlayerRuntimeController.maybeAdjustLibassPipelineForTracks(tracks: 
         requestedLibassRenderMode == com.nuvio.tv.data.local.LibassRenderMode.VIDEO_EFFECT &&
         !hasDetectedDolbyVisionForCurrentStream &&
         !isTunnelingActiveForCurrentPlayback &&
-        !isNativeFelActiveForCurrentPlayback
+        !isNativeFelActiveForCurrentPlayback &&
+        !afrAvQuiesceInFlight
 
     // Don't rebuild just to drop libass, except when it's holding the MKV extractor on a DV
     // file and blocking conversion; then drop it so the DV extractor runs.
