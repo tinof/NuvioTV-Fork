@@ -249,6 +249,17 @@ object DolbyVisionBaseLayerPolicy {
     fun hasDolbyVisionDecoder(): Boolean? = cachedDecoderProfiles?.decoderNames?.isNotEmpty()
 
     /**
+     * Whether any decoder lists video/dolby-vision, as [resolve] sees it: the cached read, else a
+     * fresh one, where a failed read counts as no DV decoder.
+     */
+    fun dolbyVisionDecoderPresent(): Boolean = dolbyVisionDecoderPresent(hasDolbyVisionDecoder()) {
+        runCatching { decoderProfileSupport().decoderNames }.getOrDefault(emptySet())
+    }
+
+    internal fun dolbyVisionDecoderPresent(cached: Boolean?, readDecoderNames: () -> Set<String>): Boolean =
+        cached ?: readDecoderNames().isNotEmpty()
+
+    /**
      * Whether [decoderName] is one of the decoders that list video/dolby-vision. Null when the
      * name is unknown. On boxes where the HEVC decoder also takes DV the list decides; the name
      * hints only apply when the codec list could not be read.
