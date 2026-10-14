@@ -2,6 +2,7 @@ package com.nuvio.tv.core.player.thumbnail
 
 import android.app.ActivityManager
 import android.content.Context
+import android.os.Build
 import androidx.annotation.StringRes
 import androidx.datastore.core.DataMigration
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
@@ -12,6 +13,8 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.nuvio.tv.R
+import com.nuvio.tv.core.performance.DeviceProfile
+import com.nuvio.tv.core.util.DebugSwitches
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -64,9 +67,20 @@ object SeekThumbnailPreferences {
      */
     internal const val DEFAULT_ON_MIN_TOTAL_MB = 3_300L
 
-    /** The mode of an install that never chose one. [totalMemBytes] <= 0: not known. */
-    internal fun defaultMode(totalMemBytes: Long): SeekThumbMode =
-        if (totalMemBytes in 1 until DEFAULT_ON_MIN_TOTAL_MB * 1024 * 1024) SeekThumbMode.OFF else SeekThumbMode.ALL
+    /**
+     * The mode of an install that never chose one. [totalMemBytes] <= 0: not known. The Shield TV Pro 2019 reports
+     * less than 3 GiB but starts on too. [switch] (debug.nuvio.thumb_default_on): true starts on on any box, false
+     * keeps the RAM rule on the Shield too.
+     */
+    internal fun defaultMode(
+        totalMemBytes: Long,
+        switch: Boolean? = null,
+        manufacturer: String? = Build.MANUFACTURER,
+        device: String? = Build.DEVICE,
+    ): SeekThumbMode {
+        if (switch ?: DeviceProfile.isShieldPro2019(manufacturer, device)) return SeekThumbMode.ALL
+        return if (totalMemBytes in 1 until DEFAULT_ON_MIN_TOTAL_MB * 1024 * 1024) SeekThumbMode.OFF else SeekThumbMode.ALL
+    }
 
     @Volatile private var totalMemBytes = -1L
 
@@ -77,7 +91,7 @@ object SeekThumbnailPreferences {
             am?.getMemoryInfo(info)
             totalMemBytes = info.totalMem
         }
-        return defaultMode(totalMemBytes)
+        return defaultMode(totalMemBytes, DebugSwitches.flag("debug.nuvio.thumb_default_on"))
     }
 
     /** A stored choice (or an older key's) always wins; only an install without one gets [default]. */
