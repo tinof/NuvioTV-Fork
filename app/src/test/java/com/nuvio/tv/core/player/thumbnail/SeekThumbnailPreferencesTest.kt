@@ -56,6 +56,22 @@ class SeekThumbnailPreferencesTest {
     }
 
     @Test
+    fun `the Shield TV Pro 2019 starts on though it has 3 GB`() {
+        val shieldMb = 2_900L * 1024 * 1024
+        assertEquals(SeekThumbMode.ALL, SeekThumbnailPreferences.defaultMode(shieldMb, null, "NVIDIA", "mdarcy"))
+        assertEquals("the 2019 tube keeps the RAM rule",
+            SeekThumbMode.OFF, SeekThumbnailPreferences.defaultMode(shieldMb, null, "NVIDIA", "sif"))
+        assertEquals(SeekThumbMode.OFF, SeekThumbnailPreferences.defaultMode(shieldMb, null, "Amlogic", "mdarcy"))
+        assertEquals("switch 0 keeps the RAM rule on the Pro",
+            SeekThumbMode.OFF, SeekThumbnailPreferences.defaultMode(shieldMb, false, "NVIDIA", "mdarcy"))
+        assertEquals("switch 1 starts on anywhere",
+            SeekThumbMode.ALL, SeekThumbnailPreferences.defaultMode(1_669L * 1024 * 1024, true, "Amazon", "sheldon"))
+        assertEquals("a stored Off still wins on the Pro", SeekThumbMode.OFF,
+            SeekThumbnailPreferences.modeOf(prefs { this[modeKey] = SeekThumbMode.OFF.name },
+                SeekThumbnailPreferences.defaultMode(shieldMb, null, "NVIDIA", "mdarcy")))
+    }
+
+    @Test
     fun `a stored choice is kept whatever the RAM`() {
         listOf(SeekThumbMode.ALL, SeekThumbMode.OFF).forEach { default ->
             SeekThumbMode.entries.forEach { mode ->
