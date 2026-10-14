@@ -672,6 +672,8 @@ internal fun PlayerRuntimeController.initializePlayer(
             }
             val autoLikeDv7Mode = playerSettings.dv7HandlingMode == Dv7HandlingMode.AUTO ||
                 (playerSettings.dv7HandlingMode == Dv7HandlingMode.NATIVE_FEL && !nativeFelActive)
+            // Read once so the DV7_AUTO log and the conversion mode below agree.
+            val dv7ManualSwitch = DebugSwitches.flag("debug.nuvio.dv7_manual")
             when {
                 nativeFelActive -> {
                     dv7AutoResult = null
@@ -688,6 +690,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                         DolbyVisionBaseLayerPolicy.Decision.CONVERT_TO_DV81 -> Dv7HandlingMode.DV81_LIBDOVI
                         else -> Dv7HandlingMode.HDR10_BASE_LAYER
                     }
+                    val autoManualConversion = DolbyVisionBaseLayerPolicy.autoUsesManualConversion(
+                        result,
+                        dv7ManualSwitch,
+                        Build.MANUFACTURER
+                    )
                     Log.i(
                         PlayerRuntimeController.TAG,
                         "DV7_AUTO: decision=${result.decision} " +
@@ -698,7 +705,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 "displayHdr10Plus=${result.displayHdr10Plus} " +
                                 "codecDvheDtb=${result.codecSupportsDvheDtb} " +
                                 "codecDvheSt=${result.codecSupportsDvheSt} " +
-                                "manualConversion=${result.usesManualConversion} " +
+                                "manualConversion=$autoManualConversion " +
                                 "bridgeReady=${result.bridgeReady} " +
                                 "api=${result.apiLevel} " +
                                 "host=${url.safeHost()}"
@@ -1250,7 +1257,9 @@ internal fun PlayerRuntimeController.initializePlayer(
             // HDR10 fallback).
             val dv7Mode1Forced = dv7Mode1ForcedStreamUrls.contains(url)
             val manualDv81Selected = playerSettings.dv7HandlingMode == Dv7HandlingMode.DV81_LIBDOVI
-            val autoDv81Mode2 = autoLikeDv7Mode && dv7AutoResult?.usesManualConversion == true
+            val autoDv81Mode2 = autoLikeDv7Mode && dv7AutoResult?.let {
+                DolbyVisionBaseLayerPolicy.autoUsesManualConversion(it, dv7ManualSwitch, Build.MANUFACTURER)
+            } == true
             isManualDv81Mode2ActiveForCurrentPlayback =
                 (manualDv81Selected || autoDv81Mode2) &&
                 effectiveDv7Mode == Dv7HandlingMode.DV81_LIBDOVI &&
