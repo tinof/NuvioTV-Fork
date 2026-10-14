@@ -151,7 +151,9 @@ import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.auth.DeviceSessionRegistration
 import com.nuvio.tv.core.deeplink.DeepLinkHandler
 import com.nuvio.tv.core.deeplink.DeepLinkParser
+import com.nuvio.tv.core.player.LetterboxRenderPolicy
 import com.nuvio.tv.core.player.PlayerWindowBackdrop
+import com.nuvio.tv.core.util.DebugSwitches
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.ProfileSyncService
 import com.nuvio.tv.core.sync.StartupSyncService
@@ -354,6 +356,24 @@ open class MainActivity : ComponentActivity() {
     /** True until the first onResume after onCreate completes. */
     private var isFirstResumeAfterCreate = false
 
+    private val opaqueWindowOutsidePlayback by lazy {
+        LetterboxRenderPolicy.opaqueWindowOutsidePlayback(DebugSwitches.flag("debug.nuvio.opaque_window"))
+    }
+    private var windowBackgroundOpaque: Boolean? = null
+
+    /**
+     * Transparent while the player asks for a transparent letterbox (true black HDR bars), opaque black otherwise
+     * where [opaqueWindowOutsidePlayback] holds. The window format follows the drawable's opacity.
+     */
+    private fun applyWindowBackground(transparentRequested: Boolean) {
+        val opaque = LetterboxRenderPolicy.opaqueWindowNow(opaqueWindowOutsidePlayback, transparentRequested)
+        if (windowBackgroundOpaque == opaque) return
+        windowBackgroundOpaque = opaque
+        window?.setBackgroundDrawable(
+            ColorDrawable(if (opaque) android.graphics.Color.BLACK else android.graphics.Color.TRANSPARENT)
+        )
+    }
+
     /** True after a screensaver wake until the waking press's ACTION_UP has been swallowed. */
     private var swallowKeysUntilUp = false
     private var calendarMenuKeyDown = false
@@ -384,7 +404,7 @@ open class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         com.nuvio.tv.core.performance.DetailEntryTrace.attach(window)
         isFirstResumeAfterCreate = true
-        window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+        applyWindowBackground(transparentRequested = PlayerWindowBackdrop.isTransparentRequested)
 
         // Wire the Activity-level launcher to the tracker
         externalPlaybackTracker.activityLauncher = externalPlayerLauncher
@@ -688,6 +708,9 @@ open class MainActivity : ComponentActivity() {
                     com.nuvio.tv.core.player.LocalTrailerPlayerPool provides trailerPlayerPool
                 ) {
                 val transparentPlayerBackdrop = PlayerWindowBackdrop.isTransparentRequested
+                LaunchedEffect(transparentPlayerBackdrop) {
+                    applyWindowBackground(transparentRequested = transparentPlayerBackdrop)
+                }
                 Surface(
                     modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
                         if (event.nativeKeyEvent.keyCode == entryConsumedKey) {
