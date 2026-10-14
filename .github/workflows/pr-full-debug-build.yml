@@ -76,13 +76,15 @@ jobs:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           # Without the secret, AGP makes a new debug key on every run and builds cannot update each other.
+          # app/build.gradle.kts signs debug builds with NUVIO_DEBUG_STORE_FILE when it is set.
           if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
             echo "No DEBUG_KEYSTORE_BASE64 secret; using a throwaway debug key"
             exit 0
           fi
-          mkdir -p "$HOME/.android"
-          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey
+          store="$RUNNER_TEMP/nuvio-debug.keystore"
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$store"
+          keytool -list -keystore "$store" -storepass android -alias androiddebugkey
+          echo "NUVIO_DEBUG_STORE_FILE=$store" >> "$GITHUB_ENV"
 
       - name: Build fullDebug APK
         env:
