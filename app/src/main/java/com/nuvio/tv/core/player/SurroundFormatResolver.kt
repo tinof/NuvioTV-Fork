@@ -1,6 +1,8 @@
 package com.nuvio.tv.core.player
 
+import android.os.Build
 import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.performance.DeviceProfile
 
 object SurroundFormatResolver {
 
@@ -22,10 +24,17 @@ object SurroundFormatResolver {
     data class ProbeInputs(val direct: DirectSupport?, val maxPcmChannels: Int?)
 
     /**
-     * What the surround decision reads from the chain probe. By default the 5.1 probe and the
-     * API 31+ PCM channel read, as before. With debug.nuvio.audio_probe_union=1 ([union]) a
-     * format counts when it opens in any probed layout, and the HDMI plug intent's channel
-     * count fills a missing PCM read.
+     * Whether the surround decision uses the probe union (see [decisionInputs]).
+     * debug.nuvio.audio_probe_union=1/0 forces it; unset, on for Nvidia only.
+     */
+    fun probeUnionEnabled(switch: Boolean?, manufacturer: String? = Build.MANUFACTURER): Boolean =
+        switch ?: DeviceProfile.isNvidia(manufacturer)
+
+    /**
+     * What the surround decision reads from the chain probe. Without [union] the 5.1 probe and
+     * the API 31+ PCM channel read, as before. With [union] (Nvidia default, or
+     * debug.nuvio.audio_probe_union=1, see [probeUnionEnabled]) a format counts when it opens
+     * in any probed layout, and the HDMI plug intent's channel count fills a missing PCM read.
      */
     fun decisionInputs(
         direct: DirectSupport?,
