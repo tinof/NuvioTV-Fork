@@ -135,6 +135,27 @@ class DolbyVisionDecoderChoiceTest {
     }
 
     @Test
+    fun `a cached codec list answers dv decoder presence without a new read`() {
+        var reads = 0
+        assertTrue(DolbyVisionBaseLayerPolicy.dolbyVisionDecoderPresent(true) { reads++; emptySet() })
+        assertFalse(DolbyVisionBaseLayerPolicy.dolbyVisionDecoderPresent(false) { reads++; setOf("c2.dv") })
+        assertEquals(0, reads)
+    }
+
+    @Test
+    fun `an unread codec list takes the fresh read, a failed read is no dv decoder`() {
+        assertTrue(DolbyVisionBaseLayerPolicy.dolbyVisionDecoderPresent(null) { setOf("omx.nvidia.dovi.decode") })
+        // decoderProfileSupport() hands back no decoder names when the read fails, as resolve() sees it.
+        assertFalse(DolbyVisionBaseLayerPolicy.dolbyVisionDecoderPresent(null) { emptySet() })
+    }
+
+    @Test
+    fun `dv5 remaps to the hevc base layer when the read failed`() {
+        val present = DolbyVisionBaseLayerPolicy.dolbyVisionDecoderPresent(null) { emptySet() }
+        assertTrue(DolbyVisionCompatibility.remapsToHevcBaseLayer(5, present))
+    }
+
+    @Test
     fun `dv decoders first is the nvidia default on a dv display`() {
         assertTrue(DolbyVisionCodecFallback.prefersDvDecoders(switch = null, displayDv = true, manufacturer = "NVIDIA"))
         assertFalse(DolbyVisionCodecFallback.prefersDvDecoders(switch = null, displayDv = true, manufacturer = "Amlogic"))
