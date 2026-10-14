@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.player
 
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Build
 import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
@@ -9,6 +10,7 @@ import android.view.ViewGroup
 import androidx.annotation.StringRes
 import androidx.media3.ui.PlayerView
 import com.nuvio.tv.R
+import com.nuvio.tv.core.performance.DeviceProfile
 import kotlin.math.roundToInt
 
 enum class AspectMode(@StringRes val labelResId: Int) {
@@ -21,12 +23,26 @@ enum class AspectMode(@StringRes val labelResId: Int) {
     HORIZONTAL_STRETCH(R.string.player_aspect_fit_width)
 }
 
+/**
+ * The mode the Exo surface gets. Every mode but Fit scales the video view, so tunneled playback,
+ * and HDR video where [hdrViewScaleAllowed] says no, fall back to Fit. The chosen mode stays saved.
+ */
 internal fun aspectModeAppliedToExoSurface(
     tunnelingEnabled: Boolean,
-    aspectMode: AspectMode
+    aspectMode: AspectMode,
+    hdrVideo: Boolean = false,
+    hdrViewScaleAllowed: Boolean = true
 ): AspectMode {
-    return if (tunnelingEnabled) AspectMode.ORIGINAL else aspectMode
+    return if (tunnelingEnabled || (hdrVideo && !hdrViewScaleAllowed)) AspectMode.ORIGINAL else aspectMode
 }
+
+/**
+ * Whether HDR video may use a view-scaling aspect mode: not on Nvidia by default (a scaled HDR
+ * layer may leave the hardware overlay for GPU composition), debug.nuvio.hdr_zoom=1/0 allows or
+ * blocks it on any box.
+ */
+internal fun hdrViewScaleAllowed(switch: Boolean?, manufacturer: String? = Build.MANUFACTURER): Boolean =
+    switch ?: !DeviceProfile.isNvidia(manufacturer)
 
 internal fun nextAspectMode(current: AspectMode): AspectMode {
     val modes = AspectMode.entries
