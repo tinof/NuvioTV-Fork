@@ -8,6 +8,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
+import com.nuvio.tv.core.performance.DeviceProfile
 
 /**
  * Finds Dolby Vision hardware decoders that exist on the device but don't
@@ -41,12 +42,22 @@ object DolbyVisionCodecFallback {
     private const val TAG = "DvCodecFallback"
 
     /**
-     * debug.nuvio.dv_decoder_first=1 on a DV display, set per playback. The renderer sorts the
+     * [prefersDvDecoders] for this playback, set per playback. The renderer sorts the
      * selector's list by format support (a DV decoder that does not list the stream's profile
      * goes behind HEVC), so the order is applied to the renderer's sorted list, not here.
      */
     @Volatile
     var preferDvDecoders: Boolean = false
+
+    /**
+     * Hardware DV decoders go ahead of HEVC only on a DV display: by default on Nvidia,
+     * debug.nuvio.dv_decoder_first=1/0 forces it either way there.
+     */
+    fun prefersDvDecoders(
+        switch: Boolean?,
+        displayDv: Boolean,
+        manufacturer: String? = Build.MANUFACTURER
+    ): Boolean = displayDv && (switch ?: DeviceProfile.isNvidia(manufacturer))
 
     /** Hardware decoders queried under video/dolby-vision, moved ahead of the rest, order kept. */
     fun dvDecodersFirst(format: Format, decoders: List<MediaCodecInfo>): List<MediaCodecInfo> =
