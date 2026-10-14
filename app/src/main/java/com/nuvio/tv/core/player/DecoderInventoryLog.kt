@@ -11,6 +11,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * name, MIME, hardware or software, tunneled and secure playback, and the
  * profile/level pairs for Dolby Vision. One `adb logcat -s NuvioCodecs` answers
  * which decoders a box has without a separate tool.
+ *
+ * ALL_CODECS, not REGULAR_CODECS: the regular list leaves out decoders that
+ * only do secure playback (OMX.Nvidia.*.decode.secure on the Shield);
+ * secureRequired marks them. This list only logs; the decisions elsewhere
+ * keep their own MediaCodecList.
  */
 object DecoderInventoryLog {
 
@@ -22,7 +27,7 @@ object DecoderInventoryLog {
         if (!logged.compareAndSet(false, true)) return
         runCatching {
             Log.i(TAG, "device=${Build.MANUFACTURER}/${Build.MODEL}/${Build.DEVICE} api=${Build.VERSION.SDK_INT}")
-            MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
                 .filter { !it.isEncoder }
                 .forEach { info ->
                     info.supportedTypes
@@ -40,6 +45,7 @@ object DecoderInventoryLog {
         }
         val tunneled = caps?.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_TunneledPlayback) == true
         val secure = caps?.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback) == true
+        val secureRequired = caps?.isFeatureRequired(MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback) == true
         val profiles = if (mime.equals("video/dolby-vision", ignoreCase = true)) {
             caps?.profileLevels?.joinToString(",", prefix = " dvProfiles=") { "${it.profile}/${it.level}" }.orEmpty()
         } else {
@@ -48,6 +54,17 @@ object DecoderInventoryLog {
         val maxSize = caps?.videoCapabilities?.let { v ->
             " max=${v.supportedWidths.upper}x${v.supportedHeights.upper}"
         }.orEmpty()
-        return "${info.name} $mime $hardware tunneled=$tunneled secure=$secure$maxSize$profiles"
+        return line(info.name, mime, hardware, tunneled, secure, secureRequired, maxSize + profiles)
     }
+
+    /** One inventory line; [extra] is the max size and DV profile suffix, each starting with a space. */
+    internal fun line(
+        name: String,
+        mime: String,
+        hardware: String,
+        tunneled: Boolean,
+        secure: Boolean,
+        secureRequired: Boolean,
+        extra: String = ""
+    ): String = "$name $mime $hardware tunneled=$tunneled secure=$secure secureRequired=$secureRequired$extra"
 }
