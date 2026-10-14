@@ -35,12 +35,29 @@ sealed interface TraktTokenPollResult {
 }
 
 @Singleton
-class TraktAuthService @Inject constructor(
-    @ApplicationContext private val context: Context,
+class TraktAuthService internal constructor(
+    private val context: Context,
     private val traktApi: TraktApi,
     private val traktAuthDataStore: TraktAuthDataStore,
-    private val authSessionNoticeDataStore: AuthSessionNoticeDataStore
+    private val authSessionNoticeDataStore: AuthSessionNoticeDataStore,
+    // Tests pass their own answer; the build's client id and secret come from local.properties.
+    private val credentialsConfigured: () -> Boolean
 ) {
+    @Inject constructor(
+        @ApplicationContext context: Context,
+        traktApi: TraktApi,
+        traktAuthDataStore: TraktAuthDataStore,
+        authSessionNoticeDataStore: AuthSessionNoticeDataStore
+    ) : this(
+        context = context,
+        traktApi = traktApi,
+        traktAuthDataStore = traktAuthDataStore,
+        authSessionNoticeDataStore = authSessionNoticeDataStore,
+        credentialsConfigured = {
+            BuildConfig.TRAKT_CLIENT_ID.isNotBlank() && BuildConfig.TRAKT_CLIENT_SECRET.isNotBlank()
+        }
+    )
+
     private val refreshLeewaySeconds = 60L
     private val refreshFatalRetryDelayMs = 2_000L
     private val writeRequestMutex = Mutex()
@@ -118,9 +135,7 @@ class TraktAuthService @Inject constructor(
         return BuildConfig.TRAKT_REDIRECT_URI.ifBlank { "urn:ietf:wg:oauth:2.0:oob" }
     }
 
-    fun hasRequiredCredentials(): Boolean {
-        return BuildConfig.TRAKT_CLIENT_ID.isNotBlank() && BuildConfig.TRAKT_CLIENT_SECRET.isNotBlank()
-    }
+    fun hasRequiredCredentials(): Boolean = credentialsConfigured()
 
     suspend fun getCurrentAuthState(): TraktAuthState = traktAuthDataStore.getCurrentState()
 
