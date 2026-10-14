@@ -47,7 +47,7 @@ jobs:
       - name: Upstream source matches the shipped class
         run: |
           set -euo pipefail
-          javac -source 8 -target 8 -g -proc:none -nowarn -cp "$CP" -d "$W/upstream" "$W/upstream/LocalhostZeroCopyDataSource.java"
+          javac --release 8 -g -proc:none -nowarn -cp "$CP" -d "$W/upstream" "$W/upstream/LocalhostZeroCopyDataSource.java"
           # Constant-pool indices may differ between javac builds; compare the instructions and members.
           strip() { javap -c -p "$1" | sed -E 's/#[0-9]+(\.#[0-9]+)?//g; s/\s+$//'; }
           strip "$W/orig/$CLASS_PATH_IN_JAR" > "$W/orig.txt"
@@ -58,7 +58,7 @@ jobs:
       - name: Build the patched AAR
         run: |
           set -euo pipefail
-          javac -source 8 -target 8 -g -proc:none -nowarn -cp "$CP" -d "$W/patched" app/libs/datasource-aar-src/LocalhostZeroCopyDataSource.java
+          javac --release 8 -g -proc:none -nowarn -cp "$CP" -d "$W/patched" app/libs/datasource-aar-src/LocalhostZeroCopyDataSource.java
           python3 - "$W" <<'PY'
           import os, sys, zipfile
           w = sys.argv[1]
