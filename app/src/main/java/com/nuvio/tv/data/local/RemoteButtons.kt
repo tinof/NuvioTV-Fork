@@ -157,7 +157,12 @@ class RemoteButtonMap private constructor(
             KeyEvent.KEYCODE_MUSIC to RemoteButtonBinding(RemoteButtonJob.NEXT_AUDIO),
             KeyEvent.KEYCODE_MEDIA_AUDIO_TRACK to RemoteButtonBinding(RemoteButtonJob.NEXT_AUDIO),
             KeyEvent.KEYCODE_CAPTIONS to RemoteButtonBinding(RemoteButtonJob.SUBTITLES),
-            KeyEvent.KEYCODE_GUIDE to RemoteButtonBinding(RemoteButtonJob.EPISODES)
+            KeyEvent.KEYCODE_GUIDE to RemoteButtonBinding(RemoteButtonJob.EPISODES),
+            // Game controllers (the Shield controller): shoulders seek like the D-pad, X plays and pauses.
+            KeyEvent.KEYCODE_BUTTON_L1 to RemoteButtonBinding(RemoteButtonJob.SEEK_BACK),
+            KeyEvent.KEYCODE_BUTTON_R1 to RemoteButtonBinding(RemoteButtonJob.SEEK_FORWARD),
+            KeyEvent.KEYCODE_BUTTON_X to RemoteButtonBinding(RemoteButtonJob.PLAY_PAUSE),
+            KeyEvent.KEYCODE_BUTTON_Y to RemoteButtonBinding(RemoteButtonJob.SUBTITLES)
         )
 
         val DEFAULT_ROW_KEYS: List<Int> = DEFAULTS.keys.toList().let { keys ->
