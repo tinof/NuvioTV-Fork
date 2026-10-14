@@ -631,6 +631,56 @@ class FrameRateUtilsAfrTest {
         assertFalse(FrameRateUtils.restoreOriginalDisplayMode(activity))
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Switch-back after Stop (displayModeRestorePlan)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private fun restorePlan(
+        skip: Boolean? = null,
+        delayMs: Int? = null,
+        nvidia: Boolean = true,
+        activityGone: Boolean = false
+    ) = FrameRateUtils.displayModeRestorePlan(skip, delayMs, nvidia, activityGone)
+
+    @Test
+    fun `nvidia waits 750 ms before the switch-back, other devices restore at once`() {
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Delayed(750L), restorePlan())
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Immediate, restorePlan(nvidia = false))
+    }
+
+    @Test
+    fun `afr_restore_skip=1 wins over every delay`() {
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Skip, restorePlan(skip = true))
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Skip, restorePlan(skip = true, delayMs = 2_000))
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Skip, restorePlan(skip = true, activityGone = true))
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Delayed(750L), restorePlan(skip = false))
+    }
+
+    @Test
+    fun `afr_restore_delay_ms forces either side and is clamped`() {
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Immediate, restorePlan(delayMs = 0))
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Immediate, restorePlan(delayMs = -50))
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Delayed(300L), restorePlan(delayMs = 300, nvidia = false))
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Delayed(5_000L), restorePlan(delayMs = 9_000))
+    }
+
+    @Test
+    fun `a finishing or destroyed activity restores at once`() {
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Immediate, restorePlan(activityGone = true))
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Immediate,
+            restorePlan(delayMs = 2_000, activityGone = true)
+        )
+    }
+
+    @Test
+    fun `scheduleRestoreOriginalDisplayMode without a recorded mode does nothing`() {
+        FrameRateUtils.clearOriginalDisplayMode()
+        val activity = mockk<Activity>(relaxed = true)
+        FrameRateUtils.scheduleRestoreOriginalDisplayMode(activity)
+        assertFalse(FrameRateUtils.restoreOriginalDisplayMode(activity))
+    }
+
     @Test
     fun `cleanupDisplayListener is a safe no-op for API compatibility`() {
         FrameRateUtils.cleanupDisplayListener()
