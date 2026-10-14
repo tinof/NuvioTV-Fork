@@ -50,7 +50,7 @@ jobs:
 
             const marker = "<!-- nuvio-full-debug-build -->";
             const runUrl = run.html_url;
-            const artifactName = "app-full-universal-debug.apk";
+            const artifactName = "full-debug-apks";
             let body;
 
             if (run.conclusion === "success") {
@@ -70,7 +70,7 @@ jobs:
                 "Full debug APK build completed successfully.",
                 "",
                 artifact
-                  ? `[Download APK](${artifactUrl})`
+                  ? `[Download APKs](${artifactUrl})`
                   : `[View build](${runUrl})`
               ].join("\n");
             } else {
