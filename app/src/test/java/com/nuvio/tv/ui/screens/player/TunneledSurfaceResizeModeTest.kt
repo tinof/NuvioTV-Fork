@@ -67,7 +67,7 @@ class TunneledSurfaceResizeModeTest {
                     tunnelingEnabled = false,
                     aspectMode = mode,
                     hdrVideo = true,
-                    hdrViewScaleAllowed = false
+                    hdrScaleAllowed = false
                 )
             )
         }
@@ -77,7 +77,7 @@ class TunneledSurfaceResizeModeTest {
                 tunnelingEnabled = false,
                 aspectMode = AspectMode.SLIGHT_ZOOM,
                 hdrVideo = false,
-                hdrViewScaleAllowed = false
+                hdrScaleAllowed = false
             )
         )
         assertEquals(
@@ -86,7 +86,7 @@ class TunneledSurfaceResizeModeTest {
                 tunnelingEnabled = false,
                 aspectMode = AspectMode.FULL_SCREEN,
                 hdrVideo = true,
-                hdrViewScaleAllowed = true
+                hdrScaleAllowed = true
             )
         )
     }
