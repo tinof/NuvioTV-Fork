@@ -112,6 +112,8 @@ val useLocalFfmpegDecoder = truthy(
         ?: env("USE_LOCAL_FFMPEG_DECODER")
         ?: localProperties.getProperty("USE_LOCAL_FFMPEG_DECODER")
 )
+// CI points this at a fixed key so debug builds can update each other; unset means AGP's own debug key.
+val debugStoreFilePath = env("NUVIO_DEBUG_STORE_FILE")
 val releaseStoreFilePath = env("NUVIO_RELEASE_STORE_FILE")
     ?: localProperties.getProperty("NUVIO_RELEASE_STORE_FILE")
 val releaseKeyAliasValue = env("NUVIO_RELEASE_KEY_ALIAS")
@@ -214,6 +216,14 @@ android {
     }
 
     signingConfigs {
+        debugStoreFilePath?.let { path ->
+            getByName("debug") {
+                storeFile = file(path)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
         create("release") {
             keyAlias = releaseKeyAliasValue
             keyPassword = releaseKeyPasswordValue
