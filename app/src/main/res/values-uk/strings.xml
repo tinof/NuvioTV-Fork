@@ -597,6 +597,8 @@
     <string name="playback_player_auto_desc">ExoPlayer для фільмів та серіалів · MPV для аніме</string>
     <string name="playback_engine_exoplayer_desc">Найкраща сумісність з поточними функціями Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Використовує libmpv з інтерфейсом керування Nuvio Arc. Експериментальний.</string>
+    <string name="playback_engine_mvplayer_shield_note">На Shield libmpv малює зображення на GPU: без виводу HDR і без ШІ-апскейлінгу.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">На Shield libmpv малює зображення на GPU: без виводу HDR.</string>
 
     <string name="video_section">Відео</string>
     <string name="audio_trailer_section">Трейлер</string>
@@ -623,7 +625,7 @@
     <string name="audio_decoder_priority">Пріоритет декодерів</string>
     <string name="audio_enable_downmix_title">Увімкнути мікшування</string>
     <string name="audio_tunneled">Тунельне відтворення</string>
-    <string name="audio_tunneled_sub">Апаратна синхронізація аудіо/відео. Може покращити відтворення на деяких пристроях Android TV</string>
+    <string name="audio_tunneled_sub">Апаратна синхронізація аудіо/відео. Може покращити відтворення на деяких пристроях Android TV. Аудіо без втрат TrueHD і DTS-HD завжди відтворюється без неї. Поки її увімкнено, швидкість відтворення змінити не можна, а формат лише Вписати або Заповнити</string>
     <!-- DV7 Handling Mode -->
     <string name="dv7_handling_title">Обробка Dolby Vision Profile 7</string>
     <string name="dv7_handling_dialog_subtitle">Оберіть, як обробляються потоки DV Profile 7 при відтворенні.</string>
@@ -3090,6 +3092,7 @@
     <string name="assessment_grounds_afr_on">Дисплей повідомляє кілька частот оновлення при поточній роздільній здатності (%1$s)</string>
     <string name="assessment_grounds_afr_already">Вже увімкнено - «при старті» чи «при старті та зупинці» справа смаку: менше пересинхронізацій HDMI або повернення інтерфейсу до 60 Гц</string>
     <string name="assessment_grounds_afr_single">Дисплей з однією частотою при поточній роздільній здатності - перемикатися нема на що</string>
+    <string name="assessment_grounds_afr_shield">На Shield вимкніть його власне налаштування узгодження частоти кадрів (Shield Experience 9.2 і новіше), поки це увімкнено: обидва перемикають режим дисплея і заважають одне одному</string>
     <string name="assessment_grounds_res_on">Дисплей пропонує кілька роздільних здатностей (%1$s)</string>
     <string name="assessment_grounds_res_single">Дисплей з однією роздільною здатністю - перемикатися нема на що</string>
     <string name="assessment_grounds_display_unknown">З цього екрана не вдалося перевірити дисплей - залиште як є та перевірте на око</string>
@@ -3151,6 +3154,8 @@
     <string name="assessment_item_ac3">Примусове транскодування AC-3 (Optical/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Аудіомаршрут: %1$s (%2$s) - на ланцюжку HDMI це налаштування лише перетворює прохід без втрат на AC-3 із втратами</string>
     <string name="assessment_grounds_ac3_unknown">Звідси не вдалося підтвердити оптичний маршрут - це налаштування потрібне лише для виходів Optical/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Обробка Dolby Audio на Shield</string>
+    <string name="assessment_grounds_shield_dolby">Жоден застосунок не може прочитати це налаштування Shield. Якщо звук розсинхронізується або Atmos зникає, вимкніть обробку звуку Dolby у налаштуваннях звуку Shield і перевірте знову</string>
     <string name="assessment_apply_title">Застосувати рекомендовані налаштування</string>
     <string name="assessment_apply_arm_sub">Записує виміряні та розраховані рядки й вибраний профіль - рядки для перевірки не зачіпаються. Зберігається знімок для відкату.</string>
     <string name="assessment_apply_confirm_sub">Натисніть ще раз для підтвердження - буде записано налаштувань: близько %1$d</string>
@@ -3163,6 +3168,7 @@
     <string name="assessment_profile_suggested_tag">Рекомендовано</string>
     <string name="assessment_grounds_res_choice">Дисплей пропонує кілька роздільних здатностей (%1$s) - при відповідності апскейл виконує панель, а не приставка; що виглядає краще, залежить від панелі, тому вирішувати вам</string>
     <string name="assessment_grounds_res_inert">Дисплей з однією роздільною здатністю - тут налаштування ні на що не впливає</string>
+    <string name="assessment_grounds_res_shield">На Shield узгодження роздільної здатності надсилає відео нижчої роздільної здатності на телевізор як є, тож ШІ-апскейлінг Shield ніколи не працює - залиште вимкненим, щоб зберегти ШІ-апскейлінг</string>
     <string name="assessment_already_set">\u2713 Вже встановлено</string>
     <string name="player_pill_play">Відтворити</string>
     <string name="player_pill_pause">Пауза</string>

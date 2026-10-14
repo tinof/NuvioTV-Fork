@@ -333,7 +333,7 @@
     <string name="audio_decoder_prefer_app">Foretrekk appdekodere (FFmpeg)</string>
     <string name="audio_decoder_priority">Dekoder prioritering</string>
     <string name="audio_tunneled">Tunnelert avspilling</string>
-    <string name="audio_tunneled_sub">Lyd-/videosynkronisering på maskinvarenivå. Kan forbedre avspilling på noen Android TV-enheter</string>
+    <string name="audio_tunneled_sub">Lyd-/videosynkronisering på maskinvarenivå. Kan forbedre avspilling på noen Android TV-enheter. Tapsfri TrueHD- og DTS-HD-lyd spilles alltid uten. Mens den er på, kan ikke avspillingshastigheten endres, og bildeformatet er bare Tilpass eller Fyll</string>
     <string name="audio_decoder_device_only_desc">Bruk bare innebygde maskinvaredekodere. Mest kompatibel, men kan ikke støtte alle formater.</string>
     <string name="audio_decoder_prefer_device_desc">Bruk maskinvaredekodere når tilgjengelig, fall tilbake til FFmpeg. Anbefalt for de fleste enheter.</string>
     <string name="audio_decoder_prefer_app_desc">Bruk FFmpeg-dekodere når tilgjengelig. Bedre formatstøtte, men høyere CPU-bruk.</string>
@@ -1478,6 +1478,7 @@
     <string name="assessment_grounds_afr_on">Skjermen rapporterer flere oppdateringsfrekvenser ved gjeldende oppløsning (%1$s)</string>
     <string name="assessment_grounds_afr_already">Allerede på - Start eller Start &amp; stopp er en smakssak: færre HDMI-resynkroniseringer mot at grensesnittet går tilbake til 60 Hz</string>
     <string name="assessment_grounds_afr_single">Skjerm med én oppdateringsfrekvens ved gjeldende oppløsning - ingenting å bytte til</string>
+    <string name="assessment_grounds_afr_shield">På en Shield må du slå av dens egen innstilling for samsvar med bildefrekvens (Shield Experience 9.2 og nyere) mens dette er på: begge bytter skjermmodus og motarbeider hverandre</string>
     <string name="assessment_grounds_res_on">Skjermen tilbyr flere oppløsninger (%1$s)</string>
     <string name="assessment_grounds_res_single">Skjerm med én oppløsning - ingenting å bytte til</string>
     <string name="assessment_grounds_display_unknown">Kunne ikke undersøke skjermen herfra - la stå som det er, og sjekk med øyet</string>
@@ -1539,6 +1540,8 @@
     <string name="assessment_item_ac3">Tving AC-3-omkoding (Optical/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Lydveien er %1$s (%2$s) - i en HDMI-kjede gjør denne innstillingen bare tapsfri gjennomgang om til AC-3 med tap</string>
     <string name="assessment_grounds_ac3_unknown">Kunne ikke bekrefte en optisk vei herfra - denne innstillingen hører bare hjemme på Optical/SPDIF-utganger</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio-behandling</string>
+    <string name="assessment_grounds_shield_dolby">Ingen app kan lese denne Shield-innstillingen. Hvis lyden kommer ut av synk eller Atmos faller ut, slå av Dolby-lydbehandling i Shieldens lydinnstillinger og test igjen</string>
     <string name="assessment_apply_title">Bruk anbefalte innstillinger</string>
     <string name="assessment_apply_arm_sub">Skriver radene Målt og Beregnet pluss den valgte profilen - sjekk-rader røres aldri. Et øyeblikksbilde for tilbakestilling lagres.</string>
     <string name="assessment_apply_confirm_sub">Trykk igjen for å bekrefte - omtrent %1$d innstillinger blir skrevet</string>
@@ -1551,6 +1554,7 @@
     <string name="assessment_profile_suggested_tag">Foreslått</string>
     <string name="assessment_grounds_res_choice">Skjermen tilbyr flere oppløsninger (%1$s) - matching lar panelets skalerer ta oppskaleringen i stedet for boksens; hva som ser best ut, avhenger av panelet, så dette forblir ditt valg</string>
     <string name="assessment_grounds_res_inert">Skjerm med én oppløsning - innstillingen har ingen effekt her</string>
+    <string name="assessment_grounds_res_shield">På en Shield sender samsvar med oppløsning video med lavere oppløsning uendret til TV-en, så Shieldens AI-oppskalering kjører aldri - la den være av for å beholde AI-oppskalering</string>
     <string name="assessment_already_set">\u2713 Allerede satt</string>
     <string name="player_pill_play">Spill av</string>
     <string name="player_pill_pause">Pause</string>
@@ -1849,4 +1853,6 @@
     <string name="detail_episode_synopsis_none">Ingen beskrivelse for denne episoden ennå.</string>
     <string name="player_track_role_commentary">Kommentar</string>
     <string name="player_track_role_audio_description">Synstolking</string>
+    <string name="playback_engine_mvplayer_shield_note">På en Shield tegner libmpv bildet på GPU-en: ingen HDR-utgang og ingen AI-oppskalering.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">På en Shield tegner libmpv bildet på GPU-en: ingen HDR-utgang.</string>
 </resources>

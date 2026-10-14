@@ -193,7 +193,7 @@
     <string name="audio_decoder_prefer_app">Preferă decoderele aplicației (FFmpeg)</string>
     <string name="audio_decoder_priority">Prioritate decodor</string>
     <string name="audio_tunneled">Redare prin tunel</string>
-    <string name="audio_tunneled_sub">Sincronizare audio/video la nivel hardware. Poate îmbunătăți redarea pe unele dispozitive Android TV</string>
+    <string name="audio_tunneled_sub">Sincronizare audio/video la nivel hardware. Poate îmbunătăți redarea pe unele dispozitive Android TV. Audio fără pierderi TrueHD și DTS-HD se redă mereu fără ea. Cât timp este activă, viteza de redare nu poate fi schimbată, iar aspectul este doar Potrivește sau Umple</string>
     <string name="audio_decoder_device_only_desc">Folosește doar decodoarele hardware încorporate. Cele mai compatibile, dar s-ar putea să nu suporte toate formatele.</string>
     <string name="audio_decoder_prefer_device_desc">Folosește decodoarele hardware când sunt disponibile, revine la FFmpeg dacă nu. Recomandat pentru majoritatea dispozitivelor.</string>
     <string name="audio_decoder_prefer_app_desc">Folosește decodoarele FFmpeg când sunt disponibile. Compatibilitate mai bună a formatelor, dar consumă mai mult CPU.</string>
@@ -1186,6 +1186,7 @@
     <string name="assessment_grounds_afr_on">Ecranul raportează mai multe rate de reîmprospătare la rezoluția curentă (%1$s)</string>
     <string name="assessment_grounds_afr_already">Deja activat - La pornire sau La pornire &amp; oprire ține de preferință: mai puține resincronizări HDMI sau interfața revine la 60 Hz</string>
     <string name="assessment_grounds_afr_single">Ecran cu o singură rată la rezoluția curentă - nu are la ce să comute</string>
+    <string name="assessment_grounds_afr_shield">Pe un Shield, dezactivează propria setare de potrivire a ratei de cadre (Shield Experience 9.2 și ulterior) cât timp aceasta este activă: ambele comută ecranul și se contrazic</string>
     <string name="assessment_grounds_res_on">Ecranul oferă mai multe rezoluții (%1$s)</string>
     <string name="assessment_grounds_res_single">Ecran cu o singură rezoluție - nu are la ce să comute</string>
     <string name="assessment_grounds_display_unknown">Ecranul nu a putut fi inspectat de aici - lasă așa și verifică din ochi</string>
@@ -1247,6 +1248,8 @@
     <string name="assessment_item_ac3">Forțează transcodarea AC-3 (optic/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Calea audio este %1$s (%2$s) - pe un lanț HDMI această setare doar transformă passthrough lossless în AC-3 cu pierderi</string>
     <string name="assessment_grounds_ac3_unknown">Nu s-a putut confirma o cale optică de aici - această setare are sens doar pe ieșirile optic/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Procesare Dolby Audio pe Shield</string>
+    <string name="assessment_grounds_shield_dolby">Nicio aplicație nu poate citi această setare Shield. Dacă sunetul se desincronizează sau Atmos cade, dezactivează procesarea audio Dolby din setările de sunet ale Shield și testează din nou</string>
     <string name="assessment_apply_title">Aplică setările recomandate</string>
     <string name="assessment_apply_arm_sub">Scrie rândurile Măsurate și Calculate plus profilul selectat - rândurile de verificat nu sunt atinse niciodată. Se păstrează un instantaneu pentru revenire.</string>
     <string name="assessment_apply_confirm_sub">Apasă din nou pentru confirmare - vor fi scrise aproximativ %1$d setări</string>
@@ -1259,6 +1262,7 @@
     <string name="assessment_profile_suggested_tag">Sugerat</string>
     <string name="assessment_grounds_res_choice">Ecranul oferă mai multe rezoluții (%1$s) - potrivirea lasă scalerul panoului să facă upscaling în locul acestui dispozitiv; care arată mai bine depinde de panou, deci rămâne decizia ta</string>
     <string name="assessment_grounds_res_inert">Ecran cu o singură rezoluție - această setare nu are efect aici</string>
+    <string name="assessment_grounds_res_shield">Pe un Shield, potrivirea rezoluției trimite la TV clipul cu rezoluție mai mică așa cum este, deci upscaling-ul AI al Shield nu rulează niciodată - las-o dezactivată pentru a păstra upscaling-ul AI</string>
     <string name="assessment_already_set">\u2713 Deja setat</string>
     <string name="player_pill_play">Redă</string>
     <string name="player_pill_pause">Pauză</string>
@@ -1557,4 +1561,6 @@
     <string name="detail_episode_synopsis_none">Încă nu există sinopsis pentru acest episod.</string>
     <string name="player_track_role_commentary">Comentarii</string>
     <string name="player_track_role_audio_description">Audiodescriere</string>
+    <string name="playback_engine_mvplayer_shield_note">Pe un Shield, libmpv desenează imaginea pe GPU: fără ieșire HDR și fără upscaling AI.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Pe un Shield, libmpv desenează imaginea pe GPU: fără ieșire HDR.</string>
 </resources>
