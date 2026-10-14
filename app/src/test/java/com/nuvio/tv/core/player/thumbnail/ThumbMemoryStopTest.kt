@@ -14,8 +14,9 @@ class ThumbMemoryStopTest {
     private fun strong(
         is64Bit: Boolean = true, totalMb: Long = 3_800, heapMb: Long = 384, heapUsedMb: Long = 297,
         lowMemory: Boolean = false, availMb: Long = 1_500, swapTotalMb: Long = 1_750, swapFreeMb: Long = 1_200,
+        swapRule: Boolean = true,
     ) = MemoryGovernor.strongBoxVerdict(
-        is64Bit, totalMb * mb, heapMb * mb, heapUsedMb * mb, lowMemory, availMb, swapTotalMb, swapFreeMb,
+        is64Bit, totalMb * mb, heapMb * mb, heapUsedMb * mb, lowMemory, availMb, swapTotalMb, swapFreeMb, swapRule,
     )
 
     @Test
@@ -39,6 +40,30 @@ class ThumbMemoryStopTest {
         assertTrue(v.reason, v.reason.startsWith("SwapFree"))
         assertFalse(strong(totalMb = 2_900, heapMb = 512, availMb = 450).allowed)
         assertTrue(strong(totalMb = 2_900, heapMb = 512, availMb = 900).allowed)
+    }
+
+    @Test
+    fun shieldPro2019WithSwapFullIsStrongWhileItHas900MbAvailable() {
+        val swapRule = MemoryGovernor.swapRuleOn(null, "NVIDIA", "mdarcy")
+        assertFalse(swapRule)
+        val v = strong(totalMb = 2_900, heapMb = 512, heapUsedMb = 280, availMb = 900, swapTotalMb = 1_024,
+            swapFreeMb = 0, swapRule = swapRule)
+        assertTrue(v.reason, v.allowed)
+        val short = strong(totalMb = 2_900, heapMb = 512, heapUsedMb = 280, availMb = 899, swapTotalMb = 1_024,
+            swapFreeMb = 0, swapRule = swapRule)
+        assertFalse(short.allowed)
+        assertTrue(short.reason, short.reason.startsWith("SwapFree"))
+        assertFalse("MemAvailable not known",
+            strong(totalMb = 2_900, heapMb = 512, availMb = -1, swapTotalMb = 1_024, swapFreeMb = 0, swapRule = swapRule).allowed)
+    }
+
+    @Test
+    fun swapRuleStaysOnElsewhereAndTheSwitchWins() {
+        assertTrue(MemoryGovernor.swapRuleOn(null, "NVIDIA", "sif"))
+        assertTrue(MemoryGovernor.swapRuleOn(null, "Amlogic", "mdarcy"))
+        assertTrue(MemoryGovernor.swapRuleOn(null, null, null))
+        assertTrue("1 keeps the rule on the Pro", MemoryGovernor.swapRuleOn(true, "NVIDIA", "mdarcy"))
+        assertFalse("0 drops it anywhere", MemoryGovernor.swapRuleOn(false, "Amlogic", "p212"))
     }
 
     @Test
