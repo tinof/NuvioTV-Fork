@@ -1016,7 +1016,10 @@ internal fun PlayerRuntimeController.initializePlayer(
             // ── Track Selector Setup ──
             // Read once per build: the selector runs on the playback thread for every reselection.
             val hbrTunnelOn = hbrTunnelAllowed(DebugSwitches.flag("debug.nuvio.hbr_tunnel"))
-            val dvTunnelDropped = DebugSwitches.flag("debug.nuvio.dv_no_tunnel") == true
+            val dvTunnelDropped = dropsDolbyVisionTunneling(
+                DebugSwitches.flag("debug.nuvio.dv_no_tunnel"),
+                Build.MANUFACTURER
+            )
             // Set below once the codec selector exists; selection runs only after the player is built.
             var tunnelPredictionCodecSelector: MediaCodecSelector? = null
             val adaptiveTrackSelectionFactory = AdaptiveTrackSelection.Factory(
@@ -4208,9 +4211,16 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
 }
 
 /**
+ * Whether Dolby Vision tracks are kept untunnelled: by default on Nvidia,
+ * debug.nuvio.dv_no_tunnel=1/0 forces it either way.
+ */
+internal fun dropsDolbyVisionTunneling(switch: Boolean?, manufacturer: String? = Build.MANUFACTURER): Boolean =
+    switch ?: DeviceProfile.isNvidia(manufacturer)
+
+/**
  * Why a video track must not be tunnelled, or null. Decode-order streams need
  * [DecodeOrderPtsVideoRenderer] to fix output times, and a tunnelled decoder never hands
- * its output buffers to the app. debug.nuvio.dv_no_tunnel=1 does the same for Dolby Vision.
+ * its output buffers to the app. Dolby Vision is kept untunnelled when [dropsDolbyVisionTunneling].
  */
 internal fun videoTunnelDemotionReason(
     sampleMimeType: String?,
