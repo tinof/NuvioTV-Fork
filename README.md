@@ -16,9 +16,8 @@ This is a personal branch of Nuvio Arc, tuned for the NVIDIA SHIELD TV Pro 2019.
 | Target device | SHIELD TV Pro 2019: Tegra X1+, codename `mdarcy`, Android 11 (API 30), SHIELD Experience 9.2.4 |
 | Other devices | Keep their behaviour. The risky changes apply only on Nvidia, gated by `DeviceProfile`. Some plain fixes apply everywhere. |
 
-This is not an official release. There is no support promise. Please do not report problems from this build
-to NuvioTV or to Nuvio Arc: they did not make these changes. Report them in this fork's
-[Issues](https://github.com/tinof/NuvioTV-Fork/issues).
+This is a personal build, not an official release. Issues are turned off and there is no support channel.
+Please do not report problems from this build to NuvioTV or to Nuvio Arc: they did not make these changes.
 
 ## What is different on the Shield
 
@@ -90,6 +89,9 @@ The maintainer's host cannot build Android, so builds run on GitHub Actions. The
 It builds `fullDebug` as per-ABI split APKs (`armeabi-v7a`, `arm64-v8a`), uploads them as `full-debug-apks`,
 and then runs the whole unit test suite. The tests run after the upload, so a failing test does not remove the
 APKs.
+
+It runs by hand (workflow_dispatch) and for every pull request into `main`. Both get the `.shield` package
+unless a manual run sets another suffix.
 
 Input:
 
