@@ -18,4 +18,17 @@ class MpvHwdecCodecsTest {
         assertFalse("vc1" in mpvHwdecCodecs(hardwareAv1 = true).split(','))
         assertFalse("vc1" in mpvHwdecCodecs(hardwareAv1 = false).split(','))
     }
+
+    @Test
+    fun `bt2446a tone mapping is the nvidia default`() {
+        assertTrue(mpvToneMapEnabled(switch = null, manufacturer = "NVIDIA"))
+        assertFalse(mpvToneMapEnabled(switch = null, manufacturer = "Amlogic"))
+        assertFalse(mpvToneMapEnabled(switch = null, manufacturer = null))
+    }
+
+    @Test
+    fun `the tone mapping switch wins either way`() {
+        assertFalse(mpvToneMapEnabled(switch = false, manufacturer = "NVIDIA"))
+        assertTrue(mpvToneMapEnabled(switch = true, manufacturer = "Amlogic"))
+    }
 }
