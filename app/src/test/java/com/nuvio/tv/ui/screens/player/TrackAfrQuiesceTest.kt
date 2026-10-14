@@ -23,7 +23,22 @@ class TrackAfrQuiesceTest {
     fun `without tunnelling only audio is quiesced, as before`() {
         assertEquals(TrackAfrQuiesce.AUDIO, quiesce(tunneling = false))
         assertEquals(TrackAfrQuiesce.AUDIO, quiesce(tunneling = false, lossless = false, manufacturer = "Amlogic"))
-        assertEquals(TrackAfrQuiesce.AUDIO, quiesce(tunneling = false, switch = true))
+        assertEquals(TrackAfrQuiesce.AUDIO, quiesce(tunneling = false, manufacturer = "Amlogic"))
+    }
+
+    @Test
+    fun `afr_quiesce_av=1 takes audio and video down for lossless audio without tunnelling`() {
+        assertEquals(TrackAfrQuiesce.AUDIO_AND_VIDEO, quiesce(tunneling = false, switch = true))
+        assertEquals(
+            TrackAfrQuiesce.AUDIO_AND_VIDEO,
+            quiesce(tunneling = false, switch = true, manufacturer = "Amlogic")
+        )
+        assertEquals(TrackAfrQuiesce.AUDIO, quiesce(tunneling = false, switch = true, lossless = false))
+    }
+
+    @Test
+    fun `afr_quiesce_av=0 without tunnelling keeps the audio-only quiesce`() {
+        assertEquals(TrackAfrQuiesce.AUDIO, quiesce(tunneling = false, switch = false))
     }
 
     @Test

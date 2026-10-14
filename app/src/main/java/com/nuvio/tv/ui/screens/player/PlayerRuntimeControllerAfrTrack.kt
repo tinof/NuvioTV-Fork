@@ -59,8 +59,11 @@ internal enum class TrackAfrQuiesce {
  * What to quiesce across a track-AFR display-mode switch. Without tunnelling, audio alone.
  * Under tunnelling, audio alone would move the video renderer out of the tunnel and back, so
  * nothing is touched, except a TrueHD / DTS-HD track on Nvidia, where audio and video go down
- * together (debug.nuvio.afr_quiesce_av=1/0 forces that either way). A stream already playing
- * without audio is never touched.
+ * together. A stream already playing without audio is never touched.
+ *
+ * debug.nuvio.afr_quiesce_av=1 takes audio and video down for any TrueHD / DTS-HD track,
+ * tunnelled or not (on the Shield tunnelling may never apply). =0 turns the Nvidia
+ * default off; without tunnelling that still leaves the audio-only quiesce.
  */
 internal fun trackAfrQuiesce(
     audioDisabled: Boolean,
@@ -70,6 +73,7 @@ internal fun trackAfrQuiesce(
     manufacturer: String? = Build.MANUFACTURER
 ): TrackAfrQuiesce = when {
     audioDisabled -> TrackAfrQuiesce.NONE
+    losslessAudio && avSwitch == true -> TrackAfrQuiesce.AUDIO_AND_VIDEO
     !tunnelingApplied -> TrackAfrQuiesce.AUDIO
     losslessAudio && (avSwitch ?: DeviceProfile.isNvidia(manufacturer)) -> TrackAfrQuiesce.AUDIO_AND_VIDEO
     else -> TrackAfrQuiesce.NONE
@@ -120,8 +124,10 @@ internal fun PlayerRuntimeController.endTrackAfrQuiesce(generation: Int? = null,
         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
     if (mode == TrackAfrQuiesce.AUDIO_AND_VIDEO) builder.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
     player.trackSelectionParameters = builder.build()
-    // The seek's callbacks run inside seekTo, while isTunnelingEnabled still reads the
-    // both-off selection; the quiesce stays marked until it returns so they stand down.
+    // The seek's callbacks run inside seekTo, while the player still reports the both-off
+    // selection (no video track, no tunnelling); the quiesce stays marked until it returns
+    // so they stand down. Without tunnelling, the re-enabled video renderer draws a new first
+    // frame after the seek, so onRenderedFirstFrame still starts held playback.
     if (mode == TrackAfrQuiesce.AUDIO_AND_VIDEO && reseek) player.seekTo(player.currentPosition)
     dropTrackAfrQuiesce()
 }
@@ -279,8 +285,9 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                 // existing state machine) and under tunneling (the tunnel
                 // clock is the audio track). The player's applied state, not the
                 // preference: track selection can turn tunneling off for a stream.
-                // Tunnelled TrueHD / DTS-HD on Nvidia takes audio and video down
-                // together instead (trackAfrQuiesce).
+                // Tunnelled TrueHD / DTS-HD on Nvidia, or any TrueHD / DTS-HD with
+                // debug.nuvio.afr_quiesce_av=1, takes audio and video down together
+                // instead (trackAfrQuiesce).
                 quiesced = withContext(Dispatchers.Main) {
                     val p = _exoPlayer ?: return@withContext TrackAfrQuiesce.NONE
                     val mode = trackAfrQuiesce(
