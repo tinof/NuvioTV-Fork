@@ -43,8 +43,8 @@ private const val TRACK_AFR_SETTLE_HOLD_NVIDIA_MS = 1_200L
 private const val TRACK_AFR_SETTLE_HOLD_MAX_MS = 4_000L
 
 /**
- * Minimum settle hold after a real switch (the [com.nuvio.tv.core.player.AfrSettle] floor):
- * 1.2 s on Nvidia, upstream's 2 s elsewhere.
+ * Minimum settle hold after a real switch (the [com.nuvio.tv.core.player.AfrSettle] floor), on
+ * this path and the preflight one (beginAfrSettleHold): 1.2 s on Nvidia, upstream's 2 s elsewhere.
  * `adb shell setprop debug.nuvio.afr_settle_ms <ms>` overrides it for A/B tests.
  */
 internal fun trackAfrSettleHoldMs(overrideMs: Int?, manufacturer: String? = Build.MANUFACTURER): Long =
@@ -54,6 +54,18 @@ internal fun trackAfrSettleHoldMs(overrideMs: Int?, manufacturer: String? = Buil
         } else {
             com.nuvio.tv.core.player.AfrSettle.MIN_SETTLE_MS
         }
+
+/**
+ * Where the settle hold counts from. On Nvidia, with no debug.nuvio.afr_settle_ms set, from the
+ * stabilized switch (as measured in Q2.5); otherwise from the request, as upstream does.
+ */
+internal fun afrSettleAnchorElapsed(
+    fromStable: Boolean = DeviceProfile.isNvidia() && DebugSwitches.int("debug.nuvio.afr_settle_ms") == null
+): Long = if (fromStable) {
+    maxOf(FrameRateUtils.lastSwitchStableAtElapsed, FrameRateUtils.lastSwitchRequestedAtElapsed)
+} else {
+    FrameRateUtils.lastSwitchRequestedAtElapsed
+}
 
 /** What the track-AFR step takes down across the display-mode switch. */
 internal enum class TrackAfrQuiesce {
@@ -473,7 +485,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                         )
                         com.nuvio.tv.core.player.AfrSettle.awaitSettled(
                             context,
-                            FrameRateUtils.lastSwitchRequestedAtElapsed,
+                            afrSettleAnchorElapsed(),
                             playerSettings.afrSettleDelaySeconds * 1000L,
                             settleFloorMs
                         )
