@@ -595,6 +595,25 @@ class FrameRateUtilsAfrTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Switch-stabilized log line
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `stabilized log keeps the parser prefix and adds time and poll count`() {
+        val message = FrameRateUtils.switchStabilizedMessage(
+            refreshRate = 23.976f,
+            modeId = 7,
+            elapsedMs = 383L,
+            polls = 3
+        )
+        assertTrue(message.startsWith("Display mode switch stabilized at "))
+        assertEquals(
+            "Display mode switch stabilized at 23.976Hz (modeId=7) after 383ms polls=3",
+            message
+        )
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // originalModeId lifecycle (process-level singleton)
     // ─────────────────────────────────────────────────────────────────────────
 
