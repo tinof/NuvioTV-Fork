@@ -39,7 +39,7 @@ internal fun resolveSurroundForRoute(
     val surroundResolution = if (inputs.isBluetooth) {
         SurroundFormatResolver.Resolution.INERT
     } else {
-        val probeUnion = DebugSwitches.flag("debug.nuvio.audio_probe_union") == true
+        val probeUnion = SurroundFormatResolver.probeUnionEnabled(DebugSwitches.flag("debug.nuvio.audio_probe_union"))
         val chainSnapshot = AudioChainProbe.snapshot(context, currentRouteKey, withUnion = probeUnion)
         val probe = SurroundFormatResolver.decisionInputs(
             direct = chainSnapshot.direct,
