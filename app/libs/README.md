@@ -120,13 +120,21 @@ into the AAR, keeping entry order and timestamps.
 The native library is media3's JNI wrapper (Apache 2.0), dav1d (BSD 2-Clause) and cpu_features
 (Apache 2.0). It needs no other shared library and its arm64 LOAD segments are 16 KB aligned.
 
-## Known gap: lib-datasource-release.aar
+## Fork modification: lib-datasource-release.aar (localhost HTTP status)
 
 `lib-datasource-release.aar` SHA-256:
-`5375c0ff43784d210a69e7bfc438b9da9b2f42d6fb3b967ddae9b55902c7bf3d`.
+`692cae00f2eadf35dc53e25107c464c5648ef39d2bf74adcb2756b8c51a7e502`.
+The previous binary was `5375c0ff43784d210a69e7bfc438b9da9b2f42d6fb3b967ddae9b55902c7bf3d`.
 
-`LocalhostZeroCopyDataSource.open()` catches its own `InvalidResponseCodeException` and rethrows it as a
-plain `HttpDataSourceException`, and it reports every status other than 200, 206 and 416 as 400. A 404 or
-410 from a localhost stream therefore never reaches the expired-link check in
-`PlayerRuntimeControllerErrorRecovery.kt`. `LocalhostZeroCopyDataSourceTest.testHttpError404` is ignored
-until the class is rebuilt with the real status code; remove the `@Ignore` then.
+Only `androidx/media3/datasource/LocalhostZeroCopyDataSource.class` changed. Its source is
+`datasource-aar-src/LocalhostZeroCopyDataSource.java`: halibiram/media 7da81855
+(`libraries/datasource/.../LocalhostZeroCopyDataSource.java`) with one fix. `open()` used to rethrow every
+status other than 200 and 206 as a wrapped `HttpDataSourceException` with code 400 (416 kept its code but was
+wrapped too). It now throws `InvalidResponseCodeException` with the server's own status, unwrapped, so the
+expired-link check (404/410) and the 416 retry in the player see it.
+
+Rebuild recipe: run the "Patch datasource AAR" workflow (`.github/workflows/patch-datasource-aar.yml`). It
+compiles the unpatched upstream file with `--release 8 -g -proc:none` against {the AAR's `classes.jar`,
+lib-common classes, androidx-annotation 1.9.1, checker-qual 3.48.3, android.jar} and stops unless `javap -c -p`
+(constant-pool indices removed) equals the shipped class. It then compiles the patched file the same way and puts
+it back into `classes.jar` and the AAR with entry order and timestamps unchanged.
