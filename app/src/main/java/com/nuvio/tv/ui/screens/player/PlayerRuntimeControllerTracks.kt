@@ -236,7 +236,9 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
         }
         if (currentVideoTrackIsLikelyVc1 &&
             !currentVideoTrackSelected &&
-            !isVc1TrackSelectionBypassActiveForCurrentPlayback
+            !isVc1TrackSelectionBypassActiveForCurrentPlayback &&
+            // Unselected only while track-AFR has video off for the mode switch.
+            !afrAvQuiesceInFlight
         ) {
             val currentPosition = _exoPlayer?.currentPosition ?: 0L
             vc1TrackSelectionBypassStreamUrls.add(currentStreamUrl)
