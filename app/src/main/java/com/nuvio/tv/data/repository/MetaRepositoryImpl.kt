@@ -27,6 +27,7 @@ import com.nuvio.tv.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -209,7 +210,9 @@ class MetaRepositoryImpl @Inject constructor(
     private val joinedLookups = MutableStateFlow<Set<Job>>(emptySet())
 
     private fun noteJoined(lookup: Deferred<*>, caller: String) {
-        if (isBackgroundMetaCaller(caller) || !lookup.isActive) return
+        // isCompleted, not isActive: a lazy lookup that has not started is not active yet, and a
+        // joiner must still release it from the hold.
+        if (isBackgroundMetaCaller(caller) || lookup.isCompleted) return
         joinedLookups.update { it + lookup }
         lookup.invokeOnCompletion { joinedLookups.update { set -> set - lookup } }
     }
@@ -322,7 +325,8 @@ class MetaRepositoryImpl @Inject constructor(
         val host = addonHost(addonBaseUrl)
         val addonName = addon?.name ?: host
         val deferred = inFlightMeta.getOrPut(cacheKey) {
-            repositoryScope.async {
+            // Lazy: the body must not run (and remove the key in its finally) before getOrPut stores it.
+            repositoryScope.async(start = CoroutineStart.LAZY) {
                 try {
                     if (rateLimits.isPaused(host)) {
                         noteSkipped(caller, addonName)
@@ -530,7 +534,8 @@ class MetaRepositoryImpl @Inject constructor(
 
         var created: Deferred<MetaLookupResult>? = null
         val deferred = inFlightAddonMeta.getOrPut(cacheKey) {
-            repositoryScope.async {
+            // Lazy: the body must not run (and remove the key in its finally) before getOrPut stores it.
+            repositoryScope.async(start = CoroutineStart.LAZY) {
                 try {
                     // Kept here rather than in the enclosing flow's lists: this
                     // Deferred is shared, so only its creator would see those, and
@@ -697,7 +702,8 @@ class MetaRepositoryImpl @Inject constructor(
         val host = addonHost(addon.baseUrl)
         var created: Deferred<Meta?>? = null
         val deferred = inFlightPrimaryMeta.getOrPut(cacheKey) {
-            repositoryScope.async {
+            // Lazy: the body must not run (and remove the key in its finally) before getOrPut stores it.
+            repositoryScope.async(start = CoroutineStart.LAZY) {
                 try {
                     holdWhilePlayerOpen(caller)
                     if (rateLimits.isPaused(host)) {
