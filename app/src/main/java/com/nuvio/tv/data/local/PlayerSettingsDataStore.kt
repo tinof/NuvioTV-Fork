@@ -18,6 +18,7 @@ import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.BufferSizing
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
+import com.nuvio.tv.core.util.DebugSwitches
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -249,7 +250,7 @@ data class PlayerSettings(
     val internalPlayerEngine: InternalPlayerEngine = InternalPlayerEngine.EXOPLAYER,
     val autoSwitchInternalPlayerOnError: Boolean = false,
     val useLibass: Boolean = false,
-    val libassRenderType: LibassRenderType = LibassRenderType.OVERLAY_OPEN_GL,
+    val libassRenderType: LibassRenderType = defaultLibassRenderType(),
     val subtitleStyle: SubtitleStyleSettings = SubtitleStyleSettings(),
     val bufferSettings: BufferSettings = BufferSettings(),
     // Audio settings
@@ -524,6 +525,24 @@ enum class InternalPlayerEngine {
 enum class LibassRenderType {
     CUES, EFFECTS_CANVAS, EFFECTS_OPEN_GL, OVERLAY_CANVAS, OVERLAY_OPEN_GL
 }
+
+/**
+ * libass render type of a profile that never chose one: OVERLAY_CANVAS on Nvidia, OVERLAY_OPEN_GL elsewhere.
+ * [switch] (debug.nuvio.libass_overlay_canvas): true picks OVERLAY_CANVAS on any box, false OVERLAY_OPEN_GL.
+ */
+internal fun defaultLibassRenderType(
+    switch: Boolean? = DebugSwitches.flag("debug.nuvio.libass_overlay_canvas"),
+    manufacturer: String? = Build.MANUFACTURER
+): LibassRenderType =
+    if (switch ?: DeviceProfile.isNvidia(manufacturer)) LibassRenderType.OVERLAY_CANVAS else LibassRenderType.OVERLAY_OPEN_GL
+
+/** A stored render type wins; a missing or unknown one reads as [default]. */
+internal fun storedLibassRenderType(
+    stored: String?,
+    default: LibassRenderType = defaultLibassRenderType()
+): LibassRenderType =
+    stored?.let { value -> LibassRenderType.entries.firstOrNull { it.name == value } } ?: default
+
 /**
  * How DV7 streams should be handled at playback time.
  *
@@ -1174,9 +1193,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 } ?: InternalPlayerEngine.EXOPLAYER,
                 autoSwitchInternalPlayerOnError = prefs[autoSwitchInternalPlayerOnErrorKey] ?: false,
                 useLibass = prefs[useLibassKey] ?: false,
-                libassRenderType = prefs[libassRenderTypeKey]?.let {
-                    try { LibassRenderType.valueOf(it) } catch (e: Exception) { LibassRenderType.OVERLAY_OPEN_GL }
-                } ?: LibassRenderType.OVERLAY_OPEN_GL,
+                libassRenderType = storedLibassRenderType(prefs[libassRenderTypeKey]),
                 decoderPriority = prefs[decoderPriorityKey] ?: 1,
                 downmixEnabled =
                     prefs[downmixEnabledKey]
@@ -1427,9 +1444,7 @@ class PlayerSettingsDataStore @Inject constructor(
     val libassRenderType: Flow<LibassRenderType> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.onStart { migrateProfile(pid) }
     }.map { prefs ->
-        prefs[libassRenderTypeKey]?.let {
-            try { LibassRenderType.valueOf(it) } catch (e: Exception) { LibassRenderType.OVERLAY_OPEN_GL }
-        } ?: LibassRenderType.OVERLAY_OPEN_GL
+        storedLibassRenderType(prefs[libassRenderTypeKey])
     }
     // Decode both values from one preference emission; never mix different saved revisions.
     internal fun assessmentInputValuesForProfile(profileId: Int): Flow<Pair<PlayerSettings, LastPlaybackDiagnostics>> =
