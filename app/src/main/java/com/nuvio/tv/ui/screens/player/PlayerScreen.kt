@@ -675,7 +675,8 @@ fun PlayerScreen(
         onDispose {
             if (activity != null) {
                 if (currentFrameRateMatchingMode == com.nuvio.tv.data.local.FrameRateMatchingMode.START_STOP) {
-                    com.nuvio.tv.core.player.FrameRateUtils.restoreOriginalDisplayMode(activity)
+                    // Delayed on Nvidia until the player surface is gone (see the KDoc).
+                    com.nuvio.tv.core.player.FrameRateUtils.scheduleRestoreOriginalDisplayMode(activity)
                 } else {
                     com.nuvio.tv.core.player.FrameRateUtils.cleanupDisplayListener()
                     com.nuvio.tv.core.player.FrameRateUtils.clearOriginalDisplayMode()
