@@ -4391,10 +4391,13 @@ internal val cappedPassthroughBufferSizeProvider =
     }
 
 // Read at each track open, so `adb shell setprop debug.nuvio.hbr_buffer_scale <n>` applies to the next one.
+// Unset, Nvidia doubles the TrueHD / DTS-HD caps (PassthroughBufferCaps.hbrScale).
 private fun passthroughBufferCapBytes(encoding: Int): Int =
     com.nuvio.tv.core.player.PassthroughBufferCaps.capBytes(
         encoding,
-        com.nuvio.tv.core.util.DebugSwitches.int("debug.nuvio.hbr_buffer_scale")
+        com.nuvio.tv.core.player.PassthroughBufferCaps.hbrScale(
+            com.nuvio.tv.core.util.DebugSwitches.int("debug.nuvio.hbr_buffer_scale")
+        )
     )
 
 private fun DefaultRenderersFactory.applyMapDv7ToHevcIfSupported(enabled: Boolean): DefaultRenderersFactory {

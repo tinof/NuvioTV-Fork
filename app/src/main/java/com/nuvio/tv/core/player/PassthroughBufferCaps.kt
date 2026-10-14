@@ -1,6 +1,8 @@
 package com.nuvio.tv.core.player
 
+import android.os.Build
 import androidx.media3.common.C
+import com.nuvio.tv.core.performance.DeviceProfile
 
 /**
  * Upper bound for a passthrough AudioTrack buffer, per encoding. media3's default sizes
@@ -9,6 +11,17 @@ import androidx.media3.common.C
 object PassthroughBufferCaps {
 
     const val MAX_HBR_SCALE = 16
+
+    /** TrueHD / DTS-HD cap multiplier on Nvidia when debug.nuvio.hbr_buffer_scale is unset. */
+    const val NVIDIA_HBR_SCALE = 2
+
+    /**
+     * The scale handed to [capBytes]: debug.nuvio.hbr_buffer_scale ([switch]) when it is 1 or
+     * more, else [NVIDIA_HBR_SCALE] on Nvidia and the plain caps elsewhere. On a Shield,
+     * `setprop debug.nuvio.hbr_buffer_scale 1` gets the plain caps back.
+     */
+    fun hbrScale(switch: Int?, manufacturer: String? = Build.MANUFACTURER): Int? =
+        switch?.takeIf { it >= 1 } ?: NVIDIA_HBR_SCALE.takeIf { DeviceProfile.isNvidia(manufacturer) }
 
     /**
      * [hbrScale] multiplies the TrueHD and DTS-HD caps only (debug.nuvio.hbr_buffer_scale);

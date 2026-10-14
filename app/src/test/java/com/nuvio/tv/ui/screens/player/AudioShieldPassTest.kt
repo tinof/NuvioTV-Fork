@@ -193,6 +193,27 @@ class AudioShieldPassTest {
     }
 
     @Test
+    fun `nvidia doubles the hbr caps unless the switch sets a scale`() {
+        assertEquals(PassthroughBufferCaps.NVIDIA_HBR_SCALE, PassthroughBufferCaps.hbrScale(null, "NVIDIA"))
+        assertEquals(2, PassthroughBufferCaps.NVIDIA_HBR_SCALE)
+        assertNull(PassthroughBufferCaps.hbrScale(null, "Amlogic"))
+        assertNull(PassthroughBufferCaps.hbrScale(null, null))
+        assertEquals(1, PassthroughBufferCaps.hbrScale(1, "NVIDIA"))
+        assertEquals(4, PassthroughBufferCaps.hbrScale(4, "Amlogic"))
+        // Below one the switch counts as unset, as in capBytes.
+        assertEquals(2, PassthroughBufferCaps.hbrScale(0, "NVIDIA"))
+        assertNull(PassthroughBufferCaps.hbrScale(-1, "Amlogic"))
+        assertEquals(
+            2 * 61_440 * 2,
+            PassthroughBufferCaps.capBytes(C.ENCODING_DOLBY_TRUEHD, PassthroughBufferCaps.hbrScale(null, "NVIDIA"))
+        )
+        assertEquals(
+            2 * 10_752,
+            PassthroughBufferCaps.capBytes(C.ENCODING_E_AC3, PassthroughBufferCaps.hbrScale(null, "NVIDIA"))
+        )
+    }
+
+    @Test
     fun `hbr scale ignores values below one and clamps large ones`() {
         assertEquals(2 * 61_440, PassthroughBufferCaps.capBytes(C.ENCODING_DOLBY_TRUEHD, 0))
         assertEquals(2 * 61_440, PassthroughBufferCaps.capBytes(C.ENCODING_DOLBY_TRUEHD, -2))
