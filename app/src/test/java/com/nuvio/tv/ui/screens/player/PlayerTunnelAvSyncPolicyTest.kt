@@ -321,4 +321,17 @@ class PlayerTunnelAvSyncPolicyTest {
         assertFalse(PlayerTunnelAvSyncPolicy.waitsForRealFirstFrame(true, "fp|OMX.b.tunneled", reporting))
         assertFalse(PlayerTunnelAvSyncPolicy.waitsForRealFirstFrame(true, null, reporting))
     }
+
+    @Test
+    fun realFirstFrameSwitch_onByDefaultOnNvidiaOnly() {
+        assertTrue(PlayerTunnelAvSyncPolicy.realFirstFrameSwitchOn(null, "NVIDIA"))
+        assertFalse(PlayerTunnelAvSyncPolicy.realFirstFrameSwitchOn(null, "Amlogic"))
+        assertFalse(PlayerTunnelAvSyncPolicy.realFirstFrameSwitchOn(null, null))
+    }
+
+    @Test
+    fun realFirstFrameSwitch_debugSwitchWinsEitherWay() {
+        assertFalse(PlayerTunnelAvSyncPolicy.realFirstFrameSwitchOn(false, "NVIDIA"))
+        assertTrue(PlayerTunnelAvSyncPolicy.realFirstFrameSwitchOn(true, "Amlogic"))
+    }
 }
