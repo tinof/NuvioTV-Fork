@@ -39,19 +39,19 @@ Current root navigation:
 - Add-ons
 - Settings
 
-Current settings rail:
+Current settings rail (`SettingsCategory` in `SettingsCatalog.kt`):
 
 - Account
 - Profiles
 - Appearance
 - Layout
-- Plugins
-- Integration
+- Content & discovery
 - Playback
-- Trakt
-- About
+- Integrations
+- Tracking
 - Advanced
-- Debug in debug builds
+- About
+- Debug in debug builds (hidden in Essential mode)
 
 Current playback path:
 
@@ -527,12 +527,12 @@ Advanced mode should keep the existing settings rail and current behavior:
 - Profiles
 - Appearance
 - Layout
-- Plugins
-- Integration
+- Content & discovery
 - Playback
-- Trakt
-- About
+- Integrations
+- Tracking
 - Advanced
+- About
 - Debug for debug builds
 
 The only new Advanced-mode requirement is that the mode switch remains visible, ideally at the top of Settings or as the first rail item.

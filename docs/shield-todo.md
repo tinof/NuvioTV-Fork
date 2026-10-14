@@ -14,9 +14,11 @@ A manual run of "PR Full Debug Build" builds `com.nuvio.tv.test.shield`. The `ap
 logins.
 
 When the repo secret `DEBUG_KEYSTORE_BASE64` is set, every run signs with the same key, so a newer debug build
-updates the last one in place. The run log prints each APK's package and certificate digest.
+updates the last one in place. Without it the run uses a throwaway key. The run log prints each APK's package and
+SHA-256 certificate digest. A manual run stops with an error when `NUVIO_SUPABASE_URL` is missing from the
+`LOCAL_PROPERTIES_BASE64` secret, because account login would not work in that APK.
 
-Install the `arm64-v8a` APK from the `full-debug-apks` artifact.
+Install `app-full-arm64-v8a-debug.apk` from the `full-debug-apks` artifact with `adb install -r`.
 
 ## Nvidia defaults set without measuring
 
@@ -26,32 +28,45 @@ The owner chose to take the likely-better side of each open question on Nvidia n
 - can be reverted with its switch.
 
 Set a switch with `adb shell setprop debug.nuvio.<name> <0|1>` and clear it with
-`adb shell setprop debug.nuvio.<name> ""`. Either value works on any box. Restart playback, or the app for the
-rows marked *app*.
+`adb shell setprop debug.nuvio.<name> ""`. Either value works on any box (for on/off switches `true`/`false` and
+`on`/`off` work too; the number switches take a number). Restart playback, or the app for the rows marked *app*.
 
 | What changed on Nvidia | Switch (revert value) | What to look at |
 |---|---|---|
-| TrueHD/DTS-HD go to the platform sink natively, not through the fork's IEC61937 packer. The "System passthrough" setting now defaults to on (a saved value wins). | `hbr_iec` (`1` = packer) | The AVR's Atmos / DTS:X indicator, A/V sync, the HUD underrun row |
+| TrueHD/DTS-HD go to the platform sink natively, not through the fork's IEC61937 packer. The "System Passthrough" setting now defaults to on (a saved value wins). | `hbr_iec` (`1` = packer) | The AVR's Atmos / DTS:X indicator, A/V sync, the HUD underrun row |
 | TrueHD/DTS-HD passthrough buffer caps ×2 | `hbr_buffer_scale` (`1`) | Underruns, `dumpsys media.audio_flinger` |
-| A TrueHD/DTS-HD track that the platform sink plays keeps tunneling. Inert on mdarcy SE 9.2.4 (no decoder tunnels) | `hbr_tunnel` (`0`) | `PLAYBACK_TUNNELING applied=`, stalls |
+| A TrueHD/DTS-HD track that the platform sink plays keeps tunneling. Inert on mdarcy SE 9.2.4 (no decoder tunnels) | `hbr_tunnel` (`0`) | `PLAYBACK_TUNNELING: requested=… applied=`, stalls |
 | The surround decision uses the stereo / 5.1 / 7.1 probe union and the HDMI channel count | `audio_probe_union` (`0`) | Settings > Advanced > Source & hardware |
-| A track-AFR mode switch under tunneling with TrueHD/DTS-HD takes audio and video down and up together. Inert on mdarcy SE 9.2.4 (no decoder tunnels); `1` now forces it without tunneling too | `afr_quiesce_av` (`0`) | First play of a 24p TrueHD title: `Track AFR settle complete … quiesced=AUDIO_AND_VIDEO`, and no stuck loading screen |
-| AFR settle hold of 1.2 s instead of 2 s, on the track-AFR path and (since round 3) the pre-start path | `afr_settle_ms` (`2000`) | Logcat `Switching display mode` → `Display mode switch stabilized at … after N ms` → `Track AFR settle complete` / `Preflight AFR settle complete: holdMs=` |
+| A track-AFR mode switch under tunneling with TrueHD/DTS-HD takes audio and video down and up together. Inert on mdarcy SE 9.2.4 (no decoder tunnels); `1` now forces it without tunneling too | `afr_quiesce_av` (`0`) | First play of a 24p TrueHD title: `Track AFR settle complete: … quiesced=AUDIO_AND_VIDEO`, and no stuck loading screen |
+| AFR settle hold of 1.2 s instead of 2 s, on the track-AFR path and (since round 3) the pre-start path | `afr_settle_ms` (`2000`) | Logcat `Switching display mode` → `Display mode switch stabilized at … after N ms` → `Track AFR settle complete:` / `Preflight AFR settle complete: holdMs=` |
 | A tunneled start waits for the real first frame (only for decoders seen reporting frames) | `tunnel_real_first_frame` (`0`) | The loading screen ends with the picture |
 | Dolby Vision plays untunneled | `dv_no_tunnel` (`0`) | DV signalling on the TV, sync |
 | Hardware DV decoders are tried first on DV displays | `dv_decoder_first` (`0`) | HUD "DV decoder" and "Decoder" rows on P8.1 and converted P7 |
 | DV7 Auto converts with mode 2 (8.1 with no-op mapping; falls back per RPU to mode 1) | `dv7_manual` (`0` = mode 1) | The TV's DV info on one FEL and one MEL title |
 | HDR10 metadata injection on DV strip is on by default (a saved value wins) | Setting "Inject HDR10 metadata on strip" | The TV's HDR info screen: mastering / MaxCLL |
 | HDR video ignores the view-scaling aspect modes and plays at Fit (ExoPlayer) | `hdr_zoom` (`1` = allow) | `dumpsys SurfaceFlinger` keeps the video on an overlay plane |
-| mpv decodes with direct MediaCodec (`mediacodec,mediacodec-copy`; a saved mode wins) | Setting "Hardware decoding" | HUD `hwdec` row shows `mediacodec` |
+| mpv decodes with direct MediaCodec (`mediacodec,mediacodec-copy`; a saved mode wins) | Setting "Hardware decoding (MPV-only)" | HUD `hwdec` row shows `mediacodec` |
 | mpv tone mapping `bt.2446a` with no peak detection | `mpv_tonemap` (`0`) | HDR on an SDR TV through mpv |
 | Seek thumbnails start on (`mdarcy` only, when no mode was chosen) | `thumb_default_on` (`0`) | Logcat `ThumbMem … strongBox=`, the HUD dropped-frame row with thumbnails on vs off |
-| Low-RAM tier comes from device RAM when buffers are off-heap | `lowram_from_ram` (`0`) | Logcat `BACK_BUFFER_RESOLVED lowRam=` |
+| Low-RAM tier comes from device RAM when buffers are off-heap | `lowram_from_ram` (`0`) | Logcat `BACK_BUFFER_RESOLVED: … lowRam=` |
 | libass renders with the canvas overlay (when no type is saved). The settings page still labels Overlay OpenGL "recommended". | `libass_overlay_canvas` (`0`) *app* | `dumpsys SurfaceFlinger` with subtitles and the HUD: no CLIENT composition, no UI stutter |
 | Opaque black window background outside playback | `opaque_window` (`0`) *app* | `dumpsys SurfaceFlinger` on Home; one possible frame of stutter when the player opens or closes |
 | Video codec queueing is async (from the first pass) | `async_codec` (`0`) | HUD dropped-frame row on 4K60 HEVC and an 80+ Mbit/s DV remux |
-| Auto frame-rate matching starts in Start/Stop mode (from the first pass) | Setting "Frame rate matching" | Turn off the Shield's own "Match frame rate" while Nuvio AFR is on |
+| Auto frame-rate matching starts in Start/Stop mode (from the first pass) | Setting "Frame Rate Matching" | Turn off the Shield's own "Match frame rate" while Nuvio AFR is on |
 | The switch back after Stop waits 750 ms, until the player surface is gone (round 3) | `afr_restore_delay_ms` (`0` = at once; up to 5000); `afr_restore_skip` (`1` = stay on the content rate) | Logcat `Restoring display mode after 750ms`; no black screen or ANR after Stop |
+
+### Switches that apply on every box
+
+These are not Nvidia defaults. They are test and repair switches that work the same on any box.
+
+| Switch | Default | Values | What it does |
+|---|---|---|---|
+| `thumb_swap_rule` | on (round 3, the Shield too) | `0` relaxes it | Full swap refuses strong seek thumbnails. With `0`, full swap refuses only below 900 MB MemAvailable. Logcat `ThumbMem` `session strongBox=…: <reason>` |
+| `render_trace` | off | `1` | Logs `RENDER_TRACE: pts=… releaseInMs=…` (tag `NuvioRender`) every 240th video frame |
+| `sw_av1` | off | only the literal `1` | AV1 takes the software decoder even when a hardware one exists |
+| `aml_unstable_pts` | off | only the literal `1` | Asks Amlogic decoders to rebuild decode-order timestamps themselves; ignored on other chips |
+| `clear_audio_rejections` | unset | any new token | Clears the learned audio-format rejections once per profile for each new token. Logcat `Learned audio rejections reset` |
+| `thumb.backend` | auto (mpv first, then ff60) | `ff60` or `mpv` | Forces the FFmpeg backend of `libnuviothumb`. Read once per process, so set it before the app starts |
 
 Changes for every device in this round:
 - Controller buttons in the player get default jobs: L1/R1 seek, X play/pause, Y subtitles. They can be
@@ -59,7 +74,8 @@ Changes for every device in this round:
 - Native libraries load straight from the APK (`extractNativeLibs=false`). This saves eMMC space; the APK
   download is larger. Device check: mpv playback and seek thumbnails still work.
 - `libnuviothumb` is tuned for Cortex-A57 on arm64.
-- Localhost streams report the real HTTP status, so expired links (404/410) and 416 retries are handled.
+- Localhost streams report the real HTTP status, so expired links (404/410) and 416 retries are handled (fix on fork
+  main).
 - When the decoder list cannot be read, a DV5 MKV takes the HEVC remap.
 - The HUD queue row says `default (async)` on Fire TV API 28+.
 - The episode-options dialog no longer draws the page's pre-blurred glass.
@@ -69,7 +85,7 @@ Changes for every device in this round:
 
 ## Round 3: what the Shield report (2026-10-14) decided
 
-The report (`docs/SUMMARY.md`, CI run 38561775458, SHIELD Experience 9.2.4) covered HDR10 + TrueHD, DV P8 +
+The report (kept locally as `docs/SUMMARY.md`, not in the repo; CI run 38561775458, SHIELD Experience 9.2.4) covered HDR10 + TrueHD, DV P8 +
 E-AC-3 and DV7 FEL, plus the Home screen. Dolby Vision Profile 7 findings are handled in a separate session.
 
 Kept as they are: `hbr_iec` off (TrueHD played as direct passthrough, 0 underruns), `hbr_buffer_scale` ×2,
@@ -86,7 +102,8 @@ Changed in round 3:
 - **The switch-back after Stop waits** (row above). One switch-back during player teardown hung the NVIDIA
   composer HAL until a power cycle. The delay cannot prove the driver fault gone; only many Stops can.
 - **Pre-start settle hold** uses `afr_settle_ms` (1200 ms on Nvidia) and logs `Preflight AFR settle complete`.
-- **Logs:** NET_CONN reaches logcat only for slow headers (≥ 1 s), errors (HTTP ≥ 400, failed, canceled);
+- **Logs:** NET_CONN reaches logcat only for slow headers or time to first byte (≥ 1 s) and errors (HTTP ≥ 400,
+  failed, canceled);
   per-thumbnail ThumbWorker lines only for decodes ≥ 500 ms. `setprop log.tag.NuvioNet D` and
   `setprop log.tag.ThumbWorker D` bring every line back. The NuvioCodecs inventory lists the `.secure`
   decoders too.
@@ -118,7 +135,6 @@ Device checks for round 3:
 | Focused-card width animation | It can't be done without changing the look. Later cards slide because the row relays out. Keeping the slide without relayout would need every later item to animate its own offset, which is a row redesign. |
 | CEC sleep, controller buttons | Not run in the 2026-10-14 report. CEC sleep is covered in code, but not checked on the device. When the TV turns off, the activity pauses and `pauseForLifecycle()` pauses playback; the pause saves progress. Check it on the device. |
 | Settings strings for libass | Overlay OpenGL is still labelled "recommended" although Nvidia now starts on canvas. Change the label after measuring. |
-| `audio_tunneled_sub` in `values-pt`, `values-sr`, `values-zh` | Those locales never had the key and fall back to their regional or English text. |
 
 ## Not important for this fork
 
@@ -128,7 +144,7 @@ published to a wider audience.
 | Item | Notes |
 |---|---|
 | HDR10+ → Dolby Vision 8.1 | Separate project, see `docs/hdr10plus-to-dv81/`. |
-| VC-1 reader for MPEG-TS / M2TS | A Blu-ray `.m2ts` VC-1 remux goes to mpv (software VC-1). A VC-1 PES reader would plug in as an `ExtractorsFactory` wrapper like `AviTrackFormatExtractorsFactory`, replacing the `TsExtractor` built at `PlayerRuntimeControllerInitialization.kt` (~1212) with a custom `TsPayloadReader.Factory` for stream type 0xEA. The decoder side (`video/wvc1` → `video/vc1` bridge) already exists. |
+| VC-1 reader for MPEG-TS / M2TS | A Blu-ray `.m2ts` VC-1 remux goes to mpv (software VC-1). A VC-1 PES reader would plug in as an `ExtractorsFactory` wrapper like `AviTrackFormatExtractorsFactory`, replacing the `TsExtractor` that the `DefaultExtractorsFactory` at `PlayerRuntimeControllerInitialization.kt` (~1226) builds with a custom `TsPayloadReader.Factory` for stream type 0xEA. The decoder side (`video/wvc1` → `video/vc1` bridge) already exists. |
 | Ethernet-aware network defaults | Read `NetworkCapabilities.TRANSPORT_ETHERNET` and suggest performance mode with 4 connections in the Device Assessment on a wired, non-small box. `NetworkSettingsScreen` already classifies the link. |
 | VOD cache on USB storage | The cache is fixed to `cacheDir` (`PlayerMediaSourceFactory.kt` ~807). It would need a picker over `context.getExternalCacheDirs()`. |
 
