@@ -104,14 +104,19 @@ internal fun PlayerRuntimeController.endTrackAfrQuiesce(generation: Int? = null,
     if (mode == TrackAfrQuiesce.NONE) return
     if (generation != null && generation != afrQuiesceGeneration) return
     val player = afrQuiescePlayer
-    dropTrackAfrQuiesce()
-    if (player == null || _exoPlayer !== player) return
+    if (player == null || _exoPlayer !== player) {
+        dropTrackAfrQuiesce()
+        return
+    }
     val builder = player.trackSelectionParameters
         .buildUpon()
         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
     if (mode == TrackAfrQuiesce.AUDIO_AND_VIDEO) builder.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
     player.trackSelectionParameters = builder.build()
+    // The seek's callbacks run inside seekTo, while isTunnelingEnabled still reads the
+    // both-off selection; the quiesce stays marked until it returns so they stand down.
     if (mode == TrackAfrQuiesce.AUDIO_AND_VIDEO && reseek) player.seekTo(player.currentPosition)
+    dropTrackAfrQuiesce()
 }
 
 /**
