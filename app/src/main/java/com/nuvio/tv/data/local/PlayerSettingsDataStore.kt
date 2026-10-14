@@ -613,6 +613,26 @@ internal fun storedInjectHdr10MetadataOnStrip(
 internal fun defaultInjectHdr10MetadataOnStrip(manufacturer: String? = Build.MANUFACTURER): Boolean =
     DeviceProfile.isNvidia(manufacturer)
 
+/** mpv hardware decoding as stored; nothing saved (or an unknown value) takes the device default. */
+internal fun storedMpvHardwareDecodeMode(
+    stored: String?,
+    manufacturer: String? = Build.MANUFACTURER
+): MpvHardwareDecodeMode = when (stored) {
+    "AUTO_SAFE" -> MpvHardwareDecodeMode.AUTO_SAFE
+    "HARDWARE_COPY" -> MpvHardwareDecodeMode.HARDWARE_COPY
+    "HARDWARE_DIRECT" -> MpvHardwareDecodeMode.HARDWARE_DIRECT
+    "DISABLED" -> MpvHardwareDecodeMode.DISABLED
+    "LEGACY_DIRECT_COPY" -> MpvHardwareDecodeMode.LEGACY_DIRECT_COPY
+    else -> defaultMpvHardwareDecodeMode(manufacturer)
+}
+
+/**
+ * mpv's auto-safe whitelists only mediacodec-copy on Android, so it never decodes direct.
+ * Nvidia boxes start on direct MediaCodec with copy-back as the fallback; others keep auto-safe.
+ */
+internal fun defaultMpvHardwareDecodeMode(manufacturer: String? = Build.MANUFACTURER): MpvHardwareDecodeMode =
+    if (DeviceProfile.isNvidia(manufacturer)) MpvHardwareDecodeMode.LEGACY_DIRECT_COPY else MpvHardwareDecodeMode.AUTO_SAFE
+
 /**
  * "System passthrough" when nothing is saved: on Nvidia the platform sink bitstreams
  * TrueHD/DTS-HD natively, so the fork's IEC61937 packer starts off there. A saved choice wins.
@@ -2029,9 +2049,8 @@ class PlayerSettingsDataStore @Inject constructor(
     private fun parseSubtitleOrganizationMode(value: String?): SubtitleOrganizationMode {
         return when (value) { "BY_LANGUAGE" -> SubtitleOrganizationMode.BY_LANGUAGE; "BY_ADDON" -> SubtitleOrganizationMode.BY_ADDON; else -> SubtitleOrganizationMode.NONE }
     }
-    private fun parseMpvHardwareDecodeMode(value: String?): MpvHardwareDecodeMode {
-        return when (value) { "HARDWARE_COPY" -> MpvHardwareDecodeMode.HARDWARE_COPY; "HARDWARE_DIRECT" -> MpvHardwareDecodeMode.HARDWARE_DIRECT; "DISABLED" -> MpvHardwareDecodeMode.DISABLED; "LEGACY_DIRECT_COPY" -> MpvHardwareDecodeMode.LEGACY_DIRECT_COPY; else -> MpvHardwareDecodeMode.AUTO_SAFE }
-    }
+    private fun parseMpvHardwareDecodeMode(value: String?): MpvHardwareDecodeMode =
+        storedMpvHardwareDecodeMode(value)
 
     private fun normalizeSelectableLanguageCode(language: String): String {
         val code = language.trim().lowercase()
