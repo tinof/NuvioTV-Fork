@@ -53,7 +53,7 @@ class AfrPreflightPolicyTest {
     @Test
     fun `START_STOP is the only mode that restores display on player exit`() {
         // Mirrors PlayerScreen DisposableEffect contract:
-        // START_STOP → restoreOriginalDisplayMode
+        // START_STOP → scheduleRestoreOriginalDisplayMode
         // START / OFF → clearOriginalDisplayMode (no restore on dispose for START)
         fun shouldRestoreOnExit(mode: FrameRateMatchingMode): Boolean =
             mode == FrameRateMatchingMode.START_STOP

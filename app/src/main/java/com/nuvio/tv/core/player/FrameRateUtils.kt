@@ -9,6 +9,8 @@ import android.os.Build
 import android.util.Log
 import android.view.Display
 import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.performance.DeviceProfile
+import com.nuvio.tv.core.util.DebugSwitches
 import io.github.anilbeesetti.nextlib.mediainfo.MediaInfo
 import io.github.anilbeesetti.nextlib.mediainfo.MediaInfoBuilder
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +54,18 @@ object FrameRateUtils {
     )
 
     private var originalModeId: Int? = null
+
+    // Switch-back after Stop (scheduleRestoreOriginalDisplayMode). Main thread only.
+    //  - restoreToken: bumped when a new playback plans a mode, so a delayed
+    //    restore posted under an older token stands down and originalModeId
+    //    keeps the UI mode for the next restore.
+    //  - restoreRequestedModeId: the mode a restore last asked the window for.
+    //    A playback that starts before the display gets there records it as the
+    //    original, not the content mode the display is still leaving.
+    private const val RESTORE_DELAY_NVIDIA_MS = 750
+    private const val RESTORE_DELAY_MAX_MS = 5_000
+    private var restoreToken = 0
+    private var restoreRequestedModeId: Int? = null
 
     private const val FRAME_RATE_CACHE_SIZE = 64
     private val frameRateCache = object : LinkedHashMap<String, FrameRateDetection>(FRAME_RATE_CACHE_SIZE, 0.75f, true) {
@@ -369,10 +383,15 @@ object FrameRateUtils {
         return weight
     }
 
-    private fun recordOriginalMode(display: Display) {
+    /** [windowRequestedModeId]: the window's preferredDisplayModeId (0 when unset). */
+    private fun recordOriginalMode(display: Display, windowRequestedModeId: Int) {
         if (originalModeId == null) {
-            originalModeId = display.mode.modeId
+            // A restore this window still asks for is the UI mode, even while the
+            // display is still at the content mode it is leaving.
+            originalModeId = restoreRequestedModeId?.takeIf { it == windowRequestedModeId }
+                ?: display.mode.modeId
         }
+        restoreRequestedModeId = null
     }
 
     /**
@@ -658,6 +677,9 @@ object FrameRateUtils {
         var switchDisplay: Display? = null
         var switchRequestedAtMs = 0L
         val switchPlan = withContext(Dispatchers.Main) {
+            // A new playback owns the display mode now: a switch-back still pending
+            // from the last one must not land in the middle of it.
+            restoreToken++
             val window = activity.window ?: return@withContext null
             val display = window.decorView.display ?: return@withContext null
             val activeMode = display.mode
@@ -691,7 +713,7 @@ object FrameRateUtils {
                     DisplayModeSwitchResult(activeMode)
                 )
             }
-            recordOriginalMode(display)
+            recordOriginalMode(display, window.attributes.preferredDisplayModeId)
             if (modeBest.modeId == activeMode.modeId) {
                 // Not necessarily optimal: very often it is simply the only mode on offer,
                 // and calling 60Hz "optimal" for 25fps content is a plain untruth. Say
@@ -709,6 +731,15 @@ object FrameRateUtils {
                             "$candidateCount candidate modes"
                     }
                 )
+                // A restore that has not reached the display yet still asks the window
+                // for the UI mode; keep the window on the mode this playback wants.
+                val layoutParams = window.attributes
+                if (layoutParams.preferredDisplayModeId != 0 &&
+                    layoutParams.preferredDisplayModeId != activeMode.modeId
+                ) {
+                    layoutParams.preferredDisplayModeId = activeMode.modeId
+                    window.attributes = layoutParams
+                }
                 return@withContext Pair<Display.Mode?, DisplayModeSwitchResult?>(
                     null,
                     DisplayModeSwitchResult(activeMode)
@@ -794,6 +825,77 @@ object FrameRateUtils {
 
     fun clearOriginalDisplayMode() {
         originalModeId = null
+        restoreRequestedModeId = null
+    }
+
+    /** What the switch-back after Stop does; see [displayModeRestorePlan]. */
+    internal sealed interface DisplayModeRestorePlan {
+        /** Leave the display at the content mode and forget the original. */
+        data object Skip : DisplayModeRestorePlan
+        data object Immediate : DisplayModeRestorePlan
+        data class Delayed(val delayMs: Long) : DisplayModeRestorePlan
+    }
+
+    /**
+     * debug.nuvio.afr_restore_skip=1 skips the switch-back. Otherwise the delay is
+     * debug.nuvio.afr_restore_delay_ms, or 750 ms on Nvidia and 0 elsewhere, clamped to
+     * 0..5000 ms. No delay, or an activity that is finishing or destroyed, restores at once.
+     */
+    internal fun displayModeRestorePlan(
+        skipSwitch: Boolean?,
+        delaySwitchMs: Int?,
+        isNvidia: Boolean,
+        activityGone: Boolean
+    ): DisplayModeRestorePlan {
+        if (skipSwitch == true) return DisplayModeRestorePlan.Skip
+        val delayMs = (delaySwitchMs ?: if (isNvidia) RESTORE_DELAY_NVIDIA_MS else 0)
+            .coerceIn(0, RESTORE_DELAY_MAX_MS)
+        if (delayMs == 0 || activityGone) return DisplayModeRestorePlan.Immediate
+        return DisplayModeRestorePlan.Delayed(delayMs.toLong())
+    }
+
+    /**
+     * The switch-back when the player closes (START_STOP). On the Shield a switch-back in
+     * the same frames that destroy the player SurfaceView and resume the previous screen
+     * once hung the NVIDIA composer HAL, so Nvidia waits until the video surface is gone.
+     * A new playback that plans a mode before the delay ends cancels the restore and keeps
+     * the original UI mode for its own. Main thread.
+     */
+    fun scheduleRestoreOriginalDisplayMode(activity: Activity) {
+        val plan = displayModeRestorePlan(
+            skipSwitch = DebugSwitches.flag("debug.nuvio.afr_restore_skip"),
+            delaySwitchMs = DebugSwitches.int("debug.nuvio.afr_restore_delay_ms"),
+            isNvidia = DeviceProfile.isNvidia(),
+            activityGone = activity.isFinishing || activity.isDestroyed
+        )
+        val token = ++restoreToken
+        when (plan) {
+            DisplayModeRestorePlan.Skip -> {
+                if (originalModeId != null) {
+                    Log.i(TAG, "Leaving the display at the content mode (debug.nuvio.afr_restore_skip)")
+                }
+                clearOriginalDisplayMode()
+            }
+            DisplayModeRestorePlan.Immediate -> {
+                if (originalModeId != null) Log.i(TAG, "Restoring display mode after 0ms")
+                restoreOriginalDisplayMode(activity)
+            }
+            is DisplayModeRestorePlan.Delayed -> {
+                if (originalModeId == null) return
+                val decorView = activity.window?.decorView
+                if (decorView == null || !decorView.isAttachedToWindow) {
+                    Log.i(TAG, "Restoring display mode after 0ms")
+                    restoreOriginalDisplayMode(activity)
+                    return
+                }
+                decorView.postDelayed({
+                    if (token == restoreToken) {
+                        Log.i(TAG, "Restoring display mode after ${plan.delayMs}ms")
+                        restoreOriginalDisplayMode(activity)
+                    }
+                }, plan.delayMs)
+            }
+        }
     }
 
     fun restoreOriginalDisplayMode(activity: Activity): Boolean {
@@ -811,6 +913,7 @@ object FrameRateUtils {
                 val layoutParams = window.attributes
                 layoutParams.preferredDisplayModeId = targetModeId
                 window.attributes = layoutParams
+                restoreRequestedModeId = targetModeId
                 originalModeId = null
                 true
             }
