@@ -596,6 +596,8 @@
     <string name="playback_player_auto_desc">ExoPlayer til film &amp; TV-serier · MPV til anime</string>
     <string name="playback_engine_exoplayer_desc">Bedst kompatibilitet med nuværende Nuvio Arc-funktioner.</string>
     <string name="playback_engine_mvplayer_desc">Bruger libmpv med Nuvio Arc OSD-kontrol. Eksperimentel.</string>
+    <string name="playback_engine_mvplayer_shield_note">På en Shield tegner libmpv billedet på GPU\'en: intet HDR-output og ingen AI-opskalering.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">På en Shield tegner libmpv billedet på GPU\'en: intet HDR-output.</string>
 
     <string name="video_section">Video</string>
     <string name="audio_trailer_section">Trailer</string>
@@ -622,7 +624,7 @@
     <string name="audio_decoder_priority">Decoder-prioritet</string>
     <string name="audio_enable_downmix_title">Aktivér downmix</string>
     <string name="audio_tunneled">Tunneleret afspilning</string>
-    <string name="audio_tunneled_sub">Lyd/video-synkronisering på hardwareniveau. Kan forbedre afspilning på nogle Android TV-enheder</string>
+    <string name="audio_tunneled_sub">Lyd/video-synkronisering på hardwareniveau. Kan forbedre afspilning på nogle Android TV-enheder. Tabsfri TrueHD- og DTS-HD-lyd afspilles altid uden. Mens den er slået til, kan afspilningshastigheden ikke ændres, og billedformatet er kun Tilpas eller Udfyld</string>
     <string name="audio_force_optical_passthrough">Gennemtving AC-3 Transkodning (Optical/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Transkoder multikanalsformater (TrueHD, DTS, AAC, osv.) til Dolby Digital 5.1 i realtid til Optical/SPDIF-forbindelser.</string>
     <!-- DV7 Handling Mode -->
@@ -3093,6 +3095,7 @@
     <string name="assessment_grounds_afr_on">Skærmen oplyser flere opdateringshastigheder ved den aktuelle opløsning (%1$s)</string>
     <string name="assessment_grounds_afr_already">Allerede til - Start eller Start &amp; stop er en smagssag: færre HDMI-gensynkroniseringer mod at brugerfladen går tilbage til 60 Hz</string>
     <string name="assessment_grounds_afr_single">Skærm med én opdateringshastighed ved den aktuelle opløsning - intet at skifte til</string>
+    <string name="assessment_grounds_afr_shield">På en Shield skal du slå dens egen indstilling for matchning af billedfrekvens fra (Shield Experience 9.2 og nyere), mens dette er slået til: begge skifter skærmtilstand og modarbejder hinanden</string>
     <string name="assessment_grounds_res_on">Skærmen tilbyder flere opløsninger (%1$s)</string>
     <string name="assessment_grounds_res_single">Skærm med én opløsning - intet at skifte til</string>
     <string name="assessment_grounds_display_unknown">Kunne ikke undersøge skærmen herfra - lad være som det er, og tjek med øjet</string>
@@ -3154,6 +3157,8 @@
     <string name="assessment_item_ac3">Gennemtving AC-3-transkodning (Optical/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Lydvejen er %1$s (%2$s) - i en HDMI-kæde gør denne indstilling kun tabsfri passthrough til AC-3 med tab</string>
     <string name="assessment_grounds_ac3_unknown">Kunne ikke bekræfte en optisk vej herfra - denne indstilling hører kun til på Optical/SPDIF-udgange</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio-behandling</string>
+    <string name="assessment_grounds_shield_dolby">Ingen app kan læse denne Shield-indstilling. Hvis lyden kommer ud af sync, eller Atmos falder ud, så slå Dolby-lydbehandling fra i Shieldens lydindstillinger og test igen</string>
     <string name="assessment_apply_title">Anvend anbefalede indstillinger</string>
     <string name="assessment_apply_arm_sub">Skriver rækkerne Målt og Beregnet plus den valgte profil - tjek-rækker røres aldrig. Der gemmes et snapshot til at fortryde.</string>
     <string name="assessment_apply_confirm_sub">Tryk igen for at bekræfte - omkring %1$d indstillinger bliver skrevet</string>
@@ -3166,6 +3171,7 @@
     <string name="assessment_profile_suggested_tag">Foreslået</string>
     <string name="assessment_grounds_res_choice">Skærmen tilbyder flere opløsninger (%1$s) - tilpasning lader panelets skalering stå for opskaleringen i stedet for boksens; hvad der ser bedst ud, afhænger af panelet, så det forbliver dit valg</string>
     <string name="assessment_grounds_res_inert">Skærm med én opløsning - indstillingen har ingen effekt her</string>
+    <string name="assessment_grounds_res_shield">På en Shield sender matchning af opløsning video med lavere opløsning uændret til tv\'et, så Shieldens AI-opskalering aldrig kører - lad den være slået fra for at beholde AI-opskalering</string>
     <string name="assessment_already_set">\u2713 Allerede indstillet</string>
     <string name="player_pill_play">Afspil</string>
     <string name="player_pill_pause">Pause</string>

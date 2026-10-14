@@ -800,6 +800,8 @@
     <string name="playback_player_auto_desc">ExoPlayer para películas y series · MPV para anime</string>
     <string name="playback_engine_exoplayer_desc">Mejor compatibilidad con las funciones actuales de Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Usa libmpv con controles OSD de Nuvio Arc. Experimental.</string>
+    <string name="playback_engine_mvplayer_shield_note">En un Shield, libmpv dibuja la imagen en la GPU: sin salida HDR y sin escalado con IA.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">En un Shield, libmpv dibuja la imagen en la GPU: sin salida HDR.</string>
 
     <string name="video_section">Video</string>
     <string name="playback_true_black_letterbox">Barras en negro real</string>
@@ -829,7 +831,7 @@
     <string name="audio_enable_downmix_title">Activar downmix</string>
     <string name="audio_enable_downmix_subtitle">Reduce el audio que decodifica la app al número de canales seleccionado. Los formatos que acepta tu receptor siguen saliendo por bitstream sin cambios. No disponible con el ajuste Solo decodificadores del dispositivo.</string>
     <string name="audio_tunneled">Reproducción en túnel</string>
-    <string name="audio_tunneled_sub">Sincronización de audio y video a nivel de hardware. Puede mejorar la reproducción en algunos dispositivos Android TV.</string>
+    <string name="audio_tunneled_sub">Sincronización de audio y video a nivel de hardware. Puede mejorar la reproducción en algunos dispositivos Android TV. El audio sin pérdida TrueHD y DTS-HD siempre se reproduce sin ella. Mientras está activada, no se puede cambiar la velocidad de reproducción y la relación de aspecto solo puede ser Ajustar o Rellenar</string>
     <string name="audio_force_optical_passthrough">Forzar transcodificación AC-3 (Óptico/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Transcodifica formatos multicanal (TrueHD, DTS, AAC, etc.) a Dolby Digital 5.1 en tiempo real para conexiones ópticas/SPDIF.</string>
     <!-- DV7 Handling Mode -->   
@@ -3749,6 +3751,7 @@
     <string name="assessment_grounds_afr_on">La pantalla informa varias frecuencias de actualización en la resolución actual (%1$s)</string>
     <string name="assessment_grounds_afr_already">Ya activado - Al iniciar o Al iniciar/detener es cuestión de preferencia: menos resincronizaciones HDMI frente a que la interfaz vuelva a 60 Hz</string>
     <string name="assessment_grounds_afr_single">Pantalla de una sola frecuencia en la resolución actual - no hay nada a lo que cambiar</string>
+    <string name="assessment_grounds_afr_shield">En un Shield, desactiva su propio ajuste de coincidencia de frecuencia de cuadros (Shield Experience 9.2 o posterior) mientras esto esté activado: ambos cambian el modo de la pantalla y se estorban entre sí</string>
     <string name="assessment_grounds_res_on">La pantalla ofrece varias resoluciones (%1$s)</string>
     <string name="assessment_grounds_res_single">Pantalla de una sola resolución - no hay nada a lo que cambiar</string>
     <string name="assessment_grounds_display_unknown">No se pudo inspeccionar la pantalla desde aquí - déjalo como está y compruébalo a ojo</string>
@@ -3810,6 +3813,8 @@
     <string name="assessment_item_ac3">Forzar transcodificación AC-3 (Óptico/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">La ruta de audio es %1$s (%2$s) - en una cadena HDMI este ajuste solo convierte el passthrough sin pérdida en AC-3 con pérdida</string>
     <string name="assessment_grounds_ac3_unknown">No se pudo confirmar una ruta óptica desde aquí - este ajuste solo corresponde a salidas Óptico/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Procesamiento Dolby Audio del Shield</string>
+    <string name="assessment_grounds_shield_dolby">Ninguna app puede leer este ajuste del Shield. Si el sonido se desincroniza o Atmos se corta, desactiva el procesamiento de audio Dolby en los ajustes de sonido del Shield y vuelve a probar</string>
     <string name="assessment_apply_title">Aplicar ajustes recomendados</string>
     <string name="assessment_apply_arm_sub">Escribe las filas medidas y calculadas más el perfil seleccionado - las filas por comprobar no se tocan. Se guarda una copia para revertir.</string>
     <string name="assessment_apply_confirm_sub">Presiona de nuevo para confirmar - se escribirán unos %1$d ajustes</string>
@@ -3822,6 +3827,7 @@
     <string name="assessment_profile_suggested_tag">Sugerido</string>
     <string name="assessment_grounds_res_choice">La pantalla ofrece varias resoluciones (%1$s) - la coincidencia deja el escalado al televisor en lugar de a este dispositivo; cuál se ve mejor depende del panel, así que lo decides tú</string>
     <string name="assessment_grounds_res_inert">Pantalla de una sola resolución - este ajuste no tiene efecto aquí</string>
+    <string name="assessment_grounds_res_shield">En un Shield, igualar la resolución envía el video de menor resolución al TV tal cual, así que el escalado con IA del Shield nunca se ejecuta - déjalo desactivado para conservar el escalado con IA</string>
     <string name="assessment_already_set">\u2713 Ya configurado</string>
     <string name="player_pill_play">Reproducir</string>
     <string name="player_pill_pause">Pausar</string>

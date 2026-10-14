@@ -292,7 +292,7 @@
     <string name="audio_decoder_prefer_app">Föredra appens avkodare (FFmpeg)</string>
     <string name="audio_decoder_priority">Avkodarprioritet</string>
     <string name="audio_tunneled">Tunneluppspelning</string>
-    <string name="audio_tunneled_sub">Ljud/video-synk på hårdvarunivå. Kan förbättra uppspelning på vissa Android TV-enheter</string>
+    <string name="audio_tunneled_sub">Ljud/video-synk på hårdvarunivå. Kan förbättra uppspelning på vissa Android TV-enheter. Förlustfritt TrueHD- och DTS-HD-ljud spelas alltid utan. Medan den är på går det inte att ändra uppspelningshastighet och bildformatet är bara Anpassa eller Fyll</string>
     <string name="audio_decoder_device_only_desc">Använd bara inbyggda hårdvaruavkodare. Mest kompatibelt men stödjer inte alla format.</string>
     <string name="audio_decoder_prefer_device_desc">Använd hårdvaruavkodare när tillgängliga, använd FFmpeg som reserv. Rekommenderas för de flesta enheter.</string>
     <string name="audio_decoder_prefer_app_desc">Använd FFmpeg-avkodare när tillgängliga. Bättre formatstöd men högre CPU-användning.</string>
@@ -1296,6 +1296,8 @@
     <string name="playback_afr_capability_disable_both_button">Inaktivera båda</string>
     <string name="playback_engine_exoplayer_desc">Bästa kompatibilitet med nuvarande Nuvio Arc-funktioner.</string>
     <string name="playback_engine_mvplayer_desc">Använder libmpv med Nuvio Arcs OSD-kontroller. Experimentellt.</string>
+    <string name="playback_engine_mvplayer_shield_note">På en Shield ritar libmpv bilden på GPU:n: ingen HDR-utgång och ingen AI-uppskalning.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">På en Shield ritar libmpv bilden på GPU:n: ingen HDR-utgång.</string>
 
     <!-- PlaybackAudioSettings -->
     <string name="audio_lang_original">Originalspråk</string>
@@ -2006,6 +2008,7 @@
     <string name="assessment_grounds_afr_on">Skärmen rapporterar flera uppdateringsfrekvenser vid aktuell upplösning (%1$s)</string>
     <string name="assessment_grounds_afr_already">Redan på - Start eller Start &amp; stopp är en smaksak: färre HDMI-omsynkningar mot att gränssnittet går tillbaka till 60 Hz</string>
     <string name="assessment_grounds_afr_single">Skärm med en enda frekvens vid aktuell upplösning - inget att växla till</string>
+    <string name="assessment_grounds_afr_shield">På en Shield, stäng av dess egen inställning för matchning av bildfrekvens (Shield Experience 9.2 och senare) medan detta är på: båda växlar skärmläge och motverkar varandra</string>
     <string name="assessment_grounds_res_on">Skärmen erbjuder flera upplösningar (%1$s)</string>
     <string name="assessment_grounds_res_single">Skärm med en enda upplösning - inget att växla till</string>
     <string name="assessment_grounds_display_unknown">Kunde inte undersöka skärmen härifrån - låt vara och kontrollera med ögat</string>
@@ -2067,6 +2070,8 @@
     <string name="assessment_item_ac3">Tvinga AC-3-omkodning (Optical/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Ljudvägen är %1$s (%2$s) - i en HDMI-kedja gör den här inställningen bara om förlustfri genomströmning till AC-3 med förluster</string>
     <string name="assessment_grounds_ac3_unknown">Kunde inte bekräfta en optisk väg härifrån - den här inställningen hör bara hemma på Optical/SPDIF-utgångar</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio-bearbetning</string>
+    <string name="assessment_grounds_shield_dolby">Ingen app kan läsa den här Shield-inställningen. Om ljudet hamnar ur synk eller Atmos faller bort, stäng av Dolby-ljudbearbetning i Shieldens ljudinställningar och testa igen</string>
     <string name="assessment_apply_title">Tillämpa rekommenderade inställningar</string>
     <string name="assessment_apply_arm_sub">Skriver raderna Uppmätt och Beräknat plus den valda profilen - kontrollrader rörs aldrig. En ögonblicksbild för återställning sparas.</string>
     <string name="assessment_apply_confirm_sub">Tryck igen för att bekräfta - omkring %1$d inställningar skrivs</string>
@@ -2079,6 +2084,7 @@
     <string name="assessment_profile_suggested_tag">Föreslås</string>
     <string name="assessment_grounds_res_choice">Skärmen erbjuder flera upplösningar (%1$s) - matchning låter panelens skalare sköta uppskalningen i stället för boxens; vilket som ser bäst ut beror på panelen, så det förblir ditt val</string>
     <string name="assessment_grounds_res_inert">Skärm med en enda upplösning - inställningen har ingen effekt här</string>
+    <string name="assessment_grounds_res_shield">På en Shield skickar matchning av upplösning video med lägre upplösning oförändrad till tv:n, så Shieldens AI-uppskalning körs aldrig - låt den vara av för att behålla AI-uppskalning</string>
     <string name="assessment_already_set">\u2713 Redan inställt</string>
     <string name="player_pill_play">Spela</string>
     <string name="player_pill_pause">Paus</string>

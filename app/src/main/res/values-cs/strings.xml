@@ -641,6 +641,8 @@
     <string name="playback_player_auto_desc">ExoPlayer pro filmy a seriály · MPV pro anime</string>
     <string name="playback_engine_exoplayer_desc">Nejlepší kompatibilita s aktuálními funkcemi Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Používá libmpv s OSD ovládacími prvky Nuvio Arc. Experimentální.</string>
+    <string name="playback_engine_mvplayer_shield_note">Na Shieldu libmpv vykresluje obraz na GPU: bez výstupu HDR a bez AI upscalingu.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Na Shieldu libmpv vykresluje obraz na GPU: bez výstupu HDR.</string>
 
     <string name="video_section">Video</string>
     <string name="audio_trailer_section">Trailer</string>
@@ -667,7 +669,7 @@
     <string name="audio_decoder_priority">Priorita dekodéru</string>
     <string name="audio_enable_downmix_title">Povolit downmix</string>
     <string name="audio_tunneled">Tunelované přehrávání</string>
-    <string name="audio_tunneled_sub">Hardwarová synchronizace audio/video. Může zlepšit přehrávání na některých Android TV zařízeních</string>
+    <string name="audio_tunneled_sub">Hardwarová synchronizace audio/video. Může zlepšit přehrávání na některých Android TV zařízeních. Bezztrátový zvuk TrueHD a DTS-HD se vždy přehrává bez ní. Když je zapnutá, nelze měnit rychlost přehrávání a poměr stran je jen Přizpůsobit nebo Vyplnit</string>
     <string name="audio_force_optical_passthrough">Vynutit transkódování AC-3 (Optical/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">V reálném čase transkóduje vícekanálové formáty (TrueHD, DTS, AAC atd.) na Dolby Digital 5.1 pro připojení Optical/SPDIF.</string>
     <!-- DV7 Handling Mode -->
@@ -3229,6 +3231,7 @@
     <string name="assessment_grounds_afr_on">Displej hlásí v aktuálním rozlišení více obnovovacích frekvencí (%1$s)</string>
     <string name="assessment_grounds_afr_already">Už zapnuto - Start nebo Start a stop je věc preference: méně resynchronizací HDMI, nebo návrat rozhraní na 60 Hz</string>
     <string name="assessment_grounds_afr_single">Displej s jedinou frekvencí v aktuálním rozlišení - není na co přepínat</string>
+    <string name="assessment_grounds_afr_shield">Na Shieldu vypněte jeho vlastní nastavení přizpůsobení snímkové frekvence (Shield Experience 9.2 a novější), dokud je toto zapnuté: obě přepínají displej a navzájem si překážejí</string>
     <string name="assessment_grounds_res_on">Displej nabízí více rozlišení (%1$s)</string>
     <string name="assessment_grounds_res_single">Displej s jediným rozlišením - není na co přepínat</string>
     <string name="assessment_grounds_display_unknown">Displej nelze z této obrazovky prověřit - nechte beze změny a ověřte okem</string>
@@ -3290,6 +3293,8 @@
     <string name="assessment_item_ac3">Vynutit transkódování AC-3 (Optical/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Zvuková trasa je %1$s (%2$s) - v řetězci HDMI toto nastavení jen změní bezztrátový passthrough na ztrátové AC-3</string>
     <string name="assessment_grounds_ac3_unknown">Optickou trasu odsud nelze potvrdit - toto nastavení patří jen k výstupům Optical/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Zpracování Dolby Audio na Shieldu</string>
+    <string name="assessment_grounds_shield_dolby">Toto nastavení Shieldu nemůže číst žádná aplikace. Pokud se zvuk rozchází s obrazem nebo Atmos vypadává, vypněte zpracování zvuku Dolby v nastavení zvuku Shieldu a vyzkoušejte to znovu</string>
     <string name="assessment_apply_title">Použít doporučená nastavení</string>
     <string name="assessment_apply_arm_sub">Zapíše měřené a vypočtené řádky a zvolený profil - řádky k ověření zůstanou nedotčené. Uloží se snímek pro vrácení.</string>
     <string name="assessment_apply_confirm_sub">Stiskněte znovu pro potvrzení - zapíše se asi %1$d nastavení</string>
@@ -3302,6 +3307,7 @@
     <string name="assessment_profile_suggested_tag">Navrženo</string>
     <string name="assessment_grounds_res_choice">Displej nabízí více rozlišení (%1$s) - při přizpůsobení škáluje obraz panel místo tohoto zařízení; co vypadá lépe, závisí na panelu, proto je volba na vás</string>
     <string name="assessment_grounds_res_inert">Displej s jediným rozlišením - toto nastavení tu nic nemění</string>
+    <string name="assessment_grounds_res_shield">Na Shieldu přizpůsobení rozlišení posílá video s nižším rozlišením do TV beze změny, takže AI upscaling Shieldu nikdy neběží - nechte vypnuté, chcete-li AI upscaling zachovat</string>
     <string name="assessment_already_set">\u2713 Už nastaveno</string>
     <string name="player_pill_play">Přehrát</string>
     <string name="player_pill_pause">Pozastavit</string>

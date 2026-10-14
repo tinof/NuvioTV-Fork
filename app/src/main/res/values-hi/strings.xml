@@ -290,7 +290,7 @@
     <string name="audio_decoder_prefer_app">ऐप डिकोडर को प्राथमिकता दें (FFmpeg)</string>
     <string name="audio_decoder_priority">डिकोडर प्राथमिकता</string>
     <string name="audio_tunneled">टनल्ड प्लेबैक</string>
-    <string name="audio_tunneled_sub">हार्डवेयर स्तर का ऑडियो/वीडियो सिंक। कुछ Android TV डिवाइस पर प्लेबैक बेहतर हो सकता है</string>
+    <string name="audio_tunneled_sub">हार्डवेयर स्तर का ऑडियो/वीडियो सिंक। कुछ Android TV डिवाइस पर प्लेबैक बेहतर हो सकता है। लॉसलेस TrueHD और DTS-HD ऑडियो हमेशा इसके बिना चलता है। चालू रहने पर प्लेबैक स्पीड नहीं बदली जा सकती और आस्पेक्ट केवल फिट या फिल होता है</string>
     <string name="audio_decoder_device_only_desc">केवल बिल्ट-इन हार्डवेयर डिकोडर का उपयोग करें। सबसे अधिक संगत लेकिन सभी फॉर्मेट सपोर्ट नहीं हो सकते।</string>
     <string name="audio_decoder_prefer_device_desc">जहाँ उपलब्ध हो हार्डवेयर डिकोडर उपयोग करें, अन्यथा FFmpeg पर जाएँ। अधिकांश डिवाइस के लिए अनुशंसित।</string>
     <string name="audio_decoder_prefer_app_desc">जहाँ उपलब्ध हो FFmpeg डिकोडर उपयोग करें। बेहतर फॉर्मेट सपोर्ट लेकिन अधिक CPU उपयोग।</string>
@@ -1391,6 +1391,7 @@
     <string name="assessment_grounds_afr_on">डिस्प्ले मौजूदा रिज़ॉल्यूशन पर कई रिफ्रेश रेट बताता है (%1$s)</string>
     <string name="assessment_grounds_afr_already">पहले से चालू - शुरू या शुरू और बंद, पसंद की बात है: कम HDMI रीसिंक बनाम UI का 60 Hz पर लौटना</string>
     <string name="assessment_grounds_afr_single">मौजूदा रिज़ॉल्यूशन पर एक ही रेट वाला डिस्प्ले - बदलने को कुछ नहीं</string>
+    <string name="assessment_grounds_afr_shield">Shield पर, जब तक यह चालू है, उसकी अपनी फ्रेम रेट मिलाने वाली सेटिंग (Shield Experience 9.2 और बाद के) बंद रखें: दोनों डिस्प्ले बदलते हैं और एक-दूसरे से टकराते हैं</string>
     <string name="assessment_grounds_res_on">डिस्प्ले कई रिज़ॉल्यूशन देता है (%1$s)</string>
     <string name="assessment_grounds_res_single">एक ही रिज़ॉल्यूशन वाला डिस्प्ले - बदलने को कुछ नहीं</string>
     <string name="assessment_grounds_display_unknown">इस स्क्रीन से डिस्प्ले जाँचा नहीं जा सका - जैसा है रहने दें और आँख से जाँचें</string>
@@ -1452,6 +1453,8 @@
     <string name="assessment_item_ac3">AC-3 ट्रांसकोडिंग फ़ोर्स करें (ऑप्टिकल/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">ऑडियो रूट %1$s (%2$s) है - HDMI चेन पर यह सेटिंग केवल लॉसलेस पासथ्रू को लॉसी AC-3 बना देती है</string>
     <string name="assessment_grounds_ac3_unknown">यहाँ से ऑप्टिकल रूट की पुष्टि नहीं हो सकी - यह सेटिंग केवल ऑप्टिकल/SPDIF आउटपुट के लिए है</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio प्रोसेसिंग</string>
+    <string name="assessment_grounds_shield_dolby">कोई भी ऐप Shield की यह सेटिंग नहीं पढ़ सकता। अगर आवाज़ सिंक से हटे या Atmos बंद हो जाए, तो Shield की साउंड सेटिंग में Dolby ऑडियो प्रोसेसिंग बंद करके फिर जांचें</string>
     <string name="assessment_apply_title">अनुशंसित सेटिंग्स लागू करें</string>
     <string name="assessment_apply_arm_sub">मापी और गणना वाली पंक्तियाँ तथा चुनी प्रोफाइल लिखता है - जाँच वाली पंक्तियाँ कभी नहीं छुई जातीं। वापसी के लिए स्नैपशॉट रखा जाता है।</string>
     <string name="assessment_apply_confirm_sub">पुष्टि के लिए फिर दबाएँ - करीब %1$d सेटिंग्स लिखी जाएँगी</string>
@@ -1464,6 +1467,7 @@
     <string name="assessment_profile_suggested_tag">सुझाया गया</string>
     <string name="assessment_grounds_res_choice">डिस्प्ले कई रिज़ॉल्यूशन देता है (%1$s) - मैचिंग से अपस्केलिंग इस बॉक्स की जगह पैनल का स्केलर करता है; कौन बेहतर दिखता है यह पैनल पर निर्भर है, इसलिए यह आपकी मर्ज़ी है</string>
     <string name="assessment_grounds_res_inert">एक ही रिज़ॉल्यूशन वाला डिस्प्ले - यहाँ इस सेटिंग का कोई असर नहीं</string>
+    <string name="assessment_grounds_res_shield">Shield पर रिज़ॉल्यूशन मिलाने से कम रिज़ॉल्यूशन का वीडियो वैसे ही TV पर जाता है, इसलिए Shield की AI अपस्केलिंग कभी नहीं चलती - AI अपस्केलिंग रखने के लिए इसे बंद रखें</string>
     <string name="assessment_already_set">✓ पहले से सेट</string>
     <string name="player_pill_play">चलाएँ</string>
     <string name="player_pill_pause">रोकें</string>
@@ -1777,4 +1781,6 @@
     <string name="stream_resume_from_time">%1$s से जारी रखें</string>
     <string name="stream_resume_from_percent">%1$d%% से जारी रखें</string>
     <string name="tvdb_metadata_credit">मेटाडेटा %1$s द्वारा प्रदान किया गया</string>
+    <string name="playback_engine_mvplayer_shield_note">Shield पर libmpv तस्वीर GPU पर बनाता है: न HDR आउटपुट, न AI अपस्केलिंग।</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Shield पर libmpv तस्वीर GPU पर बनाता है: HDR आउटपुट नहीं।</string>
 </resources>
