@@ -7,6 +7,7 @@ import android.media.MediaCodecInfo.CodecProfileLevel
 import android.media.MediaCodecList
 import android.os.Build
 import android.view.Display
+import com.nuvio.tv.core.performance.DeviceProfile
 
 /**
  * Decides what to do with a Dolby Vision stream at the codec selector. It only intervenes
@@ -137,6 +138,22 @@ object DolbyVisionBaseLayerPolicy {
             bridgeReady = bridgeReady,
             apiLevel = apiLevel
         )
+    }
+
+    /**
+     * Whether Auto converts DV7 the way manual Convert to DV8.1 does (mode 2, the 8.1 no-op
+     * mapping, with per-RPU fallback to mode 1) instead of Auto's mode 1 (MEL). Only for a DV
+     * display conversion. Nvidia always takes mode 2: the Shield cannot play the FEL layer, and
+     * mode 2 is the conversion that is right for FEL and MEL alike, which the decision cannot tell
+     * apart. debug.nuvio.dv7_manual=1/0 forces mode 2 or mode 1 on any box.
+     */
+    fun autoUsesManualConversion(
+        result: Result,
+        switch: Boolean?,
+        manufacturer: String? = Build.MANUFACTURER
+    ): Boolean {
+        if (result.decision != Decision.CONVERT_TO_DV81 || !result.displayDv) return false
+        return switch ?: (result.usesManualConversion || DeviceProfile.isNvidia(manufacturer))
     }
 
     fun resolve(context: Context, bridgeReady: Boolean): Result {
