@@ -420,6 +420,7 @@
     <string name="assessment_grounds_afr_on">Екран пријављује више брзина освежавања на тренутној резолуцији (%1$s)</string>
     <string name="assessment_grounds_afr_already">Већ укључено - покретање или покретање и заустављање је ствар избора: мање HDMI ресинхронизација наспрам повратка интерфејса на 60 Hz</string>
     <string name="assessment_grounds_afr_single">Екран са једном брзином освежавања на тренутној резолуцији - нема на шта да се пребаци</string>
+    <string name="assessment_grounds_afr_shield">На Shield-у искључите његово подешавање усклађивања брзине кадрова (Shield Experience 9.2 и новије) док је ово укључено: оба мењају режим екрана и ометају једно друго</string>
     <string name="assessment_grounds_res_on">Екран нуди више резолуција (%1$s)</string>
     <string name="assessment_grounds_res_single">Екран са једном резолуцијом - нема на шта да се пребаци</string>
     <string name="assessment_grounds_display_unknown">Екран није могао да се испита са овог екрана - оставите како јесте и проверите оком</string>
@@ -482,6 +483,8 @@
     <string name="assessment_item_ac3">Форсирај AC-3 транскодирање (Оптички/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Аудио рута је %1$s (%2$s) - на HDMI ланцу ово подешавање само претвара passthrough без губитака у AC-3 са губицима</string>
     <string name="assessment_grounds_ac3_unknown">Оптичка рута није могла да се потврди одавде - ово подешавање је само за оптичке/SPDIF излазе</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio обрада</string>
+    <string name="assessment_grounds_shield_dolby">Ниједна апликација не може да прочита ово Shield подешавање. Ако звук касни или Atmos нестаје, искључите Dolby обраду звука у подешавањима звука на Shield-у и поново тестирајте</string>
     <string name="assessment_apply_title">Примени препоручена подешавања</string>
     <string name="assessment_apply_arm_sub">Уписује мерене и израчунате редове и изабрани профил - редови за проверу се не дирају. Чува се снимак за враћање.</string>
     <string name="assessment_apply_confirm_sub">Притисните поново за потврду - биће уписано око %1$d подешавања</string>
@@ -494,6 +497,7 @@
     <string name="assessment_profile_suggested_tag">Предложено</string>
     <string name="assessment_grounds_res_choice">Екран нуди више резолуција (%1$s) - усклађивање препушта скалирање панелу уместо овом уређају; шта изгледа боље зависи од панела, па ово остаје ваш избор</string>
     <string name="assessment_grounds_res_inert">Екран са једном резолуцијом - ово подешавање овде нема ефекта</string>
+    <string name="assessment_grounds_res_shield">На Shield-у, усклађивање резолуције шаље видео ниже резолуције телевизору такав какав јесте, па AI скалирање Shield-а никад не ради - оставите искључено да бисте задржали AI скалирање</string>
     <string name="assessment_already_set">\u2713 Већ подешено</string>
     <string name="player_pill_play">Пусти</string>
     <string name="player_pill_pause">Пауза</string>
@@ -807,4 +811,6 @@
     <string name="stream_resume_from_time">Настави од %1$s</string>
     <string name="stream_resume_from_percent">Настави од %1$d%%</string>
     <string name="tvdb_metadata_credit">Метаподатке обезбеђује %1$s</string>
+    <string name="playback_engine_mvplayer_shield_note">На Shield-у, libmpv исцртава слику на GPU-у: без HDR излаза и без AI скалирања.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">На Shield-у, libmpv исцртава слику на GPU-у: без HDR излаза.</string>
 </resources>

@@ -763,6 +763,8 @@
     <string name="playback_player_auto_desc">電影與電視節目使用 ExoPlayer · 動畫使用 MPV</string>
     <string name="playback_engine_exoplayer_desc">與目前 Nuvio Arc 功能相容性最佳。</string>
     <string name="playback_engine_mvplayer_desc">使用帶有 Nuvio Arc OSD 控制的 libmpv。實驗性功能。</string>
+    <string name="playback_engine_mvplayer_shield_note">在 Shield 上，libmpv 使用 GPU 繪製畫面：沒有 HDR 輸出，也沒有 AI 升頻。</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">在 Shield 上，libmpv 使用 GPU 繪製畫面：沒有 HDR 輸出。</string>
 
     <string name="video_section">影片</string>
     <string name="audio_trailer_section">預告片</string>
@@ -790,7 +792,7 @@
     <string name="audio_enable_downmix_title">啟用混音下轉</string>
     <string name="audio_enable_downmix_subtitle">將應用程式解碼的音訊混音下轉為所選聲道數。接收器支援的格式仍以位元流原樣輸出。使用「僅裝置解碼器」設定時無法使用。</string>
     <string name="audio_tunneled">通道化播放</string>
-    <string name="audio_tunneled_sub">硬體層級的音訊/影片同步。可能在部分 Android TV 裝置上改善播放。</string>
+    <string name="audio_tunneled_sub">硬體層級的音訊/影片同步。可能在部分 Android TV 裝置上改善播放。無損 TrueHD 和 DTS-HD 音訊一律不使用它播放。開啟時無法變更播放速度，畫面比例只能為符合或填滿。</string>
     <string name="audio_force_optical_passthrough">強制 AC-3 轉碼 (光纖/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">即時將多聲道格式 (TrueHD、DTS、AAC 等) 轉碼為 Dolby Digital 5.1，用於光纖/SPDIF 連線。</string>
     <!-- DV7 處理模式 -->
@@ -3642,6 +3644,7 @@
     <string name="assessment_grounds_afr_on">顯示器在目前解析度下回報了多個更新率 (%1$s)</string>
     <string name="assessment_grounds_afr_already">已開啟 -「開始時」還是「開始和停止時」取決於偏好：減少 HDMI 重新同步，還是讓介面回到 60 Hz</string>
     <string name="assessment_grounds_afr_single">顯示器在目前解析度下只有一個更新率 - 沒有可切換的選項</string>
+    <string name="assessment_grounds_afr_shield">在 Shield 上，開啟此項時請關閉 Shield 本身的畫面更新率配對設定（Shield Experience 9.2 及更新版本）：兩者都會切換顯示模式，會互相干擾</string>
     <string name="assessment_grounds_res_on">顯示器提供多個解析度 (%1$s)</string>
     <string name="assessment_grounds_res_single">顯示器只有一個解析度 - 沒有可切換的選項</string>
     <string name="assessment_grounds_display_unknown">無法從此畫面檢查顯示器 - 維持不變並自行目視確認</string>
@@ -3704,6 +3707,8 @@
     <string name="assessment_item_ac3">強制 AC-3 轉碼 (光纖/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">音訊路由為 %1$s (%2$s) - 在 HDMI 鏈路上，此設定只會把無損穿透變成有損的 AC-3</string>
     <string name="assessment_grounds_ac3_unknown">無法從這裡確認光纖路由 - 此設定只適用於光纖/SPDIF 輸出</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio 處理</string>
+    <string name="assessment_grounds_shield_dolby">任何應用程式都無法讀取此 Shield 設定。如果聲音不同步或 Atmos 中斷，請在 Shield 的音效設定中關閉 Dolby 音訊處理後再測試</string>
     <string name="assessment_apply_title">套用建議設定</string>
     <string name="assessment_apply_arm_sub">寫入測量列和計算列以及所選方案 - 確認列絕不會被更動。會保留一份用於還原的快照。</string>
     <string name="assessment_apply_confirm_sub">再按一次確認 - 將寫入約 %1$d 項設定</string>
@@ -3716,6 +3721,7 @@
     <string name="assessment_profile_suggested_tag">建議</string>
     <string name="assessment_grounds_res_choice">顯示器提供多個解析度 (%1$s) - 匹配後由面板的縮放器而非此裝置負責放大；哪個效果較好取決於面板，因此由您決定</string>
     <string name="assessment_grounds_res_inert">顯示器只有一個解析度 - 此設定在這裡沒有作用</string>
+    <string name="assessment_grounds_res_shield">在 Shield 上，配對解析度會將較低解析度的影片原樣傳送到電視，因此 Shield 的 AI 升頻永遠不會執行 - 若要保留 AI 升頻請保持關閉</string>
     <string name="assessment_already_set">\u2713 已設定</string>
     <string name="player_pill_play">播放</string>
     <string name="player_pill_pause">暫停</string>

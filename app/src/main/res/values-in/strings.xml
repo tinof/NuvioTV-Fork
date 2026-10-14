@@ -600,6 +600,8 @@
     <string name="playback_player_auto_desc">ExoPlayer untuk Film &amp; Serial TV · MPV untuk Anime</string>
     <string name="playback_engine_exoplayer_desc">Kompatibilitas terbaik dengan fitur Nuvio Arc saat ini.</string>
     <string name="playback_engine_mvplayer_desc">Menggunakan libmpv dengan kontrol OSD Nuvio Arc. Eksperimental.</string>
+    <string name="playback_engine_mvplayer_shield_note">Di Shield, libmpv menggambar gambar di GPU: tanpa output HDR dan tanpa upscaling AI.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Di Shield, libmpv menggambar gambar di GPU: tanpa output HDR.</string>
 
     <!-- PlaybackAudioSettings -->
     <string name="audio_trailer_section">Trailer</string>
@@ -626,7 +628,7 @@
     <string name="audio_decoder_priority">Prioritas Dekoder</string>
     <string name="audio_enable_downmix_title">Aktifkan downmix</string>
     <string name="audio_tunneled">Tunneled Playback</string>
-    <string name="audio_tunneled_sub">Sinkronisasi audio/video tingkat hardware. Mungkin meningkatkan pemutaran di beberapa perangkat Android TV</string>
+    <string name="audio_tunneled_sub">Sinkronisasi audio/video tingkat hardware. Mungkin meningkatkan pemutaran di beberapa perangkat Android TV. Audio lossless TrueHD dan DTS-HD selalu diputar tanpanya. Selama aktif, kecepatan pemutaran tidak dapat diubah dan rasio aspek hanya Sesuaikan atau Isi</string>
     <string name="audio_mpv_hwdec_title">Dekoding Hardware (Hanya MPV)</string>
     <string name="audio_mpv_hwdec_dialog_subtitle">Pilih cara libmpv menggunakan dekoder hardware.</string>
     <string name="audio_mpv_hwdec_legacy_direct_copy">Lama (direct → copy)</string>
@@ -2858,6 +2860,7 @@
     <string name="assessment_grounds_afr_on">Layar melaporkan beberapa refresh rate pada resolusi saat ini (%1$s)</string>
     <string name="assessment_grounds_afr_already">Sudah aktif - Mulai atau Mulai &amp; berhenti adalah soal selera: lebih sedikit sinkron ulang HDMI atau UI kembali ke 60 Hz</string>
     <string name="assessment_grounds_afr_single">Layar satu refresh rate pada resolusi saat ini - tidak ada yang bisa diganti</string>
+    <string name="assessment_grounds_afr_shield">Di Shield, matikan pengaturan pencocokan frame rate miliknya sendiri (Shield Experience 9.2 dan setelahnya) selama ini aktif: keduanya mengganti mode layar dan saling bertentangan</string>
     <string name="assessment_grounds_res_on">Layar menyediakan beberapa resolusi (%1$s)</string>
     <string name="assessment_grounds_res_single">Layar satu resolusi - tidak ada yang bisa diganti</string>
     <string name="assessment_grounds_display_unknown">Layar tidak dapat diperiksa dari halaman ini - biarkan apa adanya dan periksa dengan mata</string>
@@ -2920,6 +2923,8 @@
     <string name="assessment_item_ac3">Paksa Transcoding AC-3 (Optik/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Rute audio adalah %1$s (%2$s) - pada rantai HDMI pengaturan ini hanya mengubah passthrough lossless menjadi AC-3 lossy</string>
     <string name="assessment_grounds_ac3_unknown">Rute optik tidak dapat dipastikan dari sini - pengaturan ini hanya untuk output Optik/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Pemrosesan Dolby Audio Shield</string>
+    <string name="assessment_grounds_shield_dolby">Tidak ada aplikasi yang bisa membaca pengaturan Shield ini. Jika suara tidak sinkron atau Atmos terputus, matikan pemrosesan audio Dolby di pengaturan suara Shield lalu uji lagi</string>
     <string name="assessment_apply_title">Terapkan pengaturan yang disarankan</string>
     <string name="assessment_apply_arm_sub">Menulis baris Terukur dan Terhitung serta profil terpilih - baris Periksa tidak pernah disentuh. Snapshot untuk pengembalian disimpan.</string>
     <string name="assessment_apply_confirm_sub">Tekan lagi untuk konfirmasi - sekitar %1$d pengaturan akan ditulis</string>
@@ -2932,6 +2937,7 @@
     <string name="assessment_profile_suggested_tag">Disarankan</string>
     <string name="assessment_grounds_res_choice">Layar menyediakan beberapa resolusi (%1$s) - pencocokan membuat scaler panel yang menangani upscaling, bukan perangkat ini; mana yang lebih bagus bergantung pada panel, jadi ini terserah Anda</string>
     <string name="assessment_grounds_res_inert">Layar satu resolusi - pengaturan ini tidak berpengaruh di sini</string>
+    <string name="assessment_grounds_res_shield">Di Shield, mencocokkan resolusi mengirim video beresolusi lebih rendah apa adanya ke TV, sehingga upscaling AI Shield tidak pernah berjalan - biarkan nonaktif untuk mempertahankan upscaling AI</string>
     <string name="assessment_already_set">\u2713 Sudah diatur</string>
     <string name="player_pill_play">Putar</string>
     <string name="player_pill_pause">Jeda</string>
