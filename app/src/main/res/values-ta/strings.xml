@@ -583,6 +583,8 @@
     <string name="playback_player_auto_desc">திரைப்படங்கள் &amp; தொடர்களுக்கு ExoPlayer · Anime-க்கு MPV</string>
     <string name="playback_engine_exoplayer_desc">தற்போதைய Nuvio Arc அம்சங்களுடன் சிறந்த பொருத்தம்.</string>
     <string name="playback_engine_mvplayer_desc">Nuvio Arc OSD கட்டுப்பாடுகளுடன் libmpv பயன்படுத்துகிறது. சோதனை நிலையில் உள்ளது.</string>
+    <string name="playback_engine_mvplayer_shield_note">Shield-இல் libmpv படத்தை GPU-வில் வரைகிறது: HDR வெளியீடு இல்லை, AI அப்ஸ்கேலிங்கும் இல்லை.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Shield-இல் libmpv படத்தை GPU-வில் வரைகிறது: HDR வெளியீடு இல்லை.</string>
 
         <!-- PlaybackAudioSettings -->
     <string name="audio_trailer_section">ட்ரெய்லர்</string>
@@ -606,7 +608,7 @@
     <string name="audio_decoder_prefer_app">செயலி டிகோடர்களுக்கு முன்னுரிமை (எப்எப்எம்பிஇஜி)</string>
     <string name="audio_decoder_priority">டிகோடர் முன்னுரிமை</string>
     <string name="audio_tunneled">டனல்டு இயக்கம்</string>
-    <string name="audio_tunneled_sub">வன்பொருள் நிலை ஒலி/காணொளி ஒத்திசைவு. சில ஆண்ட்ராய்டு டிவி சாதனங்களில் இயக்கத்தை மேம்படுத்தலாம்</string>
+    <string name="audio_tunneled_sub">வன்பொருள் நிலை ஒலி/காணொளி ஒத்திசைவு. சில ஆண்ட்ராய்டு டிவி சாதனங்களில் இயக்கத்தை மேம்படுத்தலாம். இழப்பற்ற TrueHD மற்றும் DTS-HD ஒலி எப்போதும் இது இல்லாமலே இயங்கும். இது இயக்கத்தில் இருக்கும்போது இயக்க வேகத்தை மாற்ற முடியாது, விகிதம் பொருத்து அல்லது நிரப்பு மட்டுமே</string>
     <string name="audio_mpv_hwdec_title">வன்பொருள் டிகோடிங் (எம்பிவி மட்டும்)</string>
     <string name="audio_mpv_hwdec_dialog_subtitle">லிப்எம்பிவி வன்பொருள் டிகோடர்களை எவ்வாறு பயன்படுத்த வேண்டும் என்பதைத் தேர்ந்தெடுக்கவும்.</string>
     <string name="audio_mpv_hwdec_legacy_direct_copy">பழைய முறை (நேரடி -&gt; நகல்)</string>
@@ -2257,4 +2259,8 @@
     <string name="trakt_comments_error_request_failed">ட்ராக்ட் கருத்துகள் கோரிக்கை தோல்வியடைந்தது</string>
     <string name="trakt_library_error_fetch_list_items">பட்டியல் உருப்படிகளைப் பெற முடியவில்லை</string>
 
+    <string name="assessment_grounds_afr_shield">Shield-இல், இது இயக்கத்தில் இருக்கும்போது அதன் சொந்த பிரேம் வீதப் பொருத்த அமைப்பை (Shield Experience 9.2 மற்றும் பின்னர்) அணைக்கவும்: இரண்டும் திரையை மாற்றி ஒன்றுக்கொன்று முரண்படுகின்றன</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio செயலாக்கம்</string>
+    <string name="assessment_grounds_shield_dolby">எந்த ஆப்பும் இந்த Shield அமைப்பைப் படிக்க முடியாது. ஒலி ஒத்திசைவை இழந்தாலோ Atmos நின்றாலோ, Shield-இன் ஒலி அமைப்புகளில் Dolby ஆடியோ செயலாக்கத்தை அணைத்து மீண்டும் சோதிக்கவும்</string>
+    <string name="assessment_grounds_res_shield">Shield-இல் தெளிவுத்திறனைப் பொருத்தினால் குறைந்த தெளிவுத்திறன் வீடியோ அப்படியே டிவிக்குச் செல்லும், எனவே Shield-இன் AI அப்ஸ்கேலிங் ஒருபோதும் இயங்காது - AI அப்ஸ்கேலிங்கை வைத்திருக்க இதை அணைத்தே வைக்கவும்</string>
 </resources>
