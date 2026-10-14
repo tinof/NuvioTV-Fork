@@ -3,9 +3,12 @@ package com.nuvio.tv.core.player.thumbnail
 import android.app.ActivityManager
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.os.Build
 import android.os.Process
 import android.util.Log
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.MemoryPressure
+import com.nuvio.tv.core.util.DebugSwitches
 import java.io.File
 
 /** Decode cost classes: resident memory and address space one software decode takes. */
@@ -88,6 +91,8 @@ internal object MemoryGovernor {
      */
     private const val STRONG_MIN_AVAIL_MB = 600L
     private const val STRONG_MIN_SWAP_FREE_MB = 2 * SWAP_FLOOR_MB
+    /** With the swap rule off (Shield TV Pro 2019), full swap still refuses below this MemAvailable. */
+    private const val STRONG_SWAP_RELAXED_MIN_AVAIL_MB = 900L
     /** 32-bit only: ceiling for VmSize plus the decode's cost, keeps about 700 MB of the 4 GB address space spare. */
     private const val VA_CEILING_32BIT_MB = 3_300L
 
@@ -162,9 +167,21 @@ internal object MemoryGovernor {
                 availMb = if (info.totalMem > 0) info.availMem / MB else -1L,
                 swapTotalMb = mem?.swapTotalMb ?: 0L,
                 swapFreeMb = mem?.swapFreeMb ?: 0L,
+                swapRule = swapRuleOn(DebugSwitches.flag("debug.nuvio.thumb_swap_rule")),
             )
         }
     }
+
+    /**
+     * Whether full swap refuses the strong path at any MemAvailable. Off on the Shield TV Pro 2019, where full swap
+     * refuses only below 900 MB available. [switch] (debug.nuvio.thumb_swap_rule): true keeps the rule, false drops
+     * it on any box.
+     */
+    internal fun swapRuleOn(
+        switch: Boolean?,
+        manufacturer: String? = Build.MANUFACTURER,
+        device: String? = Build.DEVICE,
+    ): Boolean = switch ?: !DeviceProfile.isShieldPro2019(manufacturer, device)
 
     /**
      * The heap in use counts garbage not collected yet: when the free-heap rule is the only one that fails, [collect]
@@ -183,10 +200,13 @@ internal object MemoryGovernor {
     internal fun strongHardware(is64Bit: Boolean, totalMemBytes: Long, heapMaxBytes: Long): Boolean =
         is64Bit && totalMemBytes >= STRONG_BOX_TOTAL_BYTES && heapMaxBytes >= STRONG_MIN_HEAP_BYTES
 
-    /** [availMb] < 0: not known. Swap is only checked where the box has some. */
+    /**
+     * [availMb] < 0: not known. Swap is only checked where the box has some. Without [swapRule], full swap refuses
+     * only while MemAvailable is under [STRONG_SWAP_RELAXED_MIN_AVAIL_MB] or not known (negative).
+     */
     internal fun strongBoxVerdict(
         is64Bit: Boolean, totalMemBytes: Long, heapMaxBytes: Long, heapUsedBytes: Long, lowMemory: Boolean,
-        availMb: Long, swapTotalMb: Long, swapFreeMb: Long,
+        availMb: Long, swapTotalMb: Long, swapFreeMb: Long, swapRule: Boolean = true,
     ): GovernorVerdict = when {
         !is64Bit -> GovernorVerdict(false, "32-bit process")
         totalMemBytes < STRONG_BOX_TOTAL_BYTES -> GovernorVerdict(false, "RAM ${totalMemBytes / MB} MB")
@@ -197,7 +217,8 @@ internal object MemoryGovernor {
                 "${STRONG_MIN_HEAP_FREE_BYTES / MB}")
         lowMemory -> GovernorVerdict(false, "system low on memory")
         availMb in 0 until STRONG_MIN_AVAIL_MB -> GovernorVerdict(false, "available $availMb MB < $STRONG_MIN_AVAIL_MB")
-        swapTotalMb > 0 && swapFreeMb < STRONG_MIN_SWAP_FREE_MB ->
+        swapTotalMb > 0 && swapFreeMb < STRONG_MIN_SWAP_FREE_MB &&
+            (swapRule || availMb < STRONG_SWAP_RELAXED_MIN_AVAIL_MB) ->
             GovernorVerdict(false, "SwapFree $swapFreeMb MB < $STRONG_MIN_SWAP_FREE_MB")
         else -> GovernorVerdict(true, "RAM ${totalMemBytes / MB} MB, heap ${heapUsedBytes / MB}/${heapMaxBytes / MB} MB, " +
             "available ${if (availMb >= 0) "$availMb MB" else "unknown"}, " +
