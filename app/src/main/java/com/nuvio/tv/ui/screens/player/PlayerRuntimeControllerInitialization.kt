@@ -1331,9 +1331,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                 convertToDv81Active = convertToDv81Active
             )
             tunnelPredictionCodecSelector = codecSelector
-            DolbyVisionCodecFallback.preferDvDecoders =
-                com.nuvio.tv.core.util.DebugSwitches.flag("debug.nuvio.dv_decoder_first") == true &&
-                    capsForDiagnostics.displayDv
+            DolbyVisionCodecFallback.preferDvDecoders = DolbyVisionCodecFallback.prefersDvDecoders(
+                switch = DebugSwitches.flag("debug.nuvio.dv_decoder_first"),
+                displayDv = capsForDiagnostics.displayDv,
+                manufacturer = Build.MANUFACTURER
+            )
             if (DolbyVisionCodecFallback.preferDvDecoders) {
                 Log.i(PlayerRuntimeController.TAG, "DV_DECODER_FIRST: hardware DV decoders ahead of HEVC")
             }
