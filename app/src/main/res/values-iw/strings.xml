@@ -804,6 +804,8 @@
     <string name="playback_player_auto_desc">ExoPlayer לסרטים ולתוכניות טלוויזיה · MPV לאנימה</string>
     <string name="playback_engine_exoplayer_desc">התאימות הטובה ביותר עם תכונות Nuvio Arc הנוכחיות.</string>
     <string name="playback_engine_mvplayer_desc">משתמש ב-Libmpv עם פקדי המסך של Nuvio Arc. ניסיוני.</string>
+    <string name="playback_engine_mvplayer_shield_note">ב-Shield,‏ libmpv מצייר את התמונה ב-GPU: ללא פלט HDR וללא הגדלת AI.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">ב-Shield,‏ libmpv מצייר את התמונה ב-GPU: ללא פלט HDR.</string>
 
     <string name="video_section">וידאו</string>
     <string name="playback_true_black_letterbox">פסים שחורים אמיתיים</string>
@@ -833,7 +835,7 @@
     <string name="audio_enable_downmix_title">הפעלת downmix</string>
     <string name="audio_enable_downmix_subtitle">מבצע downmix לשמע שהאפליקציה מפענחת, למספר הערוצים שנבחר. פורמטים שהמקלט מקבל ממשיכים לעבור כמות שהם (bitstream). לא זמין עם הגדרת המפענח \"מכשיר בלבד\".</string>
     <string name="audio_tunneled">הפעלה במנהור (Tunneled)</string>
-    <string name="audio_tunneled_sub">מסייע לסנכרן בין הקול לתמונה. אפשר לנסות אם יש חוסר סנכרון בחלק מהמכשירים.</string>
+    <string name="audio_tunneled_sub">סנכרון קול ותמונה ברמת החומרה. עשוי לשפר את הניגון בחלק ממכשירי Android TV. שמע TrueHD ו-DTS-HD ללא אובדן מתנגן תמיד בלעדיו. כשהוא פעיל, אי אפשר לשנות את מהירות הניגון ויחס התצוגה הוא רק התאמה או מילוי</string>
     <string name="audio_force_optical_passthrough">כפיית קידוד מחדש ל-AC-3 (אופטי/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">ממיר פורמטים רב-ערוציים (TrueHD, DTS, AAC וכו׳) ל-Dolby Digital 5.1 בזמן אמת עבור חיבורי Optical/SPDIF.</string>
     <!-- DV7 Handling Mode -->
@@ -3762,6 +3764,7 @@
     <string name="assessment_grounds_afr_on">התצוגה מדווחת על כמה קצבי רענון ברזולוציה הנוכחית (%1$s)</string>
     <string name="assessment_grounds_afr_already">כבר פועל - בהתחלה מול בהתחלה ובסיום הוא עניין של העדפה: פחות סנכרוני HDMI מחדש מול חזרת הממשק ל-60 Hz</string>
     <string name="assessment_grounds_afr_single">תצוגה עם קצב אחד ברזולוציה הנוכחית - אין למה לעבור</string>
+    <string name="assessment_grounds_afr_shield">ב-Shield, כבו את הגדרת התאמת קצב הפריימים שלו (Shield Experience 9.2 ואילך) כל עוד זה פעיל: שתיהן מחליפות את מצב המסך ומפריעות זו לזו</string>
     <string name="assessment_grounds_res_on">התצוגה מציעה כמה רזולוציות (%1$s)</string>
     <string name="assessment_grounds_res_single">תצוגה עם רזולוציה אחת - אין למה לעבור</string>
     <string name="assessment_grounds_display_unknown">לא ניתן לבדוק את התצוגה מהמסך הזה - להשאיר כמו שהוא ולבדוק בעין</string>
@@ -3824,6 +3827,8 @@
     <string name="assessment_item_ac3">כפיית קידוד מחדש ל-AC-3 (אופטי/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">נתיב השמע הוא %1$s (%2$s) - בשרשרת HDMI ההגדרה הזו רק הופכת מעבר שמע ללא אובדן ל-AC-3 עם אובדן</string>
     <string name="assessment_grounds_ac3_unknown">לא ניתן לאשר מכאן נתיב אופטי - ההגדרה מתאימה רק ליציאות אופטי/SPDIF</string>
+    <string name="assessment_item_shield_dolby">עיבוד Dolby Audio של Shield</string>
+    <string name="assessment_grounds_shield_dolby">אף אפליקציה לא יכולה לקרוא את הגדרת ה-Shield הזו. אם הקול יוצא מסנכרון או ש-Atmos נקטע, כבו את עיבוד השמע של Dolby בהגדרות הצליל של ה-Shield ונסו שוב</string>
     <string name="assessment_apply_title">החלת ההגדרות המומלצות</string>
     <string name="assessment_apply_arm_sub">כותב את השורות הנמדדות והמחושבות ואת הפרופיל שנבחר - שורות לבדיקה לעולם אינן משתנות. נשמר עותק לשחזור.</string>
     <string name="assessment_apply_confirm_sub">לחיצה נוספת לאישור - ייכתבו כ-%1$d הגדרות</string>
@@ -3836,6 +3841,7 @@
     <string name="assessment_profile_suggested_tag">מוצע</string>
     <string name="assessment_grounds_res_choice">התצוגה מציעה כמה רזולוציות (%1$s) - ההתאמה נותנת למעבד התמונה של הפאנל לבצע את ההגדלה במקום הסטרימר; מה נראה טוב יותר תלוי בפאנל, ולכן זה נשאר לבחירתך</string>
     <string name="assessment_grounds_res_inert">תצוגה עם רזולוציה אחת - להגדרה אין השפעה כאן</string>
+    <string name="assessment_grounds_res_shield">ב-Shield, התאמת הרזולוציה שולחת לטלוויזיה וידאו ברזולוציה נמוכה כמו שהוא, כך שהגדלת ה-AI של ה-Shield לא פועלת אף פעם - השאירו כבוי כדי לשמור על הגדלת AI</string>
     <string name="assessment_already_set">✓ כבר מוגדר</string>
     <string name="player_pill_play">הפעלה</string>
     <string name="player_pill_pause">השהיה</string>

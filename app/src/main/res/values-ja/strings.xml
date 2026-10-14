@@ -600,6 +600,8 @@
     <string name="playback_player_auto_desc">映画やドラマにはExoPlayer・アニメにはMPV</string>
     <string name="playback_engine_exoplayer_desc">現在のNuvio Arc機能との互換性が最も高い。</string>
     <string name="playback_engine_mvplayer_desc">Nuvio Arc OSDコントロール付きのlibmpvを使用。実験的。</string>
+    <string name="playback_engine_mvplayer_shield_note">Shieldでは、libmpvはGPUで映像を描画します：HDR出力とAIアップスケーリングは使えません。</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Shieldでは、libmpvはGPUで映像を描画します：HDR出力は使えません。</string>
 
     <string name="video_section">映像</string>
     <string name="audio_trailer_section">予告編</string>
@@ -626,7 +628,7 @@
     <string name="audio_decoder_priority">デコーダー優先度</string>
     <string name="audio_enable_downmix_title">ダウンミックスを有効にする</string>
     <string name="audio_tunneled">トンネル再生</string>
-    <string name="audio_tunneled_sub">ハードウェアレベルの音声/映像同期。一部のAndroid TVデバイスで再生を改善する可能性があります</string>
+    <string name="audio_tunneled_sub">ハードウェアレベルの音声/映像同期。一部のAndroid TVデバイスで再生を改善する可能性があります。ロスレスのTrueHDとDTS-HD音声は常にこれなしで再生されます。オンの間は再生速度を変更できず、アスペクトはフィットまたはフィルのみです</string>
     <string name="audio_force_optical_passthrough">AC-3トランスコードを強制（光学/SPDIF）</string>
     <string name="audio_force_optical_passthrough_sub">マルチチャンネル形式（TrueHD、DTS、AACなど）をリアルタイムでDolby Digital 5.1にトランスコードし、光学/SPDIF接続に対応します。</string>
     <!-- DV7 Handling Mode -->
@@ -3101,6 +3103,7 @@
     <string name="assessment_grounds_afr_on">ディスプレイは現在の解像度で複数のリフレッシュレートを報告しています（%1$s）</string>
     <string name="assessment_grounds_afr_already">すでにオン - 「開始時」か「開始時と停止時」かは好みです。HDMIの再同期が減るか、UIが60 Hzに戻るかの違いです</string>
     <string name="assessment_grounds_afr_single">現在の解像度ではリフレッシュレートが1つだけです - 切り替え先がありません</string>
+    <string name="assessment_grounds_afr_shield">Shieldでは、この設定がオンの間、Shield自体のフレームレート一致設定（Shield Experience 9.2以降）をオフにしてください：どちらもディスプレイを切り替えるため、互いに干渉します</string>
     <string name="assessment_grounds_res_on">ディスプレイは複数の解像度に対応しています（%1$s）</string>
     <string name="assessment_grounds_res_single">解像度が1つだけのディスプレイです - 切り替え先がありません</string>
     <string name="assessment_grounds_display_unknown">この画面からはディスプレイを調べられませんでした - 現状のままにして目で確認してください</string>
@@ -3163,6 +3166,8 @@
     <string name="assessment_item_ac3">AC-3トランスコードを強制（光学/SPDIF）</string>
     <string name="assessment_grounds_ac3_hdmi">音声の出力先は%1$s（%2$s）です - HDMI接続では、この設定はロスレスパススルーを非可逆のAC-3に変えるだけです</string>
     <string name="assessment_grounds_ac3_unknown">ここからは光学出力を確認できませんでした - この設定は光学/SPDIF出力でのみ使うものです</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio処理</string>
+    <string name="assessment_grounds_shield_dolby">このShieldの設定はアプリから読み取れません。音ずれやAtmosの途切れが起きる場合は、Shieldのサウンド設定でDolbyオーディオ処理をオフにして再度試してください</string>
     <string name="assessment_apply_title">推奨設定を適用</string>
     <string name="assessment_apply_arm_sub">計測と計算の行、および選択したプロファイルを書き込みます - 確認の行は変更しません。元に戻すためのスナップショットを保存します。</string>
     <string name="assessment_apply_confirm_sub">もう一度押して確定 - 約%1$d件の設定を書き込みます</string>
@@ -3175,6 +3180,7 @@
     <string name="assessment_profile_suggested_tag">おすすめ</string>
     <string name="assessment_grounds_res_choice">ディスプレイは複数の解像度に対応しています（%1$s） - マッチングするとアップスケールをこのデバイスではなくパネル側のスケーラーが行います。どちらがきれいかはパネル次第なので、お好みで選択してください</string>
     <string name="assessment_grounds_res_inert">解像度が1つだけのディスプレイです - この設定はここでは効果がありません</string>
+    <string name="assessment_grounds_res_shield">Shieldでは、解像度を一致させると低解像度の映像がそのままテレビに送られるため、ShieldのAIアップスケーリングは動作しません - AIアップスケーリングを使うにはオフのままにしてください</string>
     <string name="assessment_already_set">\u2713 設定済み</string>
     <string name="player_pill_play">再生</string>
     <string name="player_pill_pause">一時停止</string>

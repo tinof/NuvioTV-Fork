@@ -746,6 +746,8 @@
     <string name="playback_player_auto_desc">ExoPlayer voor films en series · MPV voor anime</string>
     <string name="playback_engine_exoplayer_desc">Beste compatibiliteit met de huidige Nuvio Arc-functies.</string>
     <string name="playback_engine_mvplayer_desc">Gebruikt libmpv met de OSD-bediening van Nuvio Arc. Experimenteel.</string>
+    <string name="playback_engine_mvplayer_shield_note">Op een Shield tekent libmpv het beeld op de GPU: geen HDR-uitvoer en geen AI-upscaling.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Op een Shield tekent libmpv het beeld op de GPU: geen HDR-uitvoer.</string>
 
     <string name="video_section">Video</string>
     <string name="audio_trailer_section">Trailer</string>
@@ -773,7 +775,7 @@
     <string name="audio_enable_downmix_title">Downmix inschakelen</string>
     <string name="audio_enable_downmix_subtitle">Downmixt audio die de app decodeert naar het gekozen aantal kanalen. Formaten die je receiver accepteert, gaan nog steeds onaangeroerd als bitstream door. Niet beschikbaar met de decoderinstelling Alleen apparaatdecoders.</string>
     <string name="audio_tunneled">Getunneld afspelen</string>
-    <string name="audio_tunneled_sub">Hardwarematige audio/video-synchronisatie. Kan de weergave verbeteren op sommige Android TV-apparaten</string>
+    <string name="audio_tunneled_sub">Hardwarematige audio/video-synchronisatie. Kan de weergave verbeteren op sommige Android TV-apparaten. Lossless TrueHD- en DTS-HD-audio speelt altijd zonder. Zolang dit aan staat, kan de afspeelsnelheid niet worden gewijzigd en is de beeldverhouding alleen Passend of Vullen</string>
     <string name="audio_force_optical_passthrough">AC-3-transcodering forceren (optisch/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Zet meerkanaalsformaten (TrueHD, DTS, AAC enz.) in realtime om naar Dolby Digital 5.1 voor optische/SPDIF-verbindingen.</string>
     <!-- DV7 Handling Mode -->
@@ -3542,6 +3544,7 @@
     <string name="assessment_grounds_afr_on">Scherm meldt meerdere verversingsfrequenties bij de huidige resolutie (%1$s)</string>
     <string name="assessment_grounds_afr_already">Staat al aan - Starten of Starten &amp; stoppen is een voorkeur: minder HDMI-hersynchronisaties tegenover de interface die terugkeert naar 60 Hz</string>
     <string name="assessment_grounds_afr_single">Scherm met één verversingsfrequentie bij de huidige resolutie - niets om naar te wisselen</string>
+    <string name="assessment_grounds_afr_shield">Zet op een Shield zijn eigen instelling voor het afstemmen van de framerate uit (Shield Experience 9.2 en later) zolang dit aan staat: beide schakelen het scherm om en werken elkaar tegen</string>
     <string name="assessment_grounds_res_on">Scherm biedt meerdere resoluties (%1$s)</string>
     <string name="assessment_grounds_res_single">Scherm met één resolutie - niets om naar te wisselen</string>
     <string name="assessment_grounds_display_unknown">Het scherm kon vanaf dit scherm niet worden onderzocht - zo laten en op het oog controleren</string>
@@ -3604,6 +3607,8 @@
     <string name="assessment_item_ac3">AC-3-transcodering forceren (optisch/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Audioroute is %1$s (%2$s) - op een HDMI-keten maakt deze instelling van lossless passthrough alleen lossy AC-3</string>
     <string name="assessment_grounds_ac3_unknown">Een optische route kon van hieruit niet worden bevestigd - deze instelling hoort alleen bij optische/SPDIF-uitgangen</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio-verwerking</string>
+    <string name="assessment_grounds_shield_dolby">Geen app kan deze Shield-instelling uitlezen. Loopt het geluid niet synchroon of valt Atmos weg, zet dan Dolby-audioverwerking uit in de geluidsinstellingen van de Shield en test opnieuw</string>
     <string name="assessment_apply_title">Aanbevolen instellingen toepassen</string>
     <string name="assessment_apply_arm_sub">Schrijft de gemeten en berekende rijen plus het gekozen profiel - controlerijen worden nooit aangeraakt. Er wordt een momentopname bewaard om terug te zetten.</string>
     <string name="assessment_apply_confirm_sub">Druk nogmaals om te bevestigen - er worden ongeveer %1$d instellingen geschreven</string>
@@ -3616,6 +3621,7 @@
     <string name="assessment_profile_suggested_tag">Voorgesteld</string>
     <string name="assessment_grounds_res_choice">Scherm biedt meerdere resoluties (%1$s) - met aanpassen schaalt de scaler van het paneel in plaats van die van deze box; wat er beter uitziet hangt van het paneel af, dus dit blijft jouw keuze</string>
     <string name="assessment_grounds_res_inert">Scherm met één resolutie - deze instelling doet hier niets</string>
+    <string name="assessment_grounds_res_shield">Op een Shield stuurt het afstemmen van de resolutie video met een lagere resolutie ongewijzigd naar de tv, waardoor de AI-upscaling van de Shield nooit draait - laat dit uit om AI-upscaling te houden</string>
     <string name="assessment_already_set">\u2713 Al ingesteld</string>
     <string name="player_pill_play">Afspelen</string>
     <string name="player_pill_pause">Pauzeren</string>

@@ -782,6 +782,9 @@
     <string name="playback_player_auto_desc">ExoPlayer filmekhez és sorozatokhoz · MPV animékhez</string>
     <string name="playback_engine_exoplayer_desc">Legjobb kompatibilitás a jelenlegi Nuvio Arc funkciókkal.</string>
     <string name="playback_engine_mvplayer_desc">Libmpv-t használ a Nuvio Arc OSD vezérlőivel. Kísérleti funkció.</string>
+    <string name="playback_engine_mvplayer_shield_note">Shielden a libmpv a GPU-n rajzolja a képet: nincs HDR-kimenet és nincs MI-felskálázás.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Shielden a libmpv a GPU-n rajzolja a képet: nincs HDR-kimenet.</string>
+
     <string name="video_section">Videó</string>
     <string name="playback_true_black_letterbox">Valódi fekete sávok</string>
     <string name="playback_true_black_letterbox_sub">A kép körüli sávok HDR-ben is feketék maradnak. Kapcsold ki, ha világos csík jelenik meg rajtuk.</string>
@@ -810,7 +813,7 @@
     <string name="audio_enable_downmix_title">Lekeverés engedélyezése</string>
     <string name="audio_enable_downmix_subtitle">Az alkalmazás által dekódolt hangot a kiválasztott csatornaszámra keveri le. Az erősítőd által elfogadott formátumok továbbra is érintetlenül, bitstreamként mennek ki. A Csak az eszköz dekóderei beállítással nem érhető el.</string>
     <string name="audio_tunneled">Alagutazott (tunneled) lejátszás</string>
-    <string name="audio_tunneled_sub">Hang/videó szinkronizálása hardveres szinten. Javíthatja a lejátszást egyes Android TV eszközökön.</string>
+    <string name="audio_tunneled_sub">Hang/videó szinkronizálása hardveres szinten. Javíthatja a lejátszást egyes Android TV eszközökön. A veszteségmentes TrueHD és DTS-HD hang mindig nélküle szól. Amíg be van kapcsolva, a lejátszási sebesség nem módosítható, a képarány pedig csak Illesztés vagy Kitöltés lehet</string>
     <string name="audio_force_optical_passthrough">AC-3 átkódolás kényszerítése (optikai/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Valós időben Dolby Digital 5.1-re átkódolja a többcsatornás formátumokat (TrueHD, DTS, AAC stb.) optikai/SPDIF kapcsolatokhoz.</string>
     <string name="dv7_handling_title">Dolby Vision Profile 7 kezelése</string>
@@ -3924,4 +3927,9 @@
     <string name="playback_dim_hdr_overlays">Vezérlők halványítása HDR-ben</string>
     <string name="playback_dim_hdr_overlays_sub">Lágyabb lejátszóvezérlők HDR, HLG és Dolby Vision lejátszás közben. A videó fényereje nem változik. A HDR-feliratok a feliratbeállítások HDR-stílusát követik.</string>
     <string name="tvdb_metadata_credit">A metaadatokat a(z) %1$s biztosítja</string>
+
+    <string name="assessment_grounds_afr_shield">Shielden kapcsold ki a saját képkockasebesség-egyeztetési beállítását (Shield Experience 9.2 és újabb), amíg ez be van kapcsolva: mindkettő átváltja a kijelzőt, és zavarják egymást</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio feldolgozás</string>
+    <string name="assessment_grounds_shield_dolby">Ezt a Shield-beállítást egyik alkalmazás sem tudja kiolvasni. Ha a hang elcsúszik vagy az Atmos kimarad, kapcsold ki a Dolby hangfeldolgozást a Shield hangbeállításaiban, és próbáld újra</string>
+    <string name="assessment_grounds_res_shield">Shielden a felbontás egyeztetése a kisebb felbontású videót változatlanul küldi a tévére, így a Shield MI-felskálázása sosem fut - hagyd kikapcsolva, ha meg akarod tartani az MI-felskálázást</string>
 </resources>

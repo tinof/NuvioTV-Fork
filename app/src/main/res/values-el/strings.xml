@@ -697,6 +697,8 @@
   <string name="playback_player_auto_desc">ExoPlayer για Ταινίες &amp; Σειρές · MPV για Anime</string>
   <string name="playback_engine_exoplayer_desc">Καλύτερη συμβατότητα με τις τρέχουσες δυνατότητες του Nuvio Arc.</string>
   <string name="playback_engine_mvplayer_desc">Χρησιμοποιεί libmpv με χειριστήρια OSD του Nuvio Arc. Πειραματικό.</string>
+    <string name="playback_engine_mvplayer_shield_note">Σε Shield, το libmpv σχεδιάζει την εικόνα στη GPU: χωρίς έξοδο HDR και χωρίς AI upscaling.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Σε Shield, το libmpv σχεδιάζει την εικόνα στη GPU: χωρίς έξοδο HDR.</string>
   <!-- PlaybackAudioSettings -->
   <string name="playback_true_black_letterbox">Πραγματικά μαύρες μπάρες</string>
   <string name="playback_true_black_letterbox_sub">Αφήστε τις μπάρες γύρω από την εικόνα άβαφες ώστε το HDR να παραμένει πραγματικά μαύρο. Κρατήστε το ανενεργό αν εμφανίζεται φωτεινή γραμμή στις μπάρες.</string>
@@ -725,7 +727,7 @@
   <string name="audio_enable_downmix_title">Ενεργοποίηση downmix</string>
   <string name="audio_enable_downmix_subtitle">Κάνει downmix στον ήχο που αποκωδικοποιεί η εφαρμογή, στον επιλεγμένο αριθμό καναλιών. Τα φορμά που δέχεται ο receiver σας περνούν ανέγγιχτα ως bitstream. Δεν διατίθεται με τη ρύθμιση «Μόνο αποκωδικοποιητές συσκευής».</string>
   <string name="audio_tunneled">Αναπαραγωγή tunneled</string>
-  <string name="audio_tunneled_sub">Συγχρονισμός ήχου/βίντεο σε επίπεδο υλικού. Μπορεί να βελτιώσει την αναπαραγωγή σε ορισμένες συσκευές Android TV</string>
+  <string name="audio_tunneled_sub">Συγχρονισμός ήχου/βίντεο σε επίπεδο υλικού. Μπορεί να βελτιώσει την αναπαραγωγή σε ορισμένες συσκευές Android TV. Ο ήχος χωρίς απώλειες TrueHD και DTS-HD παίζει πάντα χωρίς αυτόν. Όσο είναι ενεργός, η ταχύτητα αναπαραγωγής δεν αλλάζει και η αναλογία είναι μόνο Προσαρμογή ή Γέμισμα</string>
   <string name="audio_mpv_hi10p_gnext_sw_title">Εφεδρική αποκωδικοποίηση λογισμικού G-NEXT για Hi10P (μόνο MPV)</string>
   <string name="audio_mpv_hi10p_gnext_sw_subtitle">Χρήση αποκωδικοποίησης λογισμικού G-NEXT όταν τα στοιχεία ροής αναγνωρίζουν H.264 Hi10P. Απενεργοποιημένο από προεπιλογή· ενεργοποιήστε το μόνο αν η αναπαραγωγή Hi10P κολλάει ή αποτυγχάνει.</string>
   <string name="audio_mpv_hwdec_title">Αποκωδικοποίηση υλικού (μόνο MPV)</string>
@@ -3664,6 +3666,7 @@
     <string name="assessment_grounds_afr_on">Η οθόνη αναφέρει πολλούς ρυθμούς ανανέωσης στην τρέχουσα ανάλυση (%1$s)</string>
     <string name="assessment_grounds_afr_already">Ήδη ενεργό - Έναρξη ή Έναρξη &amp; διακοπή είναι θέμα προτίμησης: λιγότεροι επανασυγχρονισμοί HDMI ή επιστροφή της διεπαφής στα 60 Hz</string>
     <string name="assessment_grounds_afr_single">Οθόνη με έναν ρυθμό στην τρέχουσα ανάλυση - δεν υπάρχει κάτι για εναλλαγή</string>
+    <string name="assessment_grounds_afr_shield">Σε Shield, απενεργοποιήστε τη δική του ρύθμιση αντιστοίχισης ρυθμού καρέ (Shield Experience 9.2 και νεότερο) όσο αυτό είναι ενεργό: και τα δύο αλλάζουν τη λειτουργία της οθόνης και αλληλοαναιρούνται</string>
     <string name="assessment_grounds_res_on">Η οθόνη διαθέτει πολλές αναλύσεις (%1$s)</string>
     <string name="assessment_grounds_res_single">Οθόνη με μία ανάλυση - δεν υπάρχει κάτι για εναλλαγή</string>
     <string name="assessment_grounds_display_unknown">Δεν ήταν δυνατός ο έλεγχος της οθόνης από εδώ - αφήστε το ως έχει και ελέγξτε με το μάτι</string>
@@ -3726,6 +3729,8 @@
     <string name="assessment_item_ac3">Επιβολή μετατροπής σε AC-3 (Οπτική/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Η διαδρομή ήχου είναι %1$s (%2$s) - σε αλυσίδα HDMI αυτή η ρύθμιση απλώς μετατρέπει το lossless passthrough σε απωλεστικό AC-3</string>
     <string name="assessment_grounds_ac3_unknown">Δεν επιβεβαιώθηκε οπτική διαδρομή από εδώ - αυτή η ρύθμιση έχει θέση μόνο σε εξόδους Οπτική/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Επεξεργασία Dolby Audio του Shield</string>
+    <string name="assessment_grounds_shield_dolby">Καμία εφαρμογή δεν μπορεί να διαβάσει αυτή τη ρύθμιση του Shield. Αν ο ήχος αποσυγχρονίζεται ή το Atmos διακόπτεται, απενεργοποιήστε την επεξεργασία ήχου Dolby στις ρυθμίσεις ήχου του Shield και δοκιμάστε ξανά</string>
     <string name="assessment_apply_title">Εφαρμογή προτεινόμενων ρυθμίσεων</string>
     <string name="assessment_apply_arm_sub">Γράφει τις γραμμές Μετρημένα και Υπολογισμένα και το επιλεγμένο προφίλ - οι γραμμές ελέγχου δεν αγγίζονται ποτέ. Κρατείται στιγμιότυπο για επαναφορά.</string>
     <string name="assessment_apply_confirm_sub">Πατήστε ξανά για επιβεβαίωση - θα γραφτούν περίπου %1$d ρυθμίσεις</string>
@@ -3738,6 +3743,7 @@
     <string name="assessment_profile_suggested_tag">Προτείνεται</string>
     <string name="assessment_grounds_res_choice">Η οθόνη διαθέτει πολλές αναλύσεις (%1$s) - με το ταίριασμα το upscaling το κάνει ο scaler της οθόνης αντί για αυτή τη συσκευή· ποιο δείχνει καλύτερα εξαρτάται από την οθόνη, οπότε η επιλογή είναι δική σας</string>
     <string name="assessment_grounds_res_inert">Οθόνη με μία ανάλυση - αυτή η ρύθμιση δεν έχει αποτέλεσμα εδώ</string>
+    <string name="assessment_grounds_res_shield">Σε Shield, η αντιστοίχιση ανάλυσης στέλνει το βίντεο χαμηλότερης ανάλυσης στην τηλεόραση ως έχει, οπότε το AI upscaling του Shield δεν εκτελείται ποτέ - αφήστε το απενεργοποιημένο για να κρατήσετε το AI upscaling</string>
     <string name="assessment_already_set">\u2713 Ήδη ορισμένο</string>
     <string name="player_pill_play">Αναπαραγωγή</string>
     <string name="player_pill_pause">Παύση</string>

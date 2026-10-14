@@ -579,6 +579,8 @@
     <string name="playback_player_auto_desc">ExoPlayer para Filmes e Séries · MPV para Anime</string>
     <string name="playback_engine_exoplayer_desc">Melhor compatibilidade com as funcionalidades atuais do Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Utiliza a libmpv com os controlos OSD do Nuvio Arc. Experimental.</string>
+    <string name="playback_engine_mvplayer_shield_note">Numa Shield, o libmpv desenha a imagem na GPU: sem saída HDR e sem upscaling por IA.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Numa Shield, o libmpv desenha a imagem na GPU: sem saída HDR.</string>
     <string name="video_section">Vídeo</string>
     <string name="audio_trailer_section">Trailer</string>
     <string name="audio_autoplay_trailers">Reproduzir trailers automaticamente</string>
@@ -604,7 +606,7 @@
     <string name="audio_decoder_priority">Prioridade do descodificador</string>
     <string name="audio_enable_downmix_title">Ativar downmix</string>
     <string name="audio_tunneled">Reprodução em túnel (Tunneled)</string>
-    <string name="audio_tunneled_sub">Sincronização de áudio/vídeo ao nível do hardware. Pode melhorar a reprodução em alguns dispositivos Android TV</string>
+    <string name="audio_tunneled_sub">Sincronização de áudio/vídeo ao nível do hardware. Pode melhorar a reprodução em alguns dispositivos Android TV. O áudio sem perdas TrueHD e DTS-HD é sempre reproduzido sem ela. Enquanto estiver ligada, a velocidade de reprodução não pode ser alterada e o formato é apenas Ajustar ou Preencher</string>
     <!-- DV7 Handling Mode -->
     <string name="dv7_handling_title">Tratamento Dolby Vision</string>
     <string name="dv7_handling_dialog_subtitle">Escolhe como os streams Dolby Vision são processados durante a reprodução.</string>
@@ -2972,6 +2974,7 @@
     <string name="assessment_grounds_afr_on">O ecrã reporta várias taxas de atualização na resolução atual (%1$s)</string>
     <string name="assessment_grounds_afr_already">Já ligado - Início ou Início e fim é uma preferência: menos ressincronizações HDMI ou a interface a voltar aos 60 Hz</string>
     <string name="assessment_grounds_afr_single">Ecrã com uma só taxa na resolução atual - não há para onde mudar</string>
+    <string name="assessment_grounds_afr_shield">Numa Shield, desligue a definição de correspondência de taxa de fotogramas da própria Shield (Shield Experience 9.2 e posterior) enquanto isto estiver ligado: ambas mudam o modo do ecrã e entram em conflito</string>
     <string name="assessment_grounds_res_on">O ecrã disponibiliza várias resoluções (%1$s)</string>
     <string name="assessment_grounds_res_single">Ecrã com uma só resolução - não há para onde mudar</string>
     <string name="assessment_grounds_display_unknown">Não foi possível inspecionar o ecrã a partir daqui - deixa como está e verifica a olho</string>
@@ -3034,6 +3037,8 @@
     <string name="assessment_item_ac3">Forçar transcodificação AC-3 (Ótico/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">A rota de áudio é %1$s (%2$s) - numa cadeia HDMI esta definição só transforma o passthrough sem perdas em AC-3 com perdas</string>
     <string name="assessment_grounds_ac3_unknown">Não foi possível confirmar uma rota ótica a partir daqui - esta definição só faz sentido em saídas óticas/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Processamento Dolby Audio da Shield</string>
+    <string name="assessment_grounds_shield_dolby">Nenhuma app consegue ler esta definição da Shield. Se o som perder a sincronia ou o Atmos falhar, desligue o processamento de áudio Dolby nas definições de som da Shield e teste de novo</string>
     <string name="assessment_apply_title">Aplicar definições recomendadas</string>
     <string name="assessment_apply_arm_sub">Grava as linhas Medido e Calculado e o perfil selecionado - as linhas a verificar nunca são alteradas. É guardada uma cópia para reverter.</string>
     <string name="assessment_apply_confirm_sub">Carrega de novo para confirmar - serão gravadas cerca de %1$d definições</string>
@@ -3046,6 +3051,7 @@
     <string name="assessment_profile_suggested_tag">Sugerido</string>
     <string name="assessment_grounds_res_choice">O ecrã disponibiliza várias resoluções (%1$s) - a correspondência deixa o upscaling ao painel em vez de a esta box; qual fica melhor depende do painel, por isso fica à tua escolha</string>
     <string name="assessment_grounds_res_inert">Ecrã com uma só resolução - esta definição não tem efeito aqui</string>
+    <string name="assessment_grounds_res_shield">Numa Shield, fazer corresponder a resolução envia o vídeo de resolução mais baixa tal como está para a TV, por isso o upscaling por IA da Shield nunca corre - deixe desligado para manter o upscaling por IA</string>
     <string name="assessment_already_set">\u2713 Já definido</string>
     <string name="player_pill_play">Reproduzir</string>
     <string name="player_pill_pause">Pausar</string>

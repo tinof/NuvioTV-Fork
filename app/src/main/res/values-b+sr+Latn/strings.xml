@@ -757,6 +757,8 @@
     <string name="playback_player_auto_desc">ExoPlayer za filmove i TV serije · MPV za anime</string>
     <string name="playback_engine_exoplayer_desc">Najbolja kompatibilnost sa trenutnim Nuvio Arc funkcijama.</string>
     <string name="playback_engine_mvplayer_desc">Koristi libmpv sa Nuvio Arc OSD kontrolama. Eksperimentalno.</string>
+    <string name="playback_engine_mvplayer_shield_note">Na Shield-u, libmpv iscrtava sliku na GPU-u: bez HDR izlaza i bez AI skaliranja.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Na Shield-u, libmpv iscrtava sliku na GPU-u: bez HDR izlaza.</string>
 
     <string name="video_section">Video</string>
     <string name="audio_trailer_section">Trejler</string>
@@ -784,7 +786,7 @@
     <string name="audio_enable_downmix_title">Omogući miksovanje na manje kanala</string>
     <string name="audio_enable_downmix_subtitle">Miksuje zvuk koji aplikacija dekodira na izabrani broj kanala. Formati koje vaš prijemnik prihvata i dalje idu netaknuti kao bitstream. Nije dostupno uz podešavanje dekodera Samo dekoderi uređaja.</string>
     <string name="audio_tunneled">Tunelirana reprodukcija (Tunneled Playback)</string>
-    <string name="audio_tunneled_sub">Sinhronizacija zvuka/videa na nivou hardvera. Može poboljšati reprodukciju na nekim Android TV uređajima</string>
+    <string name="audio_tunneled_sub">Sinhronizacija zvuka/videa na nivou hardvera. Može poboljšati reprodukciju na nekim Android TV uređajima. TrueHD i DTS-HD zvuk bez gubitaka se uvek reprodukuje bez nje. Dok je uključena, brzina reprodukcije se ne može menjati, a odnos stranica može biti samo Prilagodi ili Popuni</string>
     <string name="audio_force_optical_passthrough">Forsiraj AC-3 transkodiranje (Optički/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Transkodira višekanalne formate (TrueHD, DTS, AAC, itd.) u Dolby Digital 5.1 u realnom vremenu za optičke/SPDIF veze.</string>
     <!-- DV7 Handling Mode -->
@@ -3572,6 +3574,7 @@
     <string name="assessment_grounds_afr_on">Ekran prijavljuje više brzina osvežavanja na trenutnoj rezoluciji (%1$s)</string>
     <string name="assessment_grounds_afr_already">Već uključeno - pokretanje ili pokretanje i zaustavljanje je stvar izbora: manje HDMI resinhronizacija naspram povratka interfejsa na 60 Hz</string>
     <string name="assessment_grounds_afr_single">Ekran sa jednom brzinom osvežavanja na trenutnoj rezoluciji - nema na šta da se prebaci</string>
+    <string name="assessment_grounds_afr_shield">Na Shield-u isključite njegovo podešavanje usklađivanja brzine kadrova (Shield Experience 9.2 i novije) dok je ovo uključeno: oba menjaju režim ekrana i ometaju jedno drugo</string>
     <string name="assessment_grounds_res_on">Ekran nudi više rezolucija (%1$s)</string>
     <string name="assessment_grounds_res_single">Ekran sa jednom rezolucijom - nema na šta da se prebaci</string>
     <string name="assessment_grounds_display_unknown">Ekran nije mogao da se ispita sa ovog ekrana - ostavite kako jeste i proverite okom</string>
@@ -3634,6 +3637,8 @@
     <string name="assessment_item_ac3">Forsiraj AC-3 transkodiranje (Optički/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Audio ruta je %1$s (%2$s) - na HDMI lancu ovo podešavanje samo pretvara passthrough bez gubitaka u AC-3 sa gubicima</string>
     <string name="assessment_grounds_ac3_unknown">Optička ruta nije mogla da se potvrdi odavde - ovo podešavanje je samo za optičke/SPDIF izlaze</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio obrada</string>
+    <string name="assessment_grounds_shield_dolby">Nijedna aplikacija ne može da pročita ovo Shield podešavanje. Ako zvuk kasni ili Atmos nestaje, isključite Dolby obradu zvuka u podešavanjima zvuka na Shield-u i ponovo testirajte</string>
     <string name="assessment_apply_title">Primeni preporučena podešavanja</string>
     <string name="assessment_apply_arm_sub">Upisuje merene i izračunate redove i izabrani profil - redovi za proveru se ne diraju. Čuva se snimak za vraćanje.</string>
     <string name="assessment_apply_confirm_sub">Pritisnite ponovo za potvrdu - biće upisano oko %1$d podešavanja</string>
@@ -3646,6 +3651,7 @@
     <string name="assessment_profile_suggested_tag">Predloženo</string>
     <string name="assessment_grounds_res_choice">Ekran nudi više rezolucija (%1$s) - usklađivanje prepušta skaliranje panelu umesto ovom uređaju; šta izgleda bolje zavisi od panela, pa ovo ostaje vaš izbor</string>
     <string name="assessment_grounds_res_inert">Ekran sa jednom rezolucijom - ovo podešavanje ovde nema efekta</string>
+    <string name="assessment_grounds_res_shield">Na Shield-u, usklađivanje rezolucije šalje video niže rezolucije televizoru takav kakav jeste, pa AI skaliranje Shield-a nikad ne radi - ostavite isključeno da biste zadržali AI skaliranje</string>
     <string name="assessment_already_set">\u2713 Već podešeno</string>
     <string name="player_pill_play">Pusti</string>
     <string name="player_pill_pause">Pauza</string>

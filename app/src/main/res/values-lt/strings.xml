@@ -281,7 +281,7 @@
     <string name="audio_decoder_prefer_app">Teikti pirmenybę programos dekoderiams (FFmpeg)</string>
     <string name="audio_decoder_priority">Dekoderio prioritetas</string>
     <string name="audio_tunneled">Tunelinis atkūrimas (Tunneled Playback)</string>
-    <string name="audio_tunneled_sub">Aparatūros lygio garso / vaizdo sinchronizavimas. Gali pagerinti atkūrimą kai kuriuose „Android TV“ įrenginiuose.</string>
+    <string name="audio_tunneled_sub">Aparatūros lygio garso / vaizdo sinchronizavimas. Gali pagerinti atkūrimą kai kuriuose „Android TV“ įrenginiuose. Nenuostolingas TrueHD ir DTS-HD garsas visada groja be jo. Kol įjungta, atkūrimo greičio keisti negalima, o kraštinių santykis tik Taikyti arba Užpildyti</string>
     <string name="audio_decoder_device_only_desc">Naudoti tik integruotus aparatūros dekoderius. Labiausiai suderinama, bet gali palaikyti ne visus formatus.</string>
     <string name="audio_decoder_prefer_device_desc">Naudoti aparatūros dekoderius, kai jie prieinami, kitu atveju — FFmpeg. Rekomenduojama daugumai įrenginių.</string>
     <string name="audio_decoder_prefer_app_desc">Naudoti FFmpeg dekoderius, kai jie prieinami. Geresnis formatų palaikymas, bet didesnis CPU naudojimas.</string>
@@ -1405,6 +1405,7 @@ Klaida: Bandomoji simuliuojama klaida — tai nėra tikras gedimas. Šaltinis gr
     <string name="assessment_grounds_afr_on">Ekranas praneša kelis atnaujinimo dažnius esant dabartinei skiriamajai gebai (%1$s)</string>
     <string name="assessment_grounds_afr_already">Jau įjungta - Pradžioje ar Pradžioje ir pabaigoje yra pasirinkimo reikalas: mažiau HDMI persinchronizavimų arba sąsajos grįžimas į 60 Hz</string>
     <string name="assessment_grounds_afr_single">Vieno dažnio ekranas esant dabartinei skiriamajai gebai - nėra į ką perjungti</string>
+    <string name="assessment_grounds_afr_shield">„Shield“ įrenginyje išjunkite jo paties kadrų dažnio derinimo nustatymą („Shield Experience“ 9.2 ir naujesnėse), kol tai įjungta: abu perjungia ekraną ir trukdo vienas kitam</string>
     <string name="assessment_grounds_res_on">Ekranas siūlo kelias skiriamąsias gebas (%1$s)</string>
     <string name="assessment_grounds_res_single">Vienos skiriamosios gebos ekranas - nėra į ką perjungti</string>
     <string name="assessment_grounds_display_unknown">Iš šio lango nepavyko patikrinti ekrano - palikite kaip yra ir patikrinkite akimis</string>
@@ -1467,6 +1468,8 @@ Klaida: Bandomoji simuliuojama klaida — tai nėra tikras gedimas. Šaltinis gr
     <string name="assessment_item_ac3">Priverstinis perkodavimas į AC-3 (optinė/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Garso maršrutas yra %1$s (%2$s) - HDMI grandinėje šis nustatymas tik paverčia nenuostolingą passthrough nuostolingu AC-3</string>
     <string name="assessment_grounds_ac3_unknown">Iš čia nepavyko patvirtinti optinio maršruto - šis nustatymas skirtas tik optinėms/SPDIF išvestims</string>
+    <string name="assessment_item_shield_dolby">„Shield“ Dolby Audio apdorojimas</string>
+    <string name="assessment_grounds_shield_dolby">Jokia programa negali nuskaityti šio „Shield“ nustatymo. Jei garsas nesutampa su vaizdu ar Atmos dingsta, „Shield“ garso nustatymuose išjunkite Dolby garso apdorojimą ir išbandykite dar kartą</string>
     <string name="assessment_apply_title">Pritaikyti rekomenduojamus nustatymus</string>
     <string name="assessment_apply_arm_sub">Įrašo išmatuotas ir apskaičiuotas eilutes bei pasirinktą profilį - tikrintinos eilutės neliečiamos. Išsaugoma kopija grąžinimui.</string>
     <string name="assessment_apply_confirm_sub">Paspauskite dar kartą, kad patvirtintumėte - bus įrašyta apie %1$d nustatymų</string>
@@ -1479,6 +1482,7 @@ Klaida: Bandomoji simuliuojama klaida — tai nėra tikras gedimas. Šaltinis gr
     <string name="assessment_profile_suggested_tag">Siūloma</string>
     <string name="assessment_grounds_res_choice">Ekranas siūlo kelias skiriamąsias gebas (%1$s) - derinant vaizdą didina televizorius, o ne šis įrenginys; kas atrodo geriau, priklauso nuo televizoriaus, todėl tai lieka jūsų pasirinkimas</string>
     <string name="assessment_grounds_res_inert">Vienos skiriamosios gebos ekranas - šis nustatymas čia neveikia</string>
+    <string name="assessment_grounds_res_shield">„Shield“ įrenginyje skiriamosios gebos derinimas siunčia mažesnės skiriamosios gebos vaizdą į televizorių nepakeistą, todėl „Shield“ DI didinimas niekada neveikia - palikite išjungtą, jei norite išlaikyti DI didinimą</string>
     <string name="assessment_already_set">\u2713 Jau nustatyta</string>
     <string name="player_pill_play">Leisti</string>
     <string name="player_pill_pause">Pauzė</string>
@@ -1792,4 +1796,6 @@ Klaida: Bandomoji simuliuojama klaida — tai nėra tikras gedimas. Šaltinis gr
     <string name="stream_resume_from_time">Tęsti nuo %1$s</string>
     <string name="stream_resume_from_percent">Tęsti nuo %1$d%%</string>
     <string name="tvdb_metadata_credit">Metaduomenis teikia %1$s</string>
+    <string name="playback_engine_mvplayer_shield_note">„Shield“ įrenginyje libmpv piešia vaizdą GPU: nėra HDR išvesties ir nėra DI didinimo.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">„Shield“ įrenginyje libmpv piešia vaizdą GPU: nėra HDR išvesties.</string>
 </resources>

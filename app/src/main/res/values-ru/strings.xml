@@ -456,6 +456,8 @@
     <string name="playback_player_ask_desc">Выбирать плеер каждый раз</string>
     <string name="playback_engine_exoplayer_desc">Лучшая совместимость с текущими функциями Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Использует libmpv с интерфейсом управления Nuvio Arc. Экспериментально.</string>
+    <string name="playback_engine_mvplayer_shield_note">На Shield libmpv рисует изображение на GPU: без вывода HDR и без ИИ-апскейлинга.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">На Shield libmpv рисует изображение на GPU: без вывода HDR.</string>
 
     <!-- PlaybackAudioSettings -->
     <string name="audio_trailer_section">Трейлер</string>
@@ -477,7 +479,7 @@
     <string name="audio_decoder_prefer_app">Предпочитать программные декодеры (FFmpeg)</string>
     <string name="audio_decoder_priority">Приоритет декодеров</string>
     <string name="audio_tunneled">Туннельное воспроизведение</string>
-    <string name="audio_tunneled_sub">Аппаратная синхронизация аудио/видео. Может улучшить воспроизведение на некоторых устройствах Android TV</string>
+    <string name="audio_tunneled_sub">Аппаратная синхронизация аудио/видео. Может улучшить воспроизведение на некоторых устройствах Android TV. Аудио без потерь TrueHD и DTS-HD всегда воспроизводится без неё. Пока она включена, скорость воспроизведения нельзя изменить, а формат только Вписать или Заполнить</string>
     <string name="audio_force_optical_passthrough">Принудительное транскодирование в AC-3 (оптика/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Транскодирует многоканальные форматы (TrueHD, DTS, AAC и др.) в Dolby Digital 5.1 в реальном времени для подключений через оптику/SPDIF.</string>
     <string name="audio_mpv_hwdec_title">Аппаратное декодирование (только MPV)</string>
@@ -3519,6 +3521,7 @@
     <string name="assessment_grounds_afr_on">Дисплей сообщает несколько частот обновления при текущем разрешении (%1$s)</string>
     <string name="assessment_grounds_afr_already">Уже включено - «при старте» или «при старте и остановке» дело вкуса: меньше пересинхронизаций HDMI или возврат интерфейса к 60 Гц</string>
     <string name="assessment_grounds_afr_single">Дисплей с одной частотой при текущем разрешении - переключаться не на что</string>
+    <string name="assessment_grounds_afr_shield">На Shield отключите его собственную настройку подстройки частоты кадров (Shield Experience 9.2 и новее), пока это включено: обе переключают режим дисплея и мешают друг другу</string>
     <string name="assessment_grounds_res_on">Дисплей предлагает несколько разрешений (%1$s)</string>
     <string name="assessment_grounds_res_single">Дисплей с одним разрешением - переключаться не на что</string>
     <string name="assessment_grounds_display_unknown">С этого экрана не удалось проверить дисплей - оставьте как есть и проверьте на глаз</string>
@@ -3581,6 +3584,8 @@
     <string name="assessment_item_ac3">Принудительное транскодирование в AC-3 (оптика/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Аудиомаршрут: %1$s (%2$s) - на цепочке HDMI эта настройка лишь превращает проброс без потерь в AC-3 с потерями</string>
     <string name="assessment_grounds_ac3_unknown">Отсюда не удалось подтвердить оптический маршрут - эта настройка нужна только для выходов оптика/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Обработка Dolby Audio на Shield</string>
+    <string name="assessment_grounds_shield_dolby">Ни одно приложение не может прочитать эту настройку Shield. Если звук рассинхронизируется или Atmos пропадает, отключите обработку звука Dolby в настройках звука Shield и проверьте снова</string>
     <string name="assessment_apply_title">Применить рекомендуемые настройки</string>
     <string name="assessment_apply_arm_sub">Записывает измеренные и рассчитанные строки и выбранный профиль - строки для проверки не затрагиваются. Сохраняется снимок для отката.</string>
     <string name="assessment_apply_confirm_sub">Нажмите ещё раз для подтверждения - будет записано настроек: около %1$d</string>
@@ -3593,6 +3598,7 @@
     <string name="assessment_profile_suggested_tag">Рекомендуется</string>
     <string name="assessment_grounds_res_choice">Дисплей предлагает несколько разрешений (%1$s) - при соответствии апскейлом занимается панель, а не приставка; что выглядит лучше, зависит от панели, поэтому решать вам</string>
     <string name="assessment_grounds_res_inert">Дисплей с одним разрешением - здесь настройка ни на что не влияет</string>
+    <string name="assessment_grounds_res_shield">На Shield подстройка разрешения отправляет видео низкого разрешения на телевизор как есть, поэтому ИИ-апскейлинг Shield не работает - оставьте выключенным, чтобы сохранить ИИ-апскейлинг</string>
     <string name="assessment_already_set">\u2713 Уже установлено</string>
     <string name="player_pill_play">Воспроизвести</string>
     <string name="player_pill_pause">Пауза</string>
