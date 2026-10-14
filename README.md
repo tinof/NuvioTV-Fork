@@ -5,283 +5,162 @@
   </picture>
 </p>
 
-## About
-
-**Nuvio Arc** is my hobby fork of [NuvioTV](https://github.com/NuvioMedia/NuvioTV) -- an experimental build where I try
-out new ideas on top of the official app. It isn't a competitor to Nuvio and it isn't meant to replace it. Think of it
-as a test bench: some ideas work out, some don't, and the ones that are solid, well tested and good for everyone may
-end up suggested for the official app.
-
-I also contribute to the official app myself. When a fix or feature here is thoroughly tested and fits what Nuvio is
-aiming for, I offer it upstream. Most of what's in Nuvio Arc stays here, because it's built for a narrower audience.
-
-**Who it's for.** The official Nuvio app is designed for everyone, on every kind of device. Nuvio Arc runs on the
-same boxes, from a Fire TV Stick up, and is for people who like Nuvio, want to stay in the Nuvio ecosystem, and are
-happy to try new and largely untested features. A lot of the work goes into speed and quality for high-bitrate 4K
-remuxes and lossless audio (100 GB+ remuxes, TrueHD / DTS-HD MA / Atmos / DTS:X passthrough, Dolby Vision), so it
-shines on stronger boxes, but everyday use on regular boxes works too.
-
-**Expect rough edges.** New features land here before they are proven, so things can break between releases. Some
-features (for example 4K thumbnails) do more work on the box and write to its storage, and the app tells you where a
-feature is heavy. If you want the dependable everyday app, use the official Nuvio.
-
-## Support, issues and contact
-
-Nuvio Arc is a one-person project, so there's no Discord and no support team. You're welcome to:
-
-- **Report a bug or suggest an idea** in this repo's [Issues](https://github.com/ysosrs123/NuvioTV-Fork/issues). I read
-  them when I can, but it's a hobby, so no promises on replies or fixes. Please include your box, the Nuvio Arc version
-  (Settings > About) and what you were playing.
-- **Chat with other users** at [r/NuvioForks](https://www.reddit.com/r/NuvioForks/).
-
-Nuvio Arc is not affiliated with or endorsed by the NuvioTV project. **Please don't report problems from this build to
-the official Nuvio GitHub or the official Nuvio Discord** -- they can't help with changes they didn't make, and it
-takes their time away from the official app.
-
-## Supporting Nuvio
-
-Nuvio Arc is built on Nuvio. If you enjoy it, support the Nuvio team at [nuvio.tv/support](https://nuvio.tv/support).
-Every supporter membership and donation in the app goes straight to the official Nuvio team -- none of it comes to me.
-
----
-
-## What this fork adds
-
-Optimisation and playback-quality work, most of it aimed at high-bitrate remux and lossless audio,
-plus a few features I've always wanted in a TV player. The short version: streams start faster,
-buffer deeper, stall less, and you can *see* that your device is genuinely delivering lossless audio
-and the right HDR -- without needing to be the kind of person who tunes buffer settings for fun.
-
-- **Seek thumbnails made by the app itself** -- hold left or right and a strip of pictures shows
-  exactly where you will land, from an old AVI to a 4K Dolby Vision remux. On by default. A new
-  thumbnail every 10 seconds, sharp enough to read the scene, ready straight away for anything
-  you've played before, and carried over to another release of the same film. When your Jellyfin,
-  Emby or Silo server has made its own thumbnails, the player uses those. Turn on **Thumbnails from a
-  copy** and a 4K film gets its thumbnails from a 1080p copy in your sources, about five times less to
-  download, so even a Fire TV Stick can make them while the film plays. No third-party service, no API
-  key, nothing uploaded.
-- **Your own media server** -- Jellyfin, Emby and Silo libraries on Home, in Search, in the Library
-  and as a source on any title the server has, with direct play, second addresses and self-signed
-  certificates. Give each server your own name, show or hide the server logos, and sign in to Silo
-  with the same address you open it with in the browser.
-  Silo also has its own sign-in now: a code and a QR on the TV, sign in on your
-  phone, pick your Silo profile on screen, and your Silo Home rows show up on Nuvio Home.
-- **Watch party** -- watch the same title with friends in other homes, in sync, with a six-character
-  code or an invite. No account and no server of ours; bitstream audio is never sped up or slowed
-  down to catch up. Every party runs on a long random key and only the host runs the room.
-  Everyone in a party needs Nuvio Arc 1.1.0-nt.5 or newer.
-- **Calendar and new-episode reminders** -- a new page in the menu that shows when the next episodes
-  of your shows come out, in your own time zone, plus cinema and streaming dates for films on your
-  lists. Ring the bell on a show and a card on Home tells you when a new episode is out, with Watch
-  now straight to its sources. An optional **Coming up** row on Home shows what's just out and
-  what's next.
-- **Remote buttons** -- give any button on your remote a job while you watch: stats on or off,
-  subtitles on or off, next audio track, skip 5 minutes, start over, sources and plenty more. Works
-  with colour buttons, number pads, your TV's own remote over HDMI and buttons set up in tvQuickActions
-  or Button Mapper, and comes with a starting setup that just works on the Fire TV remote. The Search
-  button on your remote opens Search.
-- **Lossless audio you can trust** -- a surround engine that packs TrueHD, DTS-HD MA and DTS:X for
-  HDMI itself, with an **Auto surround** mode that picks the formats from what your TV and receiver
-  report. Or set it yourself with per-format passthrough switches (Dolby Digital, DD+, TrueHD, DTS,
-  DTS-HD) phrased as questions about your receiver, following Kodi's audio settings: switch off what
-  your gear can't decode and Nuvio decodes just those in the app, with its own decoder, because some
-  boxes ship a vendor DTS decoder that quietly folds 5.1 to stereo. It resists mid-film renegotiation
-  dropping you to lossy without telling you, comes back after the TV switches input, plays DTS Express
-  commentary tracks, and picks the lossless track so you don't start every film in the wrong audio.
-- **Native Dolby Vision Profile 7, FEL and MEL** -- the full dual-layer signal decoded inside
-  Nuvio on Android, enhancement layer included, the way a disc player does it. For now this needs a
-  Ugoos AM9 Pro on Android 14 running my own test kernel, plus a Dolby Vision display. That kernel
-  is not available yet; I plan to share it once it has had more testing. Stock firmware and other
-  boxes can't do it, so there the mode simply behaves like Auto.
-- **Dolby Vision on more TVs** -- app-side Profile 7 and Profile 5 -> 8.1 conversion via libdovi with
-  no per-frame stutter, correct enhancement-layer handling for single-track remuxes, and **Auto**
-  converting Profile 7 on every Dolby Vision TV, including TVs with Android built in whose decoder
-  claims it can play Profile 7 and then shows nothing.
-- **Better streams picked for you, automatically** -- source filtering and sorting re-baselined
-  around TRaSH-guides-aligned release-group quality tiers, so the best-quality trustworthy release
-  floats to the top and auto-play grabs the right one without you reading twenty filenames.
-  **Sort sources: Best quality first** puts the best link at the top of the source list too, by the
-  same rules. Safe to experiment: one tap resets to the recommended baseline, another shows everything
-  unfiltered while keeping best-first ordering, and **Quality rules** has its own page under Playback.
-- **Smoother browsing, even on a Fire TV Stick** -- Home no longer rebuilds itself as you move from
-  poster to poster, the focus ring glides calmly along a row, and Up and Down keep your place across
-  rows. Settings, Library and Search paint their poster wall or artwork background once and reuse it:
-  on a Fire TV Stick 4K Max, scrolling Settings with the Posters background and Glass went from 2 % to
-  96 % of frames on time.
-- **Device settings assessment -- your settings, tuned for *your* hardware in one press.** Stop
-  guessing what connection count, buffer size or Dolby Vision mode your box wants: the assessment
-  measures your link against the last thing you actually played, reads what your device and
-  display genuinely support, and lays out recommended settings with the reasoning next to every
-  one -- what was measured, what was calculated from your hardware, what's a personal trade-off
-  (pick a buffer profile; it'll suggest one based on how steady your connection looked), and what
-  it can't honestly know so won't touch. Like the answers? Apply them all in one press. Change
-  your mind? Revert restores every previous value, even after a restart. You stay in charge; it
-  just does the homework.
-- **A speed test that tells you what to do about it** -- goes further than the official app's speed
-  test: an adaptive sweep of connection and chunk-size combinations against the *actual* stream you
-  last played, over the same path playback uses. It finds the cheapest configuration that comfortably
-  sustains the title and says so in plain terms -- and on memory-tight boxes it's smart enough to
-  prefer a config that leaves room for a deeper playback buffer, telling you the trade in MB and
-  seconds. Slow source or buffering bug? Now you can tell them apart.
-- **Stats-for-nerds overlay -- proof, not vibes.** A fuller version of the official app's stats
-  overlay, built for high-bitrate/lossless content: measured video bitrate, the audio codec by name
-  with its measured passthrough bitrate, whether bitstream is *genuinely* reaching your AVR, Dolby
-  Vision details (which layers made it to the picture, CLL/FALL), live network throughput and buffer
-  health, dropped *and* skipped frames, the negotiated audio path, SoC stats and how far your box is
-  from its own temperature limit so you know when it's being throttled, audio-clock jitter and underrun
-  cross-checks. When it says TrueHD Atmos is hitting the sink, it measured it. The assessment
-  configures; this overlay verifies.
-- **Playback that holds up** --
-  - *Fewer stalls, less wasted bandwidth:* upstream's parallel downloading kept too little data
-    queued ahead of playback and threw away chunks it had already paid to download (measured ~47% of
-    transfer wasted on a 4K remux). This fork keeps the pipeline properly fed and stops the
-    re-downloading, roughly halving the debrid data burned per title. Buffers are sized from the
-    memory your box really has, so a 2 GB box no longer chokes on its own buffer.
-  - *Faster stream start:* pressing play opens the connection at the press. With **Search sources
-    before Play** on (off by default) the app also searches and ranks sources while you browse.
-  - *A dead link is not a dead end:* when a source fails at the start, the player moves on to the next
-    ready one by itself, on ExoPlayer and MPV, and a dead server is noticed within seconds.
-  - *Judder-free frame rates:* precise 23.976-vs-24 matching, 120 Hz for films on screens without
-    24 Hz, and frames kept evenly spaced on the TV's refresh ticks.
-  - *Old formats that play properly:* AVI, XviD, DivX, VC-1 and WMV, with frame rate matching, and
-    non-faststart MP4s that seek without stalling.
-  - *Faster AV1 on boxes without an AV1 chip,* decoded with dav1d.
-- **Trailers that start quickly** -- with Trailer source set to IMDb, the trailer is found in under a
-  second, plays at the best resolution IMDb has (up to 4K) and starts after a short buffer.
-- **The Nuvio Arc look** -- a logo that takes its colours from your theme, an intro where the Arc
-  lights up, with sound in 5.1 where your system has it, 16 launcher icons, a new Copper theme, Glass
-  that looks like glass and a new main menu in Nuvio V2.
-- **Watched titles on Home: Show, Dim or Hide** -- fade or hide what you've already watched, without
-  touching Continue Watching, Library or Search.
-- **Player buttons you can arrange** -- show, hide and reorder the player controls per profile.
-- **Support the Nuvio team, built in** -- a button on the start screen and in Settings shows what a
-  Nuvio Supporter membership gives you and a QR code to nuvio.tv/support, and tells supporters their
-  tier once they sign in.
-- **The whole fork in 37 languages.**
-- **Lighter, faster build** -- unused engine components stripped out, so the app itself is smaller
-  and snappier (see *What's been removed*).
+## What this is
+
+This is a personal branch of Nuvio Arc, tuned for the NVIDIA SHIELD TV Pro 2019.
+
+| | |
+|---|---|
+| Lineage | [NuvioTV](https://github.com/NuvioMedia/NuvioTV) -> [Nuvio Arc](https://github.com/ysosrs123/NuvioTV-Fork) by ysosrs123 -> this fork, [tinof/NuvioTV-Fork](https://github.com/tinof/NuvioTV-Fork), maintained by tinof |
+| Branch | `perf/shield-pass`, a performance pass on top of this fork's `main` (`git log --oneline main..perf/shield-pass`) |
+| Target device | SHIELD TV Pro 2019: Tegra X1+, codename `mdarcy`, Android 11 (API 30), SHIELD Experience 9.2.4 |
+| Other devices | Keep their behaviour. The risky changes apply only on Nvidia, gated by `DeviceProfile`. Some plain fixes apply everywhere. |
+
+This is not an official release. There is no support promise. Please do not report problems from this build
+to NuvioTV or to Nuvio Arc: they did not make these changes. Report them in this fork's
+[Issues](https://github.com/tinof/NuvioTV-Fork/issues).
+
+## What is different on the Shield
+
+Every change below is a default, not a lock. Each Nvidia default can be reverted, by a `debug.nuvio.*` switch or
+by its setting, and a saved user setting wins over the default where one exists. The full table, with the switch names, the
+revert values and what to look at on the device, is in [docs/shield-todo.md](docs/shield-todo.md).
+
+| Area | Change on Nvidia |
+|---|---|
+| Audio passthrough | TrueHD and DTS-HD go to the platform sink natively, not through the fork's IEC61937 packer ("System passthrough" defaults to on). Their passthrough buffer caps are doubled. The surround decision uses the stereo, 5.1 and 7.1 probe union and the HDMI channel count. |
+| Frame-rate matching | Starts in Start/Stop mode when nothing is saved. The settle hold after a switch is 1.2 s instead of 2 s, before start and on a track switch. Stabilize detection reads the display off the main thread. After Stop, the switch back waits 750 ms, until the video surface is gone. |
+| Video decoding | Video codec queueing is async (Media3 does this by itself only from API 31). |
+| HDR and Dolby Vision display | Dolby Vision plays untunnelled. Hardware DV decoders are tried first on DV displays. HDR10 metadata injection on DV strip is on. HDR video plays at Fit instead of a view-scaled aspect mode, so it can stay on an overlay plane. Dolby Vision Profile 7 is handled separately and is still in progress. |
+| mpv | Decodes with direct MediaCodec (`mediacodec,mediacodec-copy`) and tone maps with `bt.2446a`, no peak detection. |
+| Seek thumbnails and memory | Thumbnails start on for `mdarcy` when no mode was chosen. The low-RAM tier comes from device RAM when the buffers are off-heap. |
+| UI | Opaque black window background outside playback. libass starts with the canvas overlay. The device assessment has Shield notes (the system "Match frame rate", resolution matching and AI upscaling, Dolby audio processing). |
+| Logs and diagnostics | The `NuvioCodecs` decoder inventory (secure decoders included), an optional render trace, and quieter network and thumbnail logs. |
+
+Changes for every device in this branch include:
+- Controller buttons in the player get default jobs: L1/R1 seek, X play/pause, Y subtitles. You can rebind them
+  on the remote-buttons page.
+- Native libraries load straight from the APK (`extractNativeLibs=false`). This saves eMMC space; the APK
+  download is larger.
+- `libnuviothumb` is tuned for Cortex-A57 on arm64.
+- Pre-blurred Cinematic glass on boxes without live blur (Android 11).
+- Localhost streams report the real HTTP status, so expired links (404/410) and 416 retries are handled
+  (on fork main).
+- New and changed strings are translated in every locale.
+
+What the device report of 2026-10-14 (results in [docs/shield-todo.md](docs/shield-todo.md), Round 3) found the
+Shield cannot do:
+- No decoder declares tunneled playback on SHIELD Experience 9.2.4. The tunneling defaults stay in the code
+  but do nothing on this firmware.
+- The display reports only two HDR types: Dolby Vision and HDR10 (no HLG, no HDR10+).
+- There is no AV1 decoder.
+- Thermal thresholds are not readable without root, so the HUD shows no Shield throttle limit.
+
+## Install a build next to your Nuvio Arc
+
+| | Release Nuvio Arc | This branch's debug build |
+|---|---|---|
+| Package | `com.nuvio.tv.test` | `com.nuvio.tv.test.shield` |
+| Launcher label | Nuvio Arc | Nuvio Arc Debug |
+| Settings and logins | its own | its own |
+
+The debug build installs beside the release app and does not touch it.
+
+1. Download the `full-debug-apks` artifact of a successful "PR Full Debug Build" run, from the Actions tab or
+   with `gh`. Artifacts are kept for 7 days.
+
+   ```sh
+   gh run list -R tinof/NuvioTV-Fork --workflow pr-full-debug-build.yml --branch perf/shield-pass
+   gh run download <run-id> -R tinof/NuvioTV-Fork -n full-debug-apks
+   ```
+
+2. Install the arm64 APK on the Shield:
+
+   ```sh
+   adb install -r app-full-arm64-v8a-debug.apk
+   ```
+
+The builds are signed with a fixed debug key, so each new build updates the previous one in place and keeps its
+data. The run log prints each APK's package and certificate digest.
+
+## Build it yourself (GitHub Actions)
+
+The maintainer's host cannot build Android, so builds run on GitHub Actions. The workflow is
+[.github/workflows/pr-full-debug-build.yml](.github/workflows/pr-full-debug-build.yml) ("PR Full Debug Build").
+It builds `fullDebug` as per-ABI split APKs (`armeabi-v7a`, `arm64-v8a`), uploads them as `full-debug-apks`,
+and then runs the whole unit test suite. The tests run after the upload, so a failing test does not remove the
+APKs.
+
+Input:
+
+| Input | Default | Meaning |
+|---|---|---|
+| `app_id_suffix` | `.shield` | Package suffix, so the build installs next to the release app. Empty means the same package. |
+
+Repository secrets (names only; never commit the values):
+
+| Secret | Content |
+|---|---|
+| `LOCAL_PROPERTIES_BASE64` | `local.properties`, base64-encoded. It holds `NUVIO_SUPABASE_URL` and `NUVIO_SUPABASE_ANON_KEY` plus the TMDB, Trakt, Simkl, MDBList, IntroDB and IMDb keys. The build reads the `NUVIO_`-prefixed Supabase names. [local.example.properties](local.example.properties) lists every key. Without `NUVIO_SUPABASE_URL` a manual run fails on purpose, because account login (QR / short code) would not work. |
+| `DEBUG_KEYSTORE_BASE64` | A debug keystore, base64-encoded, with alias `androiddebugkey` and store password `android`. The workflow passes it to Gradle as `NUVIO_DEBUG_STORE_FILE`. Without it, every run gets a throwaway key and a new build cannot update the old one. |
+
+Set the secrets and start a run with `gh`:
+
+```sh
+base64 -w0 local.properties | gh secret set LOCAL_PROPERTIES_BASE64 -R tinof/NuvioTV-Fork
+base64 -w0 debug.keystore  | gh secret set DEBUG_KEYSTORE_BASE64  -R tinof/NuvioTV-Fork
+gh workflow run pr-full-debug-build.yml -R tinof/NuvioTV-Fork --ref perf/shield-pass -f app_id_suffix=.shield
+```
 
-## Screenshots (Nuvio V2)
+The workflow logs list only the names of the properties that have values, and mask the credentials.
 
-<img width="1920" height="1080" alt="Home with the main menu open" src="docs/screenshots/nt5/01-home-menu.jpg" />
+Other workflows:
 
+| Workflow | Job |
+|---|---|
+| [patch-datasource-aar.yml](.github/workflows/patch-datasource-aar.yml) | Rebuilds the patched Media3 datasource AAR. The recipe is in [app/libs/README.md](app/libs/README.md). |
+| [android-release.yml](.github/workflows/android-release.yml) | Release builds |
+| [build-ffmpeg-decoder.yml](.github/workflows/build-ffmpeg-decoder.yml) | Builds the FFmpeg audio decoder |
 
+Local build: with a filled-in `local.properties`, `./gradlew :app:assembleFullDebug -PnuvioAppIdSuffix=.shield`
+builds the same debug APKs. `-PnuvioAppIdSuffix=.name` installs a local build next to the main app.
 
-https://github.com/user-attachments/assets/b2063feb-7c4a-4fa1-924d-63686184f5dd
+## Testing on the Shield
 
+Set a switch, clear it and list what is set:
 
-**Native Dolby Vision Profile 7 FEL on the Ugoos AM9 Pro** -- the stats overlay showing "Profile 7.6 FEL - RPU + BL + EL" on the native route.
+```sh
+adb shell setprop debug.nuvio.<name> <0|1>
+adb shell setprop debug.nuvio.<name> ""
+adb shell getprop | grep debug.nuvio
+```
 
-For now this needs a Ugoos AM9 Pro on Android 14 running my own test kernel, plus a Dolby Vision display. That kernel is not available yet; I plan to share it once it has had more testing. Stock firmware and other boxes can't do it, so there the mode simply behaves like Auto.
+Restart playback after a change, or restart the app for the switches marked *app* in
+[docs/shield-todo.md](docs/shield-todo.md).
 
-<img width="1920" height="1080" alt="Screenshot_20261004_215744" src="https://github.com/user-attachments/assets/86dba33b-f2c3-496c-a0d6-5b6ba6c9d41f" />
-<img width="4032" height="3024" alt="IMG_4946 - Copy" src="https://github.com/user-attachments/assets/c6bbf874-916c-4433-9a5b-bba6fedd5603" />
+Log tags and lines worth filtering:
 
+| Tag or line | What it shows |
+|---|---|
+| `NuvioCodecs` | Every video decoder once per app start: hardware or software, tunneled, secure, DV profiles |
+| `FrameRateUtils` | Display mode switches: `Switching display mode`, `Display mode switch stabilized at`, `Restoring display mode after` |
+| `PlayerViewModel` | `Track AFR settle complete:`, `Preflight AFR settle complete`, `BACK_BUFFER_RESOLVED: … lowRam=` |
+| `TTFF_STAGE` | `PLAYBACK_TUNNELING: requested=… applied=…` and the other start-up stages |
+| `ThumbMem` | Seek-thumbnail memory decisions (`strongBox=`, heap) |
+| `NuvioNet` | `NET_CONN` lines, only for slow headers or time to first byte (1 s or more) and errors (HTTP 400 or higher, failed, canceled). `adb shell setprop log.tag.NuvioNet D` shows every line. |
+| `ThumbWorker` | Per-thumbnail lines, only for decodes of 500 ms or more. `adb shell setprop log.tag.ThumbWorker D` shows every line. |
+| `NuvioRender` | `RENDER_TRACE: pts= releaseInMs=` every 240th video frame, with `debug.nuvio.render_trace 1` |
 
+[docs/shield-todo.md](docs/shield-todo.md) has the device checklist for each round, the items that are still
+open and a quick reference of `adb` and `dumpsys` commands.
 
-**Seek thumbnails** -- the strip and the framed picture while holding left or right.
+## Features from Nuvio Arc
 
-<img width="1920" height="1080" alt="Screenshot_20261004_221200" src="https://github.com/user-attachments/assets/7ad837f7-a18a-4f1a-993c-be474099ea9c" />
-<img width="1920" height="1080" alt="Screenshot_20261004_221224" src="https://github.com/user-attachments/assets/17dbaca2-f569-4362-a625-0b195a87ce31" />
-
-The "Generating thumbnails" screen -- the thumbnails being made before play, the strip filling in as they come. Start watching now skips the wait.
-
-<img width="1920" height="1080" alt="Generating thumbnails" src="docs/screenshots/nt5/07-generating-screen.jpg" />
-
-
-
-**Calendar** -- what just aired and what's coming, in your own time zone.
-
-<img width="1920" height="1080" alt="Calendar, list view" src="docs/screenshots/nt5/02-calendar-list.jpg" />
-
-<img width="1920" height="1080" alt="Calendar, month view" src="docs/screenshots/nt5/03-calendar-month.jpg" />
-
-<img width="1920" height="1080" alt="Home with the Upcoming and Coming up rows" src="docs/screenshots/nt5/04-home-coming-up.jpg" />
-
-
-
-**Remote buttons** -- give any button a job in the player.
-
-<img width="1920" height="1080" alt="Remote buttons" src="docs/screenshots/nt5/05-remote-buttons.jpg" />
-
-
-
-**Watch party** -- the party page with the code, the phone QR codes and the member list.
-
-
-<img width="1920" height="1080" alt="Screenshot_20261004_223318" src="https://github.com/user-attachments/assets/00567a6b-f6a6-4b2f-9393-847fba1ac0d3" />
-
-
-
-**Your own media server** -- Jellyfin, Emby and Silo rows on Home, and a server stream in the source list.
-
-<img width="1920" height="1080" alt="Screenshot_20261004_220636" src="https://github.com/user-attachments/assets/91100a10-6725-4770-ab40-43db44de17f3" />
-
-
-**The Nuvio Arc look** -- the launcher icons and themes.
-
-<img width="1920" height="1080" alt="App icon and banner picker" src="docs/screenshots/nt5/06-icon-picker.jpg" />
-
-
-
-**Player buttons** -- the editor with its live preview.
-
-<img width="1920" height="1080" alt="Screenshot_20261004_215639" src="https://github.com/user-attachments/assets/f0fa9504-8c06-492a-8f89-4fd6c863b786" />
-
-
-**Surround sound** -- Surround Format on Auto, with the per-format switches.
-
-<img width="1920" height="1080" alt="Screenshot_20261004_215721" src="https://github.com/user-attachments/assets/be46a0c2-7b62-4370-b270-c70fcee583b3" />
-
-
-## Stats for Nerds Overlay -
-
-<img width="1920" height="1080" alt="Screenshot_20261004_220235" src="https://github.com/user-attachments/assets/0107b69c-a463-43ad-9a5f-e3b8162abc07" />
-
-**Source & hardware** -- Settings > Advanced after a Profile 7 FEL title on the AM9, with the DV7 decoder and DV7 EL type rows.
-
-<img width="1920" height="1080" alt="Source and hardware card" src="docs/screenshots/nt5/09-source-hardware.jpg" />
-
-
-## Revised Last Played Stream Speed Test:
-
-<img width="1920" height="1080" alt="Screenshot_20261004_224058" src="https://github.com/user-attachments/assets/0b91b0b5-4f54-4e4b-b783-e19ebfac52bb" />
-
-
-## Device Assessment:
-
-<img width="1920" height="1080" alt="screenshot4" src="https://github.com/user-attachments/assets/eb274129-553c-4b5c-b1ac-665aca9101fa" />
-<img width="1920" height="1080" alt="Screenshot_20261004_224127" src="https://github.com/user-attachments/assets/111b52aa-695c-4fa0-8cea-c9376fb879d4" />
-
-
-## Per-Format Audio Passthrough Switches:
-
-<img width="1920" height="1080" alt="Screenshot_20260826_084841" src="https://github.com/user-attachments/assets/85f3a839-11bb-45f6-9154-3d471efe2319" />
-
----
-
-## What's been removed
-
-- **IAMF** and **MPEG-H** audio decoder components, and an unused UI component -- dropped to slim
-  the build. No user-facing loss.
-- **Android TV channel / preview-program sync** -- not used on this fork's target setup.
-- **The upstream update feed** -- in-app updates come from this fork's own releases only.
-- **The "Choose your Nuvio experience" screen on first start** -- everyone gets the full settings
-  straight away. Essential is still there under Settings > Advanced > Switch to Essential.
-- **The Report buttons** in the player and under Settings > Advanced -- they could never send anything
-  from this build. Please use this repo's Issues instead (see *Support, issues and contact*).
-
-**Not removed** (sometimes assumed otherwise): all **40 languages** (the fork's own text is translated
-into 37 of them), the Classic, Grid and Modern **Home layouts**, the **add-on manager**, and
-**subtitle add-on support** are intact.
-
----
-
-## Target hardware
-
-Primary/validated target is the **Amlogic S905X4 / 4GB RAM, Amlogic S905X5M / 2GB RAM class (armeabi-v7a) and AmLogic S905X5-J / 4GB RAM (arm64-v8a)**, tested on a Homatics Box R
-4K Plus, Xiaomi Box S 3rd Gen, Fire TV Stick 4K Max and Ugoos AM9 Pro in a Samsung HW-Q800F -> LG C9 eARC chain. Other devices (Nvidia Shield, Prism+, Xiaomi) have been
-community-tested.
+Everything else comes from Nuvio Arc: seek thumbnails, media-server libraries (Jellyfin, Emby, Silo), watch
+party, the calendar, remote buttons, the surround engine with per-format passthrough, Dolby Vision conversion,
+source ranking, the device assessment, the speed test and the stats overlay. The
+[Nuvio Arc README](https://github.com/ysosrs123/NuvioTV-Fork#readme) describes them, with screenshots. Nuvio
+Arc is built on Nuvio; you can support the Nuvio team at [nuvio.tv/support](https://nuvio.tv/support).
 
 ---
 
@@ -289,9 +168,11 @@ community-tested.
 
 This is a modified version of [NuvioTV](https://github.com/NuvioMedia/NuvioTV), changed by ysosrs123
 from July 2026 onwards. Every change is in this repository's history on top of the official release
-it builds on (currently 1.1.0-beta.7). It is licensed under the
-[GNU General Public License v3.0](./LICENSE), the same as NuvioTV. All upstream copyright notices,
-licence headers and author attributions are kept. Full credit to the NuvioTV maintainers and contributors.
+it builds on (currently 1.1.0-beta.7). tinof changed it further from October 2026 onwards, for the
+`perf/shield-pass` branch; those changes are in the same history (`git log main..perf/shield-pass`). It is
+licensed under the [GNU General Public License v3.0](./LICENSE), the same as NuvioTV. All upstream copyright
+notices, licence headers and author attributions are kept. Full credit to the NuvioTV maintainers and
+contributors, and to ysosrs123 for Nuvio Arc.
 
 Parts from other projects keep their own licences:
 - TrueHD MAT packing and the downmix path: ported from Kodi (GPL-2.0-or-later), see
@@ -314,4 +195,5 @@ Parts from other projects keep their own licences:
 - Prebuilt libraries that come unchanged from the official app are covered by the official project's
   sources and notices.
 
-This fork is not affiliated with or endorsed by the NuvioTV project or any of the services named.
+This fork is not affiliated with or endorsed by the NuvioTV project, by Nuvio Arc or by any of the services
+named.
