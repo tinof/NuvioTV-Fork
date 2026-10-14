@@ -119,5 +119,9 @@ set_source_files_properties(thumb_backend_ff60.cpp PROPERTIES
     INCLUDE_DIRECTORIES "${CMAKE_CURRENT_LIST_DIR}/third_party/ffmpeg-n6.0")
 target_compile_features(nuviothumb PRIVATE cxx_std_17)
 target_compile_options(nuviothumb PRIVATE -O2 -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter)
+# Scheduling for the Shield's Cortex-A57 (Tegra X1); tuning only, the instruction set stays baseline ARMv8-A.
+if (ANDROID_ABI STREQUAL "arm64-v8a")
+    target_compile_options(nuviothumb PRIVATE -mtune=cortex-a57)
+endif()
 target_link_options(nuviothumb PRIVATE "-Wl,-z,max-page-size=16384")
 target_link_libraries(nuviothumb ${log-lib} ${jnigraphics-lib} dl m)
