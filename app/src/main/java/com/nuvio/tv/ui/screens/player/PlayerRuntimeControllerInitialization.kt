@@ -1755,7 +1755,10 @@ internal fun PlayerRuntimeController.initializePlayer(
                 )
                 scheduleStartupWatchdog()
                 val isTunneledPlayback = isTunnelingActiveForCurrentPlayback
-                val realTunnelFirstFrameSwitch = DebugSwitches.flag("debug.nuvio.tunnel_real_first_frame") == true
+                val realTunnelFirstFrameSwitch = PlayerTunnelAvSyncPolicy.realFirstFrameSwitchOn(
+                    DebugSwitches.flag("debug.nuvio.tunnel_real_first_frame"),
+                    Build.MANUFACTURER
+                )
                 // Hold playWhenReady=false through prepare() so audio does not race ahead
                 // while the video decoder is still opening. The first STATE_READY primes the
                 // pipeline (ColdStartPrime); synchronized play() begins in onRenderedFirstFrame().
