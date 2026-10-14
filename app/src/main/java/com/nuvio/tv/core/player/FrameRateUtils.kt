@@ -720,6 +720,9 @@ object FrameRateUtils {
         var seamless: Boolean? = null
         var fromHz: Float? = null
         var fromModeId: Int? = null
+        // The Display the switch was requested on, for the poll below.
+        var switchDisplay: Display? = null
+        var switchRequestedAtMs = 0L
         val switchPlan = withContext(Dispatchers.Main) {
             val window = activity.window ?: return@withContext null
             val display = window.decorView.display ?: return@withContext null
@@ -811,6 +814,8 @@ object FrameRateUtils {
             layoutParams.preferredDisplayModeId = modeBest.modeId
             window.attributes = layoutParams
             lastSwitchRequestedAtElapsed = android.os.SystemClock.elapsedRealtime()
+            switchDisplay = display
+            switchRequestedAtMs = System.currentTimeMillis()
             Pair(modeBest, null)
         } ?: return null
 
@@ -821,38 +826,57 @@ object FrameRateUtils {
         }
 
         val expectedMode = switchPlan.first ?: return null
-        var stablePolls = 0
+        val display = switchDisplay ?: return null
         var lastMode: Display.Mode? = null
-        val start = System.currentTimeMillis()
 
-        while (System.currentTimeMillis() - start < SWITCH_TIMEOUT_MS) {
-            val mode = withContext(Dispatchers.Main) {
-                activity.window?.decorView?.display?.mode
-            } ?: break
-
-            lastMode = mode
-            val modeStable = switchReported(mode.modeId, mode.refreshRate, expectedMode.modeId, expectedMode.refreshRate, fromModeId)
-            if (modeStable) {
-                stablePolls += 1
-                if (stablePolls >= SWITCH_REQUIRED_STABLE_POLLS) {
-                    Log.d(
-                        TAG,
-                        "Display mode switch stabilized at ${mode.refreshRate}Hz (modeId=${mode.modeId})"
-                    )
-                    com.nuvio.tv.core.report.PlaybackRecorder.event(
-                        com.nuvio.tv.core.report.RecorderEvent.DISPLAY_MODE,
-                        "android_reports hz=${mode.refreshRate}"
-                    )
-                    DisplayRefreshMeter.measure(mode.refreshRate, seamless, fromHz = fromHz)
-                    markRequest(expectedMode.modeId, AfrRequest.REACHED)
-                    return DisplayModeSwitchResult(mode)
+        // Poll off the main thread. Each Main hop queues behind startup work: on the
+        // Shield that made "stabilized" land ~2 s after the request while
+        // DisplayManager had the new mode after ~400 ms. Display.getMode() needs no
+        // Looper: on Android 11 it is synchronized on the Display and refreshes
+        // DisplayInfo from DisplayManagerGlobal (under its lock, through a cache the
+        // system invalidates on every display change), so each read is current.
+        val stableMode = withContext(Dispatchers.IO) {
+            var stablePolls = 0
+            var polls = 0
+            while (System.currentTimeMillis() - switchRequestedAtMs < SWITCH_TIMEOUT_MS) {
+                if (activity.isDestroyed) break
+                val mode = display.mode
+                polls += 1
+                lastMode = mode
+                val modeStable = switchReported(mode.modeId, mode.refreshRate, expectedMode.modeId, expectedMode.refreshRate, fromModeId)
+                if (modeStable) {
+                    stablePolls += 1
+                    if (stablePolls >= SWITCH_REQUIRED_STABLE_POLLS) {
+                        Log.d(
+                            TAG,
+                            switchStabilizedMessage(
+                                refreshRate = mode.refreshRate,
+                                modeId = mode.modeId,
+                                elapsedMs = System.currentTimeMillis() - switchRequestedAtMs,
+                                polls = polls
+                            )
+                        )
+                        return@withContext mode
+                    }
+                } else {
+                    stablePolls = 0
                 }
-            } else {
-                stablePolls = 0
+                delay(SWITCH_POLL_INTERVAL_MS)
             }
-            delay(SWITCH_POLL_INTERVAL_MS)
+            null
+        }
+        if (stableMode != null) {
+            com.nuvio.tv.core.report.PlaybackRecorder.event(
+                com.nuvio.tv.core.report.RecorderEvent.DISPLAY_MODE,
+                "android_reports hz=${stableMode.refreshRate}"
+            )
+            lastSwitchStableAtElapsed = android.os.SystemClock.elapsedRealtime()
+            DisplayRefreshMeter.measure(stableMode.refreshRate, seamless, fromHz = fromHz)
+            markRequest(expectedMode.modeId, AfrRequest.REACHED)
+            return DisplayModeSwitchResult(stableMode)
         }
 
+        lastSwitchStableAtElapsed = android.os.SystemClock.elapsedRealtime()
         val fallbackMode = lastMode ?: expectedMode
         Log.w(
             TAG,
@@ -865,6 +889,10 @@ object FrameRateUtils {
         markRequest(expectedMode.modeId, AfrRequest.TIMED_OUT)
         return DisplayModeSwitchResult(fallbackMode)
     }
+
+    /** Log parsers match the "Display mode switch stabilized at" prefix; keep it as is. */
+    internal fun switchStabilizedMessage(refreshRate: Float, modeId: Int, elapsedMs: Long, polls: Int): String =
+        "Display mode switch stabilized at ${refreshRate}Hz (modeId=$modeId) after ${elapsedMs}ms polls=$polls"
 
     fun cleanupDisplayListener() {
         // Kept for API compatibility with existing call sites.
@@ -882,6 +910,13 @@ object FrameRateUtils {
 
     /** Elapsed-realtime of the last display mode request, for the settle wait. 0 before any. */
     @Volatile var lastSwitchRequestedAtElapsed: Long = 0L
+        private set
+
+    /**
+     * Elapsed-realtime when the last requested mode was reported stable (or the poll timed out),
+     * for the Nvidia settle anchor. 0 before any.
+     */
+    @Volatile var lastSwitchStableAtElapsed: Long = 0L
         private set
 
     /**
