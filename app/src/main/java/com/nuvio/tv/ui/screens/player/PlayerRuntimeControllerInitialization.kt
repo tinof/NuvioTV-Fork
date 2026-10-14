@@ -1984,7 +1984,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 pendingSeekTelemetryReadyLatencyMs = latencyMs
                             }
                             logSeekReady("ready")
-                            // Track-AFR has audio and video both off for a tunnelled switch:
+                            // Track-AFR has audio and video both off for the mode switch:
                             // this READY has no A/V renderers and must not use up the first-READY
                             // start. endTrackAfrQuiesce re-enables them with a seek, so a
                             // real READY follows.
