@@ -27,5 +27,15 @@ class AsyncVideoCodecQueueingTest {
         assertEquals("sync (forced)", videoCodecQueueingLabel(VideoCodecQueueing.FORCE_SYNC, 34))
         assertEquals("default (async on API 31+)", videoCodecQueueingLabel(VideoCodecQueueing.DEFAULT, 31))
         assertEquals("default (sync)", videoCodecQueueingLabel(VideoCodecQueueing.DEFAULT, 30))
+        assertEquals("default (sync)", videoCodecQueueingLabel(VideoCodecQueueing.DEFAULT, 30, "NVIDIA"))
+    }
+
+    @Test
+    fun `fire tv default row says async from API 28`() {
+        assertEquals("default (async)", videoCodecQueueingLabel(VideoCodecQueueing.DEFAULT, 28, "Amazon"))
+        assertEquals("default (async)", videoCodecQueueingLabel(VideoCodecQueueing.DEFAULT, 30, "Amazon"))
+        assertEquals("default (async)", videoCodecQueueingLabel(VideoCodecQueueing.DEFAULT, 31, "Amazon"))
+        assertEquals("default (sync)", videoCodecQueueingLabel(VideoCodecQueueing.DEFAULT, 27, "Amazon"))
+        assertEquals("sync (forced)", videoCodecQueueingLabel(VideoCodecQueueing.FORCE_SYNC, 30, "Amazon"))
     }
 }

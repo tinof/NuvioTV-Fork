@@ -587,7 +587,11 @@ class PlayerViewModel @Inject constructor(
         controller.videoCodecQueueingRequested?.let { queueing ->
             rows += StatsRow(
                 "Video codec queue (requested)",
-                videoCodecQueueingLabel(queueing, android.os.Build.VERSION.SDK_INT)
+                videoCodecQueueingLabel(
+                    queueing,
+                    android.os.Build.VERSION.SDK_INT,
+                    android.os.Build.MANUFACTURER
+                )
             )
         }
 
