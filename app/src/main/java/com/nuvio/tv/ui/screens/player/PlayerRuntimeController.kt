@@ -785,6 +785,11 @@ class PlayerRuntimeController(
     // stream's coroutine reaching its finally block must not collapse the new
     // stream's start-hold; incremented at every per-stream AFR reset.
     @Volatile internal var afrTrackGeneration: Int = 0
+    // What the track-AFR coroutine took down for the display-mode switch, on which player and
+    // for which generation; endTrackAfrQuiesce() brings back exactly that (main thread only).
+    internal var afrQuiesce: TrackAfrQuiesce = TrackAfrQuiesce.NONE
+    internal var afrQuiescePlayer: ExoPlayer? = null
+    internal var afrQuiesceGeneration: Int = -1
     internal val afrPreflightGate = AfrPreflightGate()
     internal var afrModeAppliedPreStart: Boolean = false
     // The raw fps of a provisional seed applied by the cache preflight from
