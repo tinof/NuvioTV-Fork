@@ -1,0 +1,90 @@
+name: Patch datasource AAR
+
+# Rebuilds LocalhostZeroCopyDataSource in app/libs/lib-datasource-release.aar from
+# app/libs/datasource-aar-src. It first compiles the unpatched upstream source and stops
+# unless that matches the class in the shipped AAR, so the patch starts from the real source.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_URL: https://raw.githubusercontent.com/halibiram/media/7da81855ee5e59b55e7ca1c5882501df4c91970e/libraries/datasource/src/main/java/androidx/media3/datasource/LocalhostZeroCopyDataSource.java
+  CLASS_PATH_IN_JAR: androidx/media3/datasource/LocalhostZeroCopyDataSource.class
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prepare class path
+        run: |
+          set -euo pipefail
+          w="$RUNNER_TEMP/w"
+          mkdir -p "$w/deps" "$w/orig" "$w/upstream" "$w/patched"
+          unzip -p app/libs/lib-datasource-release.aar classes.jar > "$w/deps/datasource.jar"
+          unzip -p app/libs/lib-common-release.aar classes.jar > "$w/deps/common.jar"
+          curl -fsSL -o "$w/deps/annotation.jar" https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.9.1/annotation-jvm-1.9.1.jar
+          curl -fsSL -o "$w/deps/checker-qual.jar" https://repo1.maven.org/maven2/org/checkerframework/checker-qual/3.48.3/checker-qual-3.48.3.jar
+          platform="$(find "$ANDROID_HOME/platforms" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          echo "android.jar from $platform"
+          cp "$platform/android.jar" "$w/deps/android.jar"
+          (cd "$w/orig" && unzip -q "$w/deps/datasource.jar" "$CLASS_PATH_IN_JAR")
+          curl -fsSL -o "$w/upstream/LocalhostZeroCopyDataSource.java" "$UPSTREAM_URL"
+          echo "W=$w" >> "$GITHUB_ENV"
+          echo "CP=$w/deps/datasource.jar:$w/deps/common.jar:$w/deps/annotation.jar:$w/deps/checker-qual.jar:$w/deps/android.jar" >> "$GITHUB_ENV"
+
+      - name: Upstream source matches the shipped class
+        run: |
+          set -euo pipefail
+          javac -source 8 -target 8 -g -proc:none -nowarn -cp "$CP" -d "$W/upstream" "$W/upstream/LocalhostZeroCopyDataSource.java"
+          # Constant-pool indices may differ between javac builds; compare the instructions and members.
+          strip() { javap -c -p "$1" | sed -E 's/#[0-9]+(\.#[0-9]+)?//g; s/\s+$//'; }
+          strip "$W/orig/$CLASS_PATH_IN_JAR" > "$W/orig.txt"
+          strip "$W/upstream/$CLASS_PATH_IN_JAR" > "$W/upstream.txt"
+          diff -u "$W/orig.txt" "$W/upstream.txt"
+          echo "Upstream source compiles to the shipped class"
+
+      - name: Build the patched AAR
+        run: |
+          set -euo pipefail
+          javac -source 8 -target 8 -g -proc:none -nowarn -cp "$CP" -d "$W/patched" app/libs/datasource-aar-src/LocalhostZeroCopyDataSource.java
+          python3 - "$W" <<'PY'
+          import os, sys, zipfile
+          w = sys.argv[1]
+          name = os.environ["CLASS_PATH_IN_JAR"]
+          new_class = open(os.path.join(w, "patched", name), "rb").read()
+
+          def rewrite(src, dst, replace):
+              # Same entry order and timestamps; only the replaced entries change.
+              with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w") as zout:
+                  for info in zin.infolist():
+                      data = replace.get(info.filename, zin.read(info.filename))
+                      zout.writestr(info, data, compress_type=info.compress_type)
+
+          rewrite(os.path.join(w, "deps", "datasource.jar"), os.path.join(w, "classes.jar"), {name: new_class})
+          classes = open(os.path.join(w, "classes.jar"), "rb").read()
+          os.makedirs(os.path.join(w, "out"), exist_ok=True)
+          rewrite("app/libs/lib-datasource-release.aar", os.path.join(w, "out", "lib-datasource-release.aar"), {"classes.jar": classes})
+          PY
+          sha256sum "$W/out/lib-datasource-release.aar"
+          unzip -p "$W/out/lib-datasource-release.aar" classes.jar > "$W/check.jar"
+          javap -p -cp "$W/check.jar" androidx.media3.datasource.LocalhostZeroCopyDataSource | grep parseStatusCode
+
+      - name: Upload patched AAR
+        uses: actions/upload-artifact@v7
+        with:
+          name: lib-datasource-release-patched
+          path: ${{ env.W }}/out/lib-datasource-release.aar
+          if-no-files-found: error
+          retention-days: 7
