@@ -576,6 +576,8 @@
     <string name="playback_auto_switch_internal_player_on_error_sub">إذا فشل بدء تشغيل البث في libmpv، تُعاد المحاولة تلقائياً باستخدام ExoPlayer.</string>
     <string name="playback_engine_exoplayer_desc">أفضل توافق مع ميزات Nuvio Arc الحالية.</string>
     <string name="playback_engine_mvplayer_desc">يستخدم libmpv مع عناصر تحكم Nuvio Arc (OSD). تجريبي.</string>
+    <string name="playback_engine_mvplayer_shield_note">على Shield، يرسم libmpv الصورة عبر GPU: لا إخراج HDR ولا ترقية بالذكاء الاصطناعي.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">على Shield، يرسم libmpv الصورة عبر GPU: لا إخراج HDR.</string>
     <string name="playback_section_subtitles">الترجمة</string>
     <string name="playback_section_subtitles_desc">تحديد اللغة والمظهر وطريقة المعالجة.</string>
     <string name="playback_afr_off">معطل</string>
@@ -625,7 +627,7 @@
     <string name="audio_decoder_priority">أولوية فك التشفير</string>
     <string name="audio_enable_downmix_title">تفعيل دمج القنوات (Downmix).</string>
     <string name="audio_tunneled">التشغيل النفقي</string>
-    <string name="audio_tunneled_sub">Hardware-level audio/video sync. May improve playback on some Android TV devices</string>
+    <string name="audio_tunneled_sub">مزامنة الصوت/الفيديو على مستوى العتاد. قد تحسّن التشغيل على بعض أجهزة Android TV. صوت TrueHD وDTS-HD بدون فقد يُشغَّل دائمًا بدونها. أثناء تفعيلها لا يمكن تغيير سرعة التشغيل، ونسبة العرض ملائمة أو ملء فقط</string>
     <!-- DV7 Handling Mode -->
     <string name="dv7_handling_title">Dolby Vision Profile 7 Handling</string>
     <string name="dv7_handling_dialog_subtitle">Choose how DV Profile 7 streams are processed at playback time.</string>
@@ -3392,6 +3394,7 @@
     <string name="assessment_grounds_afr_on">الشاشة تفيد بعدة معدلات تحديث عند الدقة الحالية (%1$s)</string>
     <string name="assessment_grounds_afr_already">مفعل مسبقاً - البدء فقط أو البدء والإيقاف مسألة تفضيل: إعادة مزامنة HDMI أقل مقابل عودة الواجهة إلى 60 Hz</string>
     <string name="assessment_grounds_afr_single">شاشة بمعدل واحد عند الدقة الحالية - لا شيء للتبديل إليه</string>
+    <string name="assessment_grounds_afr_shield">على Shield، أوقف إعداد مطابقة معدل الإطارات الخاص به (Shield Experience 9.2 وما بعده) ما دام هذا مفعّلًا: كلاهما يبدّل وضع الشاشة ويتعارضان</string>
     <string name="assessment_grounds_res_on">الشاشة تتيح عدة دقات (%1$s)</string>
     <string name="assessment_grounds_res_single">شاشة بدقة واحدة - لا شيء للتبديل إليه</string>
     <string name="assessment_grounds_display_unknown">تعذّر فحص الشاشة من هنا - اتركه كما هو وتحقق بالعين</string>
@@ -3453,6 +3456,8 @@
     <string name="assessment_item_ac3">فرض تحويل AC-3 (بصري/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">مسار الصوت هو %1$s (%2$s) - على سلسلة HDMI هذا الإعداد يحوّل تمرير الصوت بدون فقد إلى AC-3 مع فقد فحسب</string>
     <string name="assessment_grounds_ac3_unknown">تعذّر تأكيد مسار بصري من هنا - هذا الإعداد مخصص لمخارج بصري/SPDIF فقط</string>
+    <string name="assessment_item_shield_dolby">معالجة Dolby Audio في Shield</string>
+    <string name="assessment_grounds_shield_dolby">لا يمكن لأي تطبيق قراءة إعداد Shield هذا. إذا خرج الصوت عن التزامن أو انقطع Atmos، أوقف معالجة صوت Dolby في إعدادات الصوت في Shield وجرّب مجددًا</string>
     <string name="assessment_apply_title">تطبيق الإعدادات الموصى بها</string>
     <string name="assessment_apply_arm_sub">يكتب الصفوف المقاسة والمحسوبة مع النمط المحدد - صفوف التحقق لا تُمس أبداً. تُحفظ نسخة للتراجع.</string>
     <string name="assessment_apply_confirm_sub">اضغط مرة أخرى للتأكيد - سيُكتب نحو %1$d إعداداً</string>
@@ -3465,6 +3470,7 @@
     <string name="assessment_profile_suggested_tag">مقترح</string>
     <string name="assessment_grounds_res_choice">الشاشة تتيح عدة دقات (%1$s) - المطابقة تترك تكبير الصورة لمعالج اللوحة بدلاً من هذا الجهاز؛ أيهما أفضل يعتمد على اللوحة، لذا يبقى القرار لك</string>
     <string name="assessment_grounds_res_inert">شاشة بدقة واحدة - هذا الإعداد بلا تأثير هنا</string>
+    <string name="assessment_grounds_res_shield">على Shield، مطابقة الدقة ترسل الفيديو منخفض الدقة إلى التلفاز كما هو، فلا تعمل ترقية Shield بالذكاء الاصطناعي أبدًا - اتركه متوقفًا للإبقاء على الترقية بالذكاء الاصطناعي</string>
     <string name="assessment_already_set">✓ مضبوط مسبقاً</string>
     <string name="player_pill_play">تشغيل</string>
     <string name="player_pill_pause">إيقاف مؤقت</string>

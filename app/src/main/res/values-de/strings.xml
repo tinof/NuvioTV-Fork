@@ -599,6 +599,8 @@
     <string name="playback_player_auto_desc">ExoPlayer für Filme &amp; Serien · MPV für Anime</string>
     <string name="playback_engine_exoplayer_desc">Beste Kompatibilität mit neuesten Nuvio-Arc-Features.</string>
     <string name="playback_engine_mvplayer_desc">Uses libmpv with Nuvio Arc OSD controls. Experimental.</string>
+    <string name="playback_engine_mvplayer_shield_note">Auf einer Shield zeichnet libmpv das Bild auf der GPU: keine HDR-Ausgabe und kein KI-Upscaling.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Auf einer Shield zeichnet libmpv das Bild auf der GPU: keine HDR-Ausgabe.</string>
 
     <!-- PlaybackAudioSettings -->
     <string name="audio_trailer_section">Trailer</string>
@@ -622,7 +624,7 @@
     <string name="audio_decoder_prefer_app">App-Decoder bevorzugen (FFmpeg)</string>
     <string name="audio_decoder_priority">Decoder-Priorität</string>
     <string name="audio_tunneled">Getunnelte Wiedergabe</string>
-    <string name="audio_tunneled_sub">Audio-Video-Sync auf Hardware (kann Android-TV Wiedergabe verbessern)</string>
+    <string name="audio_tunneled_sub">Audio-Video-Sync auf Hardware-Ebene. Kann die Wiedergabe auf manchen Android-TV-Geräten verbessern. Verlustfreies TrueHD- und DTS-HD-Audio läuft immer ohne. Solange aktiv, lässt sich die Wiedergabegeschwindigkeit nicht ändern und das Seitenverhältnis ist nur Anpassen oder Füllen</string>
     <string name="audio_mpv_hwdec_title">Hardware Decoding (MPV-only)</string>
     <string name="audio_mpv_hwdec_dialog_subtitle">Select how libmpv should use hardware decoders.</string>
     <string name="audio_mpv_hwdec_legacy_direct_copy">Legacy (direct -&gt; copy)</string>
@@ -2627,6 +2629,7 @@
     <string name="assessment_grounds_afr_on">Display meldet mehrere Bildwiederholraten bei der aktuellen Auflösung (%1$s)</string>
     <string name="assessment_grounds_afr_already">Bereits ein - Start oder Start &amp; Stopp ist Geschmackssache: weniger HDMI-Neusynchronisierungen oder Rückkehr der Oberfläche zu 60 Hz</string>
     <string name="assessment_grounds_afr_single">Display mit nur einer Bildwiederholrate bei der aktuellen Auflösung - nichts zum Umschalten</string>
+    <string name="assessment_grounds_afr_shield">Auf einer Shield deren eigene Einstellung zur Bildfrequenz-Anpassung (Shield Experience 9.2 und neuer) ausschalten, solange dies aktiv ist: Beide schalten das Display um und arbeiten gegeneinander</string>
     <string name="assessment_grounds_res_on">Display bietet mehrere Auflösungen (%1$s)</string>
     <string name="assessment_grounds_res_single">Display mit nur einer Auflösung - nichts zum Umschalten</string>
     <string name="assessment_grounds_display_unknown">Das Display ließ sich von hier aus nicht prüfen - so lassen und mit dem Auge kontrollieren</string>
@@ -2688,6 +2691,8 @@
     <string name="assessment_item_ac3">AC-3-Transcodierung erzwingen (Optisch/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Audioweg ist %1$s (%2$s) - an einer HDMI-Kette macht diese Einstellung nur aus verlustfreiem Passthrough verlustbehaftetes AC-3</string>
     <string name="assessment_grounds_ac3_unknown">Ein optischer Weg ließ sich von hier aus nicht bestätigen - diese Einstellung gehört nur an Optisch/SPDIF-Ausgänge</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby-Audio-Verarbeitung</string>
+    <string name="assessment_grounds_shield_dolby">Keine App kann diese Shield-Einstellung auslesen. Wenn der Ton asynchron wird oder Atmos aussetzt, die Dolby-Audioverarbeitung in den Toneinstellungen der Shield ausschalten und erneut testen</string>
     <string name="assessment_apply_title">Empfohlene Einstellungen anwenden</string>
     <string name="assessment_apply_arm_sub">Schreibt die gemessenen und berechneten Zeilen sowie das gewählte Profil - Prüfzeilen werden nie angefasst. Ein Stand zum Zurücksetzen wird gesichert.</string>
     <string name="assessment_apply_confirm_sub">Zum Bestätigen erneut drücken - etwa %1$d Einstellungen werden geschrieben</string>
@@ -2700,6 +2705,7 @@
     <string name="assessment_profile_suggested_tag">Vorschlag</string>
     <string name="assessment_grounds_res_choice">Display bietet mehrere Auflösungen (%1$s) - mit Anpassung skaliert der Scaler des Panels statt der dieser Box; was besser aussieht, hängt vom Panel ab, daher bleibt es Ihre Entscheidung</string>
     <string name="assessment_grounds_res_inert">Display mit nur einer Auflösung - diese Einstellung hat hier keine Wirkung</string>
+    <string name="assessment_grounds_res_shield">Auf einer Shield schickt die Auflösungsanpassung Video mit niedrigerer Auflösung unverändert an den Fernseher, sodass das KI-Upscaling der Shield nie läuft - ausgeschaltet lassen, um KI-Upscaling zu behalten</string>
     <string name="assessment_already_set">\u2713 Bereits eingestellt</string>
     <string name="player_pill_play">Abspielen</string>
     <string name="player_pill_pause">Pausieren</string>

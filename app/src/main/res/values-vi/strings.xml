@@ -800,6 +800,8 @@
     <string name="playback_player_auto_desc">ExoPlayer cho Phim &amp; Chương trình TV · MPV cho Anime</string>
     <string name="playback_engine_exoplayer_desc">Tương thích tốt nhất với các tính năng hiện có của Nuvio Arc.</string>
     <string name="playback_engine_mvplayer_desc">Sử dụng libmpv với các điều khiển hiển thị trên màn hình của Nuvio Arc. Tính năng thử nghiệm.</string>
+    <string name="playback_engine_mvplayer_shield_note">Trên Shield, libmpv vẽ hình bằng GPU: không xuất HDR và không nâng cấp độ phân giải bằng AI.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Trên Shield, libmpv vẽ hình bằng GPU: không xuất HDR.</string>
 
     <string name="video_section">Video</string>
     <string name="playback_true_black_letterbox">Viền đen tuyệt đối</string>
@@ -829,7 +831,7 @@
     <string name="audio_enable_downmix_title">Bật tính năng hạ kênh âm thanh</string>
     <string name="audio_enable_downmix_subtitle">Hạ kênh âm thanh do ứng dụng giải mã xuống số kênh đã chọn. Các định dạng mà bộ thu của bạn chấp nhận vẫn được truyền thẳng (bitstream) nguyên vẹn. Không dùng được với thiết lập Chỉ dùng bộ giải mã thiết bị.</string>
     <string name="audio_tunneled">Phát trực tiếp qua phần cứng</string>
-    <string name="audio_tunneled_sub">Đồng bộ âm thanh/video ở cấp phần cứng. Có thể cải thiện việc phát lại trên một số thiết bị Android TV</string>
+    <string name="audio_tunneled_sub">Đồng bộ âm thanh/video ở cấp phần cứng. Có thể cải thiện việc phát lại trên một số thiết bị Android TV. Âm thanh lossless TrueHD và DTS-HD luôn phát mà không cần nó. Khi bật, không thể đổi tốc độ phát và tỉ lệ khung hình chỉ là Vừa vặn hoặc Lấp đầy</string>
     <string name="audio_force_optical_passthrough">Buộc chuyển mã AC-3 (Cổng quang/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Chuyển mã các định dạng đa kênh (TrueHD, DTS, AAC...) sang Dolby Digital 5.1 theo thời gian thực cho kết nối Cổng quang/SPDIF.</string>
     <!-- DV7 Handling Mode -->
@@ -3712,6 +3714,7 @@
     <string name="assessment_grounds_afr_on">Màn hình báo nhiều tần số quét ở độ phân giải hiện tại (%1$s)</string>
     <string name="assessment_grounds_afr_already">Đã bật - Khi bắt đầu hay Khi bắt đầu &amp; dừng là tùy sở thích: ít lần đồng bộ lại HDMI hơn hay giao diện trở về 60 Hz</string>
     <string name="assessment_grounds_afr_single">Màn hình chỉ có một tần số quét ở độ phân giải hiện tại - không có gì để chuyển</string>
+    <string name="assessment_grounds_afr_shield">Trên Shield, hãy tắt cài đặt khớp tốc độ khung hình riêng của nó (Shield Experience 9.2 trở lên) khi mục này đang bật: cả hai đều chuyển chế độ màn hình và cản trở nhau</string>
     <string name="assessment_grounds_res_on">Màn hình có nhiều độ phân giải (%1$s)</string>
     <string name="assessment_grounds_res_single">Màn hình chỉ có một độ phân giải - không có gì để chuyển</string>
     <string name="assessment_grounds_display_unknown">Không kiểm tra được màn hình từ trang này - giữ nguyên và tự kiểm tra bằng mắt</string>
@@ -3773,6 +3776,8 @@
     <string name="assessment_item_ac3">Buộc chuyển mã AC-3 (Cổng quang/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Đường âm thanh là %1$s (%2$s) - trên chuỗi HDMI, cài đặt này chỉ biến truyền thẳng lossless thành AC-3 nén mất dữ liệu</string>
     <string name="assessment_grounds_ac3_unknown">Không xác nhận được đường cổng quang từ đây - cài đặt này chỉ dành cho đầu ra Cổng quang/SPDIF</string>
+    <string name="assessment_item_shield_dolby">Xử lý Dolby Audio của Shield</string>
+    <string name="assessment_grounds_shield_dolby">Không ứng dụng nào đọc được cài đặt Shield này. Nếu âm thanh lệch đồng bộ hoặc Atmos bị mất, hãy tắt xử lý âm thanh Dolby trong cài đặt âm thanh của Shield rồi thử lại</string>
     <string name="assessment_apply_title">Áp dụng cài đặt khuyến nghị</string>
     <string name="assessment_apply_arm_sub">Ghi các dòng Đã đo và Tính toán cùng cấu hình đã chọn - các dòng Kiểm tra không bao giờ bị đụng đến. Một bản lưu để hoàn tác được giữ lại.</string>
     <string name="assessment_apply_confirm_sub">Nhấn lần nữa để xác nhận - khoảng %1$d cài đặt sẽ được ghi</string>
@@ -3785,6 +3790,7 @@
     <string name="assessment_profile_suggested_tag">Đề xuất</string>
     <string name="assessment_grounds_res_choice">Màn hình có nhiều độ phân giải (%1$s) - khớp độ phân giải để bộ nâng cấp của màn hình xử lý thay cho thiết bị này; bên nào đẹp hơn tùy vào màn hình, nên phần này tùy bạn</string>
     <string name="assessment_grounds_res_inert">Màn hình chỉ có một độ phân giải - cài đặt này không có tác dụng ở đây</string>
+    <string name="assessment_grounds_res_shield">Trên Shield, khớp độ phân giải sẽ gửi nguyên video độ phân giải thấp tới TV, nên tính năng nâng cấp độ phân giải bằng AI của Shield không bao giờ chạy - để tắt nếu muốn giữ nâng cấp bằng AI</string>
     <string name="assessment_already_set">\u2713 Đã đặt sẵn</string>
     <string name="player_pill_play">Phát</string>
     <string name="player_pill_pause">Tạm dừng</string>

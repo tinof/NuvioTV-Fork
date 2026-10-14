@@ -808,6 +808,8 @@
     <string name="playback_player_auto_desc">Filmler ve Diziler için ExoPlayer · Anime için MPV</string>
     <string name="playback_engine_exoplayer_desc">Nuvio Arc\'nun mevcut özellikleriyle en uyumlu seçenek.</string>
     <string name="playback_engine_mvplayer_desc">Nuvio Arc ekran kontrolleriyle libmpv kullanır. Deneysel.</string>
+    <string name="playback_engine_mvplayer_shield_note">Shield üzerinde libmpv görüntüyü GPU\'da çizer: HDR çıkışı ve yapay zekâ ile ölçekleme yok.</string>
+    <string name="playback_engine_mvplayer_shield_note_no_ai">Shield üzerinde libmpv görüntüyü GPU\'da çizer: HDR çıkışı yok.</string>
 
     <string name="video_section">Video</string>
     <string name="playback_true_black_letterbox">Gerçek siyah bantlar</string>
@@ -839,7 +841,7 @@
     <string name="audio_enable_downmix_title">Downmix\'i etkinleştir</string>
     <string name="audio_enable_downmix_subtitle">Uygulamanın çözdüğü sesi seçilen kanal sayısına indirger. Alıcınızın kabul ettiği formatlar yine dokunulmadan bitstream olarak iletilir. Sadece cihaz kod çözücüleri ayarıyla kullanılamaz.</string>
     <string name="audio_tunneled">Tünelli Oynatma</string>
-    <string name="audio_tunneled_sub">Donanım seviyesinde ses/video senkronizasyonu. Bazı Android TV cihazlarında performansı artırabilir</string>
+    <string name="audio_tunneled_sub">Donanım seviyesinde ses/video senkronizasyonu. Bazı Android TV cihazlarında oynatmayı iyileştirebilir. Kayıpsız TrueHD ve DTS-HD ses her zaman onsuz çalar. Açıkken oynatma hızı değiştirilemez ve en-boy oranı yalnızca Sığdır veya Doldur olur</string>
     <string name="audio_force_optical_passthrough">AC-3 Dönüştürmeyi Zorla (Optik/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Çok kanallı ses biçimlerini (TrueHD, DTS, AAC vb.) optik/SPDIF bağlantıları için gerçek zamanlı olarak Dolby Digital 5.1\'e dönüştürür.</string>
     <!-- DV7 Handling Mode -->
@@ -3728,6 +3730,7 @@
     <string name="assessment_grounds_afr_on">Ekran, mevcut çözünürlükte birden çok yenileme hızı bildiriyor (%1$s)</string>
     <string name="assessment_grounds_afr_already">Zaten açık - Başlarken ile Başlarken &amp; dururken arasındaki seçim tercihtir: daha az HDMI yeniden eşitlemesi veya arayüzün 60 Hz\'e dönmesi</string>
     <string name="assessment_grounds_afr_single">Mevcut çözünürlükte tek hızlı ekran - geçilecek bir şey yok</string>
+    <string name="assessment_grounds_afr_shield">Shield üzerinde bu açıkken onun kendi kare hızı eşleştirme ayarını (Shield Experience 9.2 ve sonrası) kapatın: ikisi de ekranı değiştirir ve birbirine karşı çalışır</string>
     <string name="assessment_grounds_res_on">Ekran birden çok çözünürlük sunuyor (%1$s)</string>
     <string name="assessment_grounds_res_single">Tek çözünürlüklü ekran - geçilecek bir şey yok</string>
     <string name="assessment_grounds_display_unknown">Ekran bu sayfadan incelenemedi - olduğu gibi bırakın ve gözle doğrulayın</string>
@@ -3789,6 +3792,8 @@
     <string name="assessment_item_ac3">AC-3 Dönüştürmeyi Zorla (Optik/SPDIF)</string>
     <string name="assessment_grounds_ac3_hdmi">Ses yolu %1$s (%2$s) - HDMI zincirinde bu ayar yalnızca kayıpsız ses geçidini kayıplı AC-3\'e çevirir</string>
     <string name="assessment_grounds_ac3_unknown">Buradan optik bir yol doğrulanamadı - bu ayar yalnızca Optik/SPDIF çıkışlar içindir</string>
+    <string name="assessment_item_shield_dolby">Shield Dolby Audio İşleme</string>
+    <string name="assessment_grounds_shield_dolby">Hiçbir uygulama bu Shield ayarını okuyamaz. Ses senkrondan kayarsa veya Atmos kesilirse, Shield ses ayarlarında Dolby ses işlemeyi kapatıp yeniden deneyin</string>
     <string name="assessment_apply_title">Önerilen ayarları uygula</string>
     <string name="assessment_apply_arm_sub">Ölçülen ve Hesaplanan satırları ve seçili profili yazar - Doğrulama satırlarına asla dokunulmaz. Geri alma için bir anlık kayıt tutulur.</string>
     <string name="assessment_apply_confirm_sub">Onaylamak için tekrar basın - yaklaşık %1$d ayar yazılacak</string>
@@ -3801,6 +3806,7 @@
     <string name="assessment_profile_suggested_tag">Önerilen</string>
     <string name="assessment_grounds_res_choice">Ekran birden çok çözünürlük sunuyor (%1$s) - eşleştirme, yükseltmeyi bu cihaz yerine panelin ölçekleyicisine bırakır; hangisinin daha iyi göründüğü panele bağlıdır, bu yüzden karar sizin</string>
     <string name="assessment_grounds_res_inert">Tek çözünürlüklü ekran - bu ayarın burada etkisi yok</string>
+    <string name="assessment_grounds_res_shield">Shield üzerinde çözünürlük eşleştirme düşük çözünürlüklü videoyu TV\'ye olduğu gibi gönderir, bu yüzden Shield\'in yapay zekâ ile ölçeklemesi hiç çalışmaz - yapay zekâ ile ölçeklemeyi korumak için kapalı bırakın</string>
     <string name="assessment_already_set">\u2713 Zaten ayarlı</string>
     <string name="player_pill_play">Oynat</string>
     <string name="player_pill_pause">Duraklat</string>
