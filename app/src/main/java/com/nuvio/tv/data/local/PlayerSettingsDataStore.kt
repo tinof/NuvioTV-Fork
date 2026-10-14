@@ -806,6 +806,13 @@ internal fun defaultFrameRateMatchingMode(manufacturer: String? = Build.MANUFACT
     if (DeviceProfile.isNvidia(manufacturer)) FrameRateMatchingMode.START_STOP else FrameRateMatchingMode.OFF
 
 /**
+ * "System passthrough" when nothing is saved: on Nvidia the platform sink bitstreams
+ * TrueHD/DTS-HD natively, so the fork's IEC61937 packer starts off there. A saved choice wins.
+ */
+internal fun defaultUseSystemPassthrough(manufacturer: String? = Build.MANUFACTURER): Boolean =
+    DeviceProfile.isNvidia(manufacturer)
+
+/**
  * Surround mode as stored. An install that never chose a mode but has a format switch
  * off, or transcodes denied formats, reads as MANUAL so those choices keep applying.
  */
@@ -1394,7 +1401,7 @@ class PlayerSettingsDataStore @Inject constructor(
                         ?: !(prefs.typed(downmixNormalizationEnabledLegacyKey) ?: false),
                 tunnelingEnabled = prefs.typed(tunnelingEnabledKey) ?: false,
                 forceOpticalPassthrough = prefs.typed(forceOpticalPassthroughKey) ?: false,
-                useSystemPassthrough = prefs.typed(useSystemPassthroughKey) ?: false,
+                useSystemPassthrough = prefs.typed(useSystemPassthroughKey) ?: defaultUseSystemPassthrough(),
                 dtsHdTvPassthrough = prefs.typed(dtsHdTvPassthroughKey) ?: false,
                 surroundFormatMode = storedSurroundFormatMode(
                     storedMode = prefs.typed(surroundFormatModeKey),
