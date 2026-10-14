@@ -3,7 +3,7 @@ name: PR Full Debug Build
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [dev]
+    branches: [main]
   workflow_dispatch:
     inputs:
       app_id_suffix:
@@ -117,7 +117,7 @@ jobs:
 
       - name: Build fullDebug APK
         env:
-          APP_ID_SUFFIX: ${{ inputs.app_id_suffix }}
+          APP_ID_SUFFIX: ${{ github.event_name == 'pull_request' && '.shield' || inputs.app_id_suffix }}
         run: ./gradlew :app:assembleFullDebug -PnuvioAppIdSuffix="$APP_ID_SUFFIX" --stacktrace
 
       - name: Show package and signing certificate
@@ -139,7 +139,7 @@ jobs:
 
       - name: Run all unit tests
         env:
-          APP_ID_SUFFIX: ${{ inputs.app_id_suffix }}
+          APP_ID_SUFFIX: ${{ github.event_name == 'pull_request' && '.shield' || inputs.app_id_suffix }}
         run: ./gradlew :app:testFullDebugUnitTest -PnuvioAppIdSuffix="$APP_ID_SUFFIX" --continue --stacktrace
 
       - name: Upload unit test reports
