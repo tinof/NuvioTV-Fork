@@ -25,6 +25,7 @@ import com.nuvio.tv.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -255,7 +256,8 @@ class MetaRepositoryImpl @Inject constructor(
         val healthT0 = android.os.SystemClock.elapsedRealtime()
         val url = buildMetaUrl(addonBaseUrl, effectiveType, id)
         val deferred = inFlightMeta.getOrPut(cacheKey) {
-            repositoryScope.async {
+            // Lazy: the body must not run (and remove the key in its finally) before getOrPut stores it.
+            repositoryScope.async(start = CoroutineStart.LAZY) {
                 try {
                     // Fork: keep the 20 s addon deadline (SafeApiCall.kt) that a raw
                     // call would drop -- without it a dead addon holds this
@@ -456,7 +458,8 @@ class MetaRepositoryImpl @Inject constructor(
         }
 
         val deferred = inFlightAddonMeta.getOrPut(cacheKey) {
-            repositoryScope.async {
+            // Lazy: the body must not run (and remove the key in its finally) before getOrPut stores it.
+            repositoryScope.async(start = CoroutineStart.LAZY) {
                 try {
                     // Kept here rather than in the enclosing flow's lists: this
                     // Deferred is shared, so only its creator would see those, and
@@ -612,7 +615,8 @@ class MetaRepositoryImpl @Inject constructor(
         )
 
         val deferred = inFlightPrimaryMeta.getOrPut(cacheKey) {
-            repositoryScope.async {
+            // Lazy: the body must not run (and remove the key in its finally) before getOrPut stores it.
+            repositoryScope.async(start = CoroutineStart.LAZY) {
                 try {
                     // Fork: keep the 20 s addon deadline (SafeApiCall.kt) that a raw
                     // call would drop -- without it a dead addon holds this
