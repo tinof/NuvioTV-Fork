@@ -35,7 +35,8 @@ class ThumbMemoryStopTest {
 
     @Test
     fun shieldWithSwapFullIsProtectedThoughItHas3Gb() {
-        val v = strong(totalMb = 2_900, heapMb = 512, heapUsedMb = 280, availMb = 900, swapTotalMb = 1_024, swapFreeMb = 0)
+        val v = strong(totalMb = 2_900, heapMb = 512, heapUsedMb = 280, availMb = 900, swapTotalMb = 1_024, swapFreeMb = 0,
+            swapRule = MemoryGovernor.swapRuleOn(null))
         assertFalse(v.allowed)
         assertTrue(v.reason, v.reason.startsWith("SwapFree"))
         assertFalse(strong(totalMb = 2_900, heapMb = 512, availMb = 450).allowed)
@@ -43,8 +44,21 @@ class ThumbMemoryStopTest {
     }
 
     @Test
-    fun shieldPro2019WithSwapFullIsStrongWhileItHas900MbAvailable() {
-        val swapRule = MemoryGovernor.swapRuleOn(null, "NVIDIA", "mdarcy")
+    fun shieldPro2019WithSwapFullIsProtectedByDefault() {
+        // The mdarcy numbers: swap full at baseline, 667 MB MemAvailable left when 4K playback stopped.
+        val swapRule = MemoryGovernor.swapRuleOn(null)
+        assertTrue(swapRule)
+        for (availMb in listOf(667L, 900L, 1_500L)) {
+            val v = strong(totalMb = 2_900, heapMb = 512, heapUsedMb = 280, availMb = availMb, swapTotalMb = 1_024,
+                swapFreeMb = 0, swapRule = swapRule)
+            assertFalse("$availMb MB available", v.allowed)
+            assertTrue(v.reason, v.reason.startsWith("SwapFree"))
+        }
+    }
+
+    @Test
+    fun swapRuleOffIsStrongWhileItHas900MbAvailable() {
+        val swapRule = MemoryGovernor.swapRuleOn(false)
         assertFalse(swapRule)
         val v = strong(totalMb = 2_900, heapMb = 512, heapUsedMb = 280, availMb = 900, swapTotalMb = 1_024,
             swapFreeMb = 0, swapRule = swapRule)
@@ -58,12 +72,10 @@ class ThumbMemoryStopTest {
     }
 
     @Test
-    fun swapRuleStaysOnElsewhereAndTheSwitchWins() {
-        assertTrue(MemoryGovernor.swapRuleOn(null, "NVIDIA", "sif"))
-        assertTrue(MemoryGovernor.swapRuleOn(null, "Amlogic", "mdarcy"))
-        assertTrue(MemoryGovernor.swapRuleOn(null, null, null))
-        assertTrue("1 keeps the rule on the Pro", MemoryGovernor.swapRuleOn(true, "NVIDIA", "mdarcy"))
-        assertFalse("0 drops it anywhere", MemoryGovernor.swapRuleOn(false, "Amlogic", "p212"))
+    fun swapRuleIsOnByDefaultAndTheSwitchWins() {
+        assertTrue("no switch: on, on every box", MemoryGovernor.swapRuleOn(null))
+        assertTrue("1 keeps the rule", MemoryGovernor.swapRuleOn(true))
+        assertFalse("0 relaxes it", MemoryGovernor.swapRuleOn(false))
     }
 
     @Test
