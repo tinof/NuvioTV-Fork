@@ -1,6 +1,6 @@
 # MDBList Library support
 
-MDBList can be selected independently as the Library Source in Settings → Trackers. Library displays the connected account’s watchlist and owned static movie/show lists. The shared membership picker can add or remove a title from MDBList alongside local, Trakt and Simkl destinations. Each remote destination shows its provider name so two watchlists or identically named lists remain distinguishable.
+MDBList can be selected independently as the Library Source in Settings → Tracking. Library displays the connected account’s watchlist, owned static movie/show lists and external lists (read-only). The shared membership picker can add or remove a title from MDBList alongside local, Trakt and Simkl destinations. Each remote destination shows its provider name so two watchlists or identically named lists remain distinguishable.
 
 ## Supported behavior
 
@@ -8,9 +8,11 @@ MDBList can be selected independently as the Library Source in Settings → Trac
 - Add/remove movies and shows, including series supplied by anime metadata sources when an external ID is available.
 - Create private or public static lists; rename them, change visibility, and delete them through Manage Lists.
 - Preserve per-list item order when a title belongs to several lists.
+- Show external lists (lists MDBList imports from IMDb, Trakt, Letterboxd and others) as read-only tabs. They are never a membership destination.
+- Show or hide each list except the Watchlist on the "Library lists" page of the MDBList account dialog. The choice is stored per profile with the library cache. Hidden lists are left out of the Library tabs, Manage Lists and the add-to-list pickers, and their items are not downloaded.
 - Restore cached contents across app launches, isolate profiles/accounts, and retain the last complete cache when synchronization fails.
 
-Dynamic, feed, official, external and season/episode lists are excluded from this scope. MDBList has no documented list-description editing or list-reordering endpoint, so those controls are hidden. Trakt retains its description, privacy and ordering features. List item responses do not consistently include an added timestamp; added-date sorting uses it when supplied and otherwise falls back to stable ordering. Ratings enrichment remains the separate existing API-key feature.
+Dynamic, feed, official and season/episode lists are excluded from this scope. MDBList has no documented list-description editing or list-reordering endpoint, so those controls are hidden. Trakt retains its description, privacy and ordering features. List item responses do not consistently include an added timestamp; added-date sorting uses it when supplied and otherwise falls back to stable ordering. Ratings enrichment remains the separate existing API-key feature.
 
 ## Shared architecture
 
@@ -36,6 +38,7 @@ Sources reviewed: the [current OpenAPI schema](https://api.mdblist.com/schema/),
 | Operation | Endpoint / behavior |
 |---|---|
 | Owned lists | `GET /lists/user?unified=false&sort=ranked`; include explicitly static lists owned by the current account |
+| External lists | `GET /external/lists/user`, contents from `GET /external/lists/{id}/items`; a failed read keeps the cached copy |
 | Watchlist | `GET /watchlist/items` |
 | Static contents | `GET /lists/{id}/items` |
 | Membership changes | `POST /watchlist/items/{add,remove}` uses nested `ids`; `POST /lists/{id}/items/{add,remove}` uses direct provider IDs |
@@ -56,6 +59,8 @@ Reads request up to 1,000 items per page with bundled posters, descriptions and 
 | Missing version or invalidated cache | Re-read affected/all static contents |
 | Add/remove one title in one destination | 1 write when membership changes |
 | Create, rename, change visibility or delete | 1 write each with an initialized cache |
+
+The table predates external lists. Each refresh also reads `/external/lists/user`, and each changed external list adds one request per page. Hidden lists are not read.
 
 Refreshes are triggered by consumers and user actions, not a background timer. Overlapping refreshes coalesce. Failed automatic reads back off for 60 seconds; quota errors honor the API reset. Per-title MDBList lookups are not used for Library metadata.
 

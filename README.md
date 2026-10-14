@@ -1,162 +1,178 @@
 <p align="center">
-  <img src="docs/readme/banner.jpg" alt="Nuvio Arc: Scout, the stats panel, thumbnails and the Calendar" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/branding/nuvio-arc-logo-on-dark.png">
+    <img src=".github/branding/nuvio-arc-logo-on-light.png" alt="Nuvio Arc" width="440">
+  </picture>
 </p>
 
-<p align="center">
-  <a href="https://github.com/ysosrs123/NuvioTV-Fork/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ysosrs123/NuvioTV-Fork?include_prereleases&label=latest&style=flat-square"></a>
-  <a href="https://github.com/ysosrs123/NuvioTV-Fork/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/ysosrs123/NuvioTV-Fork/total?style=flat-square"></a>
-  <a href="./LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0-blue?style=flat-square"></a>
-  <a href="https://www.reddit.com/r/NuvioForks/"><img alt="r/NuvioForks" src="https://img.shields.io/badge/chat-r%2FNuvioForks-orange?style=flat-square"></a>
-</p>
+## What this is
 
-<p align="center">
-  <a href="#install"><b>Install</b></a> &nbsp;·&nbsp;
-  <a href="#what-it-adds"><b>What it adds</b></a> &nbsp;·&nbsp;
-  <a href="#a-look-around"><b>A look around</b></a> &nbsp;·&nbsp;
-  <a href="#support-and-contact"><b>Support</b></a>
-</p>
+This is a personal branch of Nuvio Arc, tuned for the NVIDIA SHIELD TV Pro 2019.
 
-**Nuvio Arc** is my hobby fork of [NuvioTV](https://github.com/NuvioMedia/NuvioTV) for Android TV: a test bench for new ideas, built around picture quality, lossless sound, your own libraries and finding something to watch. It isn't a competitor to Nuvio and isn't meant to replace it. It's for people who like Nuvio and are happy to try new, largely untested features. If you want the dependable everyday app, use the official Nuvio.
+| | |
+|---|---|
+| Lineage | [NuvioTV](https://github.com/NuvioMedia/NuvioTV) -> [Nuvio Arc](https://github.com/ysosrs123/NuvioTV-Fork) by ysosrs123 -> this fork, [tinof/NuvioTV-Fork](https://github.com/tinof/NuvioTV-Fork), maintained by tinof |
+| Branch | `perf/shield-pass`, a performance pass on top of this fork's `main` (`git log --oneline main..perf/shield-pass`) |
+| Target device | SHIELD TV Pro 2019: Tegra X1+, codename `mdarcy`, Android 11 (API 30), SHIELD Experience 9.2.4 |
+| Other devices | Keep their behaviour. The risky changes apply only on Nvidia, gated by `DeviceProfile`. Some plain fixes apply everywhere. |
 
-Nuvio Arc is a media player. It doesn't host, provide or link to any content. You add your own sources, and you're responsible for making sure you're allowed to play what you add.
+This is not an official release. There is no support promise. Please do not report problems from this build
+to NuvioTV or to Nuvio Arc: they did not make these changes. Report them in this fork's
+[Issues](https://github.com/tinof/NuvioTV-Fork/issues).
 
-## Install
+## What is different on the Shield
 
-It installs next to the official Nuvio, and tells you when a new release is out.
+Every change below is a default, not a lock. Each Nvidia default can be reverted, by a `debug.nuvio.*` switch or
+by its setting, and a saved user setting wins over the default where one exists. The full table, with the switch names, the
+revert values and what to look at on the device, is in [docs/shield-todo.md](docs/shield-todo.md).
 
-| Your box | [Downloader](https://www.aftvnews.com/downloader/) code | Direct download |
-|---|:--:|---|
-| **32-bit:** Fire TV Stick, Chromecast with Google TV, Xiaomi, Onn and many other Google TV boxes | **`2764920`** | [32-bit APK](https://github.com/ysosrs123/NuvioTV-Fork/releases/latest/download/app-full-armeabi-v7a-release.apk) |
-| **64-bit:** Nvidia Shield, Ugoos | **`4993875`** | [64-bit APK](https://github.com/ysosrs123/NuvioTV-Fork/releases/latest/download/app-full-arm64-v8a-release.apk) |
+| Area | Change on Nvidia |
+|---|---|
+| Audio passthrough | TrueHD and DTS-HD go to the platform sink natively, not through the fork's IEC61937 packer ("System passthrough" defaults to on). Their passthrough buffer caps are doubled. The surround decision uses the stereo, 5.1 and 7.1 probe union and the HDMI channel count. |
+| Frame-rate matching | Starts in Start/Stop mode when nothing is saved. The settle hold after a switch is 1.2 s instead of 2 s, before start and on a track switch. Stabilize detection reads the display off the main thread. After Stop, the switch back waits 750 ms, until the video surface is gone. |
+| Video decoding | Video codec queueing is async (Media3 does this by itself only from API 31). |
+| HDR and Dolby Vision display | Dolby Vision plays untunnelled. Hardware DV decoders are tried first on DV displays. HDR10 metadata injection on DV strip is on. HDR video plays at Fit instead of a view-scaled aspect mode, so it can stay on an overlay plane. Dolby Vision Profile 7 is handled separately and is still in progress. |
+| mpv | Decodes with direct MediaCodec (`mediacodec,mediacodec-copy`) and tone maps with `bt.2446a`, no peak detection. |
+| Seek thumbnails and memory | Thumbnails start on for `mdarcy` when no mode was chosen. The low-RAM tier comes from device RAM when the buffers are off-heap. |
+| UI | Opaque black window background outside playback. libass starts with the canvas overlay. The device assessment has Shield notes (the system "Match frame rate", resolution matching and AI upscaling, Dolby audio processing). |
+| Logs and diagnostics | The `NuvioCodecs` decoder inventory (secure decoders included), an optional render trace, and quieter network and thumbnail logs. |
 
-1. Install **Downloader** by AFTVnews from your box's app store.
-2. Allow it to install unknown apps in your box's settings.
-3. Open Downloader, type the code and press Go.
-4. Press Install when the download finishes.
+Changes for every device in this branch include:
+- Controller buttons in the player get default jobs: L1/R1 seek, X play/pause, Y subtitles. You can rebind them
+  on the remote-buttons page.
+- Native libraries load straight from the APK (`extractNativeLibs=false`). This saves eMMC space; the APK
+  download is larger.
+- `libnuviothumb` is tuned for Cortex-A57 on arm64.
+- Pre-blurred Cinematic glass on boxes without live blur (Android 11).
+- Localhost streams report the real HTTP status, so expired links (404/410) and 416 retries are handled
+  (on fork main).
+- New and changed strings are translated in every locale.
 
-Not sure which one? Many boxes run a 32-bit system even with a 64-bit chip. Try 64-bit first. If it says the app isn't compatible, use 32-bit.
+What the device report of 2026-10-14 (results in [docs/shield-todo.md](docs/shield-todo.md), Round 3) found the
+Shield cannot do:
+- No decoder declares tunneled playback on SHIELD Experience 9.2.4. The tunneling defaults stay in the code
+  but do nothing on this firmware.
+- The display reports only two HDR types: Dolby Vision and HDR10 (no HLG, no HDR10+).
+- There is no AV1 decoder.
+- Thermal thresholds are not readable without root, so the HUD shows no Shield throttle limit.
 
-## What it adds
+## Install a build next to your Nuvio Arc
 
-<img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"> Only in Arc
+| | Release Nuvio Arc | This branch's debug build |
+|---|---|---|
+| Package | `com.nuvio.tv.test` | `com.nuvio.tv.test.shield` |
+| Launcher label | Nuvio Arc | Nuvio Arc Debug |
+| Settings and logins | its own | its own |
 
-<p><img src="docs/readme/head-scout.svg" width="100%" alt="Scout: your personal film curator"></p>
+The debug build installs beside the release app and does not touch it.
 
-Meet Scout, your personal film curator. It's on for everyone and doesn't need an external add-on. Scout is experimental for now, so you may run into some bugs or slow spots. It's being actively developed, and its picks get better over time as it learns what you like.
+1. Download the `full-debug-apks` artifact of a successful "PR Full Debug Build" run, from the Actions tab or
+   with `gh`. Artifacts are kept for 7 days.
 
-<table>
-<tr><td width="33%" valign="top"><img src="docs/readme/scout-ask-answer.jpg" alt="Just ask for it"><br><b>Just ask for it</b><br><sub>"Films like Inception, but without the dreaming"</sub></td><td width="33%" valign="top"><img src="docs/readme/scout-picks-two.jpg" alt="What should we watch tonight?"><br><b>What should we watch tonight?</b><br><sub>Picks that suit everyone on the couch, and why</sub></td><td width="33%" valign="top"><img src="docs/readme/scout-your-taste.jpg" alt="It gets to know you"><br><b>It gets to know you</b><br><sub>See what it has learned about what you like</sub></td></tr>
-<tr><td width="33%" valign="top"><img src="docs/readme/scout-tiles.jpg" alt="Something to watch, right on Home"><br><b>Something to watch, right on Home</b><br><sub>New picks on Home each day</sub></td><td width="33%" valign="top"><img src="docs/readme/scout-mix-page.jpg" alt="Can't decide? Mix it up"><br><b>Can't decide? Mix it up</b><br><sub>Random episodes from the shows you choose</sub></td><td width="33%" valign="top"><img src="docs/readme/scout-rate.jpg" alt="Tell it what you think"><br><b>Tell it what you think</b><br><sub>Love it, like it or not for me, and your picks follow</sub></td></tr>
-</table>
+   ```sh
+   gh run list -R tinof/NuvioTV-Fork --workflow pr-full-debug-build.yml --branch perf/shield-pass
+   gh run download <run-id> -R tinof/NuvioTV-Fork -n full-debug-apks
+   ```
 
-<table>
-<tr><td width="50%" valign="top"><b>Picks that know you, made on your box</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Scout learns from what you really do on each profile: what you finish, rewatch, stop early and rate. Your history stays on the box, and picks need no account, key or external add-on.</td><td width="50%" valign="top"><b>It tells you why</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Each pick comes with a plain reason, like "Because you love Villeneuve and slow sci-fi".</td></tr>
-<tr><td width="50%" valign="top"><b>All your tastes, not an average</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Slow sci-fi and comfort sitcoms get their own named rows, not one blended row.</td><td width="50%" valign="top"><b>A few presses with the remote</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Rest on a mood and the page changes. Set how long you've got and who's in the room, with no typing. Add everyone on the couch and the picks must suit you all.</td></tr>
-<tr><td width="50%" valign="top"><b>Ask for anything, with your own AI key</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Speak into the remote, type or use your phone, in any language: "films like Inception, but without the dreaming". You get normal title cards, each with a reason, and an answer opens like a title page.</td><td width="50%" valign="top"><b>Your key, your choice</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Gemini, Groq, OpenAI, Claude or any service with the OpenAI format. Paste it on your phone; it stays encrypted on the box. You see what gets sent before anything goes.</td></tr>
-<tr><td width="50%" valign="top"><b>AI that can't make titles up</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>It only reorders real titles Scout has already found, so every pick exists. Read and edit your taste summary, like "no jump scares".</td><td width="50%" valign="top"><b>A sentence becomes a Home row</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Save any answer as a row. It refreshes itself about once a week with your key and moves like any other row.</td></tr>
-</table>
+2. Install the arm64 APK on the Shield:
 
-<p><img src="docs/readme/head-scout-more.svg" width="100%" alt="More from Scout"></p>
+   ```sh
+   adb install -r app-full-arm64-v8a-debug.apk
+   ```
 
-<table>
-<tr><td colspan="1" valign="top"><b>More filters</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Browse by mood, decade, country, region, language, length, theme and acclaim.</td><td colspan="1" valign="top"><b>Mixes</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Random episodes across several shows you pick, with their own artwork on Home. Remix, Unwatched only and Keep playing are one press away.</td><td colspan="1" valign="top"><b>Love it, like it, not for me</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Rate titles in one press and your picks follow. One switch turns it all off.</td></tr>
-<tr><td colspan="1" valign="top"><b>Your taste</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>One plain sentence about what you watch, and the titles behind it. Stays on your box.</td><td colspan="1" valign="top"><b>Complete series and Family night</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Only shows that have ended, or PG and under with no horror, no kids profile needed.</td><td colspan="1" valign="top"><b>Save as a Home row</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Keep any set of picks as a row that keeps finding new titles.</td></tr>
-<tr><td colspan="1" valign="top"><b>New for you and Trending for you</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>What's just out and what's big this week, sorted by your taste, not by popularity.</td><td colspan="1" valign="top"><b>Refine with one press</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Less violent, Older, Newer or Something lighter on any Ask answer.</td><td colspan="1" valign="top"><b>Pick five to get started</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>A new profile chooses five posters it loves, and Scout has something to work with straight away.</td></tr>
-</table>
+The builds are signed with a fixed debug key, so each new build updates the previous one in place and keeps its
+data. The run log prints each APK's package and certificate digest.
 
-<p><img src="docs/readme/head-picture.svg" width="100%" alt="Picture and sound"></p>
+## Build it yourself (GitHub Actions)
 
-<table>
-<tr><td colspan="1" valign="top"><b>Own surround engine</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Packs TrueHD, DTS-HD MA and DTS:X for HDMI itself, and recovers after input switches.</td><td colspan="1" valign="top"><b>Auto surround</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Picks passthrough formats from what your TV and receiver report, or set each yourself.</td><td colspan="1" valign="top"><b>Soundbar on your TV</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Arc on a TV with a soundbar on ARC: formats it can't take become Dolby Digital 5.1, and DTS-HD can go through the TV.</td></tr>
-<tr><td colspan="1" valign="top"><b>Surround kept when decoding</b><br>Formats your gear refuses decode to 5.1 or AC-3 instead of stereo, and DTS-HD that keeps failing is decoded rather than left silent.</td><td colspan="1" valign="top"><b>Night mode and Dialogue boost</b><br>Night mode on a remote button, Strong also lowers the loudest moments, and speech goes up to +12 dB.</td><td colspan="1" valign="top"><b>Dolby Vision Auto</b><br>Converts Profile 7 whenever the screen does Dolby Vision, even if the box doesn't list a Profile 8 decoder.</td></tr>
-<tr><td colspan="1" valign="top"><b>Native Dolby Vision FEL</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Full Profile 7 dual layer on a Ugoos AM9 Pro with a test kernel (not available yet).</td><td colspan="1" valign="top"><b>Precise frame rates</b><br>On TVs with QMS, picks a rate the TV can switch to without the black screen.</td><td colspan="1" valign="top"><b>Old formats</b><br>Big AVI files and XviD, DivX and VC-1 fixes; WMV and 10-bit H.264 open in MPV by themselves.</td></tr>
-</table>
+The maintainer's host cannot build Android, so builds run on GitHub Actions. The workflow is
+[.github/workflows/pr-full-debug-build.yml](.github/workflows/pr-full-debug-build.yml) ("PR Full Debug Build").
+It builds `fullDebug` as per-ABI split APKs (`armeabi-v7a`, `arm64-v8a`), uploads them as `full-debug-apks`,
+and then runs the whole unit test suite. The tests run after the upload, so a failing test does not remove the
+APKs.
 
-<p><img src="docs/readme/head-watching.svg" width="100%" alt="While you watch"></p>
+Input:
 
-<table>
-<tr><td colspan="1" valign="top"><b>Seek thumbnails</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Hold left or right for a picture strip, even on a 4K Dolby Vision remux. On ExoPlayer.</td><td colspan="1" valign="top"><b>Thumbnails before the film</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Have them ready before it starts, with a choice of Full, Faster or Fastest wait.</td><td colspan="1" valign="top"><b>Thumbnails from a copy</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Makes 4K thumbnails from a lighter copy in your sources, on the hardware decoder.</td></tr>
-<tr><td colspan="1" valign="top"><b>Your server's own thumbnails</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>When Jellyfin, Emby, Silo or Plex has already made thumbnails, the player uses those.</td><td colspan="1" valign="top"><b>Seeking your way</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Gentle, Balanced, Fast or Confirm with OK.</td><td colspan="1" valign="top"><b>Remote buttons</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Give any button a press job and a hold job in the player.</td></tr>
-<tr><td colspan="1" valign="top"><b>Player button editor</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Show, hide and move the player's buttons, with icons or labels.</td><td colspan="1" valign="top"><b>Chapters from more files</b><br>MP4 and media-server chapters too, recaps left out, with a remote button.</td><td colspan="1" valign="top"><b>Subtitle look</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Choice of fonts, outline size and a separate shadow, on both players.</td></tr>
-<tr><td colspan="1" valign="top"><b>Subtitle languages</b><br>A third preferred language, and the panel opens language first.</td><td colspan="1" valign="top"><b>Image subtitle size</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Picture subtitles (PGS, VobSub) get their own size.</td><td colspan="1" valign="top"><b>Stats panel</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>The audio path, Dolby Vision layers, connections, requests and server replies, as your film plays.</td></tr>
-<tr><td colspan="3" valign="top"><b>IMDb trailers</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Choose IMDb as the trailer source: looked up by IMDb id, up to 4K.</td></tr>
-</table>
+| Input | Default | Meaning |
+|---|---|---|
+| `app_id_suffix` | `.shield` | Package suffix, so the build installs next to the release app. Empty means the same package. |
 
-<p><img src="docs/readme/head-libraries.svg" width="100%" alt="Your libraries and accounts"></p>
+Repository secrets (names only; never commit the values):
 
-<table><tr><td align="center"><img src="docs/readme/logos/plex_logo.svg" height="30" alt="Plex"><br><sub>Plex</sub></td><td align="center"><img src="docs/readme/logos/jellyfin_logo.png" height="30" alt="Jellyfin"><br><sub>Jellyfin</sub></td><td align="center"><img src="docs/readme/logos/emby_logo.svg" height="30" alt="Emby"><br><sub>Emby</sub></td><td align="center"><img src="docs/readme/logos/silo_logo.png" height="30" alt="Silo"><br><sub>Silo</sub></td><td align="center"><img src="docs/readme/logos/wetrakr_icon.svg" height="30" alt="WeTrakr"><br><sub>WeTrakr</sub></td><td align="center"><img src="docs/readme/logos/floppy_logo.png" height="30" alt="Floppy"><br><sub>Floppy</sub></td><td align="center"><img src="docs/readme/logos/trakt_tv_favicon.svg" height="30" alt="Trakt"><br><sub>Trakt</sub></td><td align="center"><img src="docs/readme/logos/simkl_tv_glyph.svg" height="30" alt="Simkl"><br><sub>Simkl</sub></td><td align="center"><img src="docs/readme/logos/mdblist_glyph.svg" height="30" alt="MDBList"><br><sub>MDBList</sub></td></tr></table>
+| Secret | Content |
+|---|---|
+| `LOCAL_PROPERTIES_BASE64` | `local.properties`, base64-encoded. It holds `NUVIO_SUPABASE_URL` and `NUVIO_SUPABASE_ANON_KEY` plus the TMDB, Trakt, Simkl, MDBList, IntroDB and IMDb keys. The build reads the `NUVIO_`-prefixed Supabase names. [local.example.properties](local.example.properties) lists every key. Without `NUVIO_SUPABASE_URL` a manual run fails on purpose, because account login (QR / short code) would not work. |
+| `DEBUG_KEYSTORE_BASE64` | A debug keystore, base64-encoded, with alias `androiddebugkey` and store password `android`. The workflow passes it to Gradle as `NUVIO_DEBUG_STORE_FILE`. Without it, every run gets a throwaway key and a new build cannot update the old one. |
 
-<table>
-<tr><td colspan="1" valign="top"><b>Plex</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Sign in with a code; libraries on Home, in Search and as sources.</td><td colspan="1" valign="top"><b>Silo</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Own sign-in, profile picker and your Silo Home rows.</td><td colspan="1" valign="top"><b>Jellyfin and Emby extras</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Second addresses, your own server names, Quick Connect, and skip intro from the server's own markers.</td></tr>
-<tr><td colspan="1" valign="top"><b>Your own server's certificate</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>A self-signed home server can be trusted once, with its details shown first.</td><td colspan="1" valign="top"><b>Server sign-ins stay here</b><br>They stay on the box unless you switch on account sync.</td><td colspan="1" valign="top"><b>Big library browsing</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Genres, A to Z, letter jump, Unwatched and Folders from genres.</td></tr>
-<tr><td colspan="1" valign="top"><b>All debrid at once</b><br>Real-Debrid, AllDebrid, TorBox and Premiumize together; uncached picks move to the next.</td><td colspan="1" valign="top"><b>WeTrakr and Floppy</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Two more trackers, next to Trakt, Simkl and MDBList. Mark as unwatched reaches Floppy too.</td><td colspan="1" valign="top"><b>Tracker lists on Home</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Any list from WeTrakr, Trakt, MDBList or Simkl as its own row, films and shows together.</td></tr>
-<tr><td colspan="2" valign="top"><b>Transfer library</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Copy or move your library between services, with a preview first.</td><td colspan="1" valign="top"><b>Best quality picks</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>TRaSH Guides release tiers decide what auto-play picks and what sorts first.</td></tr>
-</table>
+Set the secrets and start a run with `gh`:
 
-<p><img src="docs/readme/head-playing.svg" width="100%" alt="Getting the film playing"></p>
+```sh
+base64 -w0 local.properties | gh secret set LOCAL_PROPERTIES_BASE64 -R tinof/NuvioTV-Fork
+base64 -w0 debug.keystore  | gh secret set DEBUG_KEYSTORE_BASE64  -R tinof/NuvioTV-Fork
+gh workflow run pr-full-debug-build.yml -R tinof/NuvioTV-Fork --ref perf/shield-pass -f app_id_suffix=.shield
+```
 
-<table>
-<tr><td colspan="1" valign="top"><b>Automatic speed-up</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Adds downloads when a film needs them and remembers each server.</td><td colspan="1" valign="top"><b>Dead links skipped</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>A dead link moves on to the next ready source.</td><td colspan="1" valign="top"><b>Search before Play</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Finds and ranks sources while you browse, so Play starts sooner. Off to start.</td></tr>
-<tr><td colspan="1" valign="top"><b>Buffers sized to your box</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>One Buffer ahead setting, sized from your memory, with honest numbers.</td><td colspan="1" valign="top"><b>Encrypted DNS</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>For add-ons, debrid, servers and ExoPlayer, so a provider that blocks or fakes addresses can't get in the way.</td><td colspan="1" valign="top"><b>Polite to TorBox</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Thumbnails wait near TorBox's limit, and a refused source moves straight on.</td></tr>
-<tr><td colspan="1" valign="top"><b>Device assessment</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Measures your box and link, suggests settings, applies them in one press.</td><td colspan="1" valign="top"><b>Format check</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Plays tiny test clips to find which video, HDR and audio formats your box really handles, then suggests settings. Test any clip again from the results.</td><td colspan="1" valign="top"><b>Smarter speed test</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Tries connection and piece sizes on your last stream and says what to use.</td></tr>
-<tr><td colspan="2" valign="top"><b>Add-on health</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Marks each add-on and debrid service OK, Slow or Down.</td><td colspan="1" valign="top"><b>Add-on timeout</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Give a slow add-on such as AIOStreams longer to answer.</td></tr>
-</table>
+The workflow logs list only the names of the properties that have values, and mask the credentials.
 
-<p><img src="docs/readme/head-together.svg" width="100%" alt="Together and keeping up"></p>
+Other workflows:
 
-<table>
-<tr><td colspan="1" valign="top"><b>Watch party</b><br>No account needed, surround left alone, plus cross-play with Nuvio app users (experimental).</td><td colspan="1" valign="top"><b>Watch party friends</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Add a friend once and invite them later without a code, with over 140 avatars.</td><td colspan="1" valign="top"><b>Calendar</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Next episodes, film dates and new-episode reminders, in your own time zone.</td></tr>
-<tr><td colspan="1" valign="top"><b>Coming up on Home</b><br>A row of new and upcoming episodes and films from your Calendar.</td><td colspan="1" valign="top"><b>Episodes left</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Show cards in Continue watching can show how many aired episodes are left.</td><td colspan="1" valign="top"><b>Parental guide</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>IMDb's guide on the details page, above Cast, worst first.</td></tr>
-<tr><td colspan="1" valign="top"><b>Backup and restore</b><br>Save your profiles and settings to a file and bring them back after a wipe or on a new box. Passwords are only included with a PIN.</td><td colspan="1" valign="top"><b>Report a problem</b><br>Tell me what went wrong from inside Arc. You see exactly what will be sent before anything goes, with your private details taken out first.</td><td colspan="1" valign="top"><b>Record a problem</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>For faults that come and go: up to 30 minutes of playback numbers, never the sound or picture, with a mark at each moment it goes wrong.</td></tr>
-</table>
+| Workflow | Job |
+|---|---|
+| [patch-datasource-aar.yml](.github/workflows/patch-datasource-aar.yml) | Rebuilds the patched Media3 datasource AAR. The recipe is in [app/libs/README.md](app/libs/README.md). |
+| [android-release.yml](.github/workflows/android-release.yml) | Release builds |
+| [build-ffmpeg-decoder.yml](.github/workflows/build-ffmpeg-decoder.yml) | Builds the FFmpeg audio decoder |
 
-<p><img src="docs/readme/head-look.svg" width="100%" alt="Look and Home"></p>
+Local build: with a filled-in `local.properties`, `./gradlew :app:assembleFullDebug -PnuvioAppIdSuffix=.shield`
+builds the same debug APKs. `-PnuvioAppIdSuffix=.name` installs a local build next to the main app.
 
-<table>
-<tr><td colspan="1" valign="top"><b>Nuvio V2 look</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Cinematic Glass or Pure Liquid Dark, Control Deck or Invisible player controls, floating sidebar or top menu.</td><td colspan="1" valign="top"><b>Arc look</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Logo in your theme colours, intro with sound, 16 icon colours, card and banner looks, launcher icon pack.</td><td colspan="1" valign="top"><b>Interface scale</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Shrink or enlarge the whole interface, or let the app size it.</td></tr>
-<tr><td colspan="2" valign="top"><b>Watched titles on Home</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Show, Dim or Hide what you've already watched.</td><td colspan="1" valign="top"><b>Keep it fresh</b> <img src="docs/readme/arc-mark.png" height="15" alt="Only in Arc"><br>Also keep Plan to watch and part-watched titles out of Home rows and the banner.</td></tr>
-</table>
+## Testing on the Shield
 
-The details, more screenshots and what's been removed are on the **[full feature page](docs/FEATURES.md)**.
+Set a switch, clear it and list what is set:
 
-## A look around
+```sh
+adb shell setprop debug.nuvio.<name> <0|1>
+adb shell setprop debug.nuvio.<name> ""
+adb shell getprop | grep debug.nuvio
+```
 
-<table>
-<tr>
-<td width="50%"><img alt="Seek thumbnails" src="https://github.com/user-attachments/assets/7ad837f7-a18a-4f1a-993c-be474099ea9c" /><br><b>Seek thumbnails</b></td>
-<td width="50%"><img alt="Plex, Jellyfin, Emby and Silo" src="docs/readme/shots/media-servers.jpg" /><br><b>Your own media server</b></td>
-</tr>
-<tr>
-<td><img alt="Stats panel" src="https://github.com/user-attachments/assets/0107b69c-a463-43ad-9a5f-e3b8162abc07" /><br><b>Stats panel</b></td>
-<td><img alt="Calendar" src="docs/screenshots/nt5/02-calendar-list.jpg" /><br><b>Calendar</b></td>
-</tr>
-<tr>
-<td><img alt="Trakt, Simkl, MDBList, Floppy and WeTrakr" src="docs/readme/shots/tracking.jpg" /><br><b>All your trackers</b></td>
-<td><img alt="Remote buttons" src="docs/screenshots/nt5/05-remote-buttons.jpg" /><br><b>Remote buttons</b></td>
-</tr>
-</table>
+Restart playback after a change, or restart the app for the switches marked *app* in
+[docs/shield-todo.md](docs/shield-todo.md).
 
-## Support and contact
+Log tags and lines worth filtering:
 
-Nuvio Arc is a one-person hobby, with no Discord and no support team.
+| Tag or line | What it shows |
+|---|---|
+| `NuvioCodecs` | Every video decoder once per app start: hardware or software, tunneled, secure, DV profiles |
+| `FrameRateUtils` | Display mode switches: `Switching display mode`, `Display mode switch stabilized at`, `Restoring display mode after` |
+| `PlayerViewModel` | `Track AFR settle complete:`, `Preflight AFR settle complete`, `BACK_BUFFER_RESOLVED: … lowRam=` |
+| `TTFF_STAGE` | `PLAYBACK_TUNNELING: requested=… applied=…` and the other start-up stages |
+| `ThumbMem` | Seek-thumbnail memory decisions (`strongBox=`, heap) |
+| `NuvioNet` | `NET_CONN` lines, only for slow headers or time to first byte (1 s or more) and errors (HTTP 400 or higher, failed, canceled). `adb shell setprop log.tag.NuvioNet D` shows every line. |
+| `ThumbWorker` | Per-thumbnail lines, only for decodes of 500 ms or more. `adb shell setprop log.tag.ThumbWorker D` shows every line. |
+| `NuvioRender` | `RENDER_TRACE: pts= releaseInMs=` every 240th video frame, with `debug.nuvio.render_trace 1` |
 
-**The best way to report a problem is from inside Arc.** Press Report in the player, or on the loading and error screens, or open Report a problem in Settings. You see exactly what will be sent before you press Send, links, keys and addresses are taken out first, and you get a short code for your report. For faults that come and go, Record a problem keeps up to 30 minutes of playback numbers while you mark the moments it goes wrong. You can send ideas the same way. Reports go to a private inbox for this project, never to the official team.
+[docs/shield-todo.md](docs/shield-todo.md) has the device checklist for each round, the items that are still
+open and a quick reference of `adb` and `dumpsys` commands.
 
-Can't use that, or want to talk it through? Open an [Issue](https://github.com/ysosrs123/NuvioTV-Fork/issues) with your box, the Arc version (Settings > About) and what you were playing, or chat with other users at [r/NuvioForks](https://www.reddit.com/r/NuvioForks/). No promises on replies or fixes.
+## Features from Nuvio Arc
 
-Nuvio Arc is not affiliated with or endorsed by the NuvioTV project. **Please don't report problems from this build to the official Nuvio GitHub or Discord.** They can't help with changes they didn't make.
+Everything else comes from Nuvio Arc: seek thumbnails, media-server libraries (Jellyfin, Emby, Silo), watch
+party, the calendar, remote buttons, the surround engine with per-format passthrough, Dolby Vision conversion,
+source ranking, the device assessment, the speed test and the stats overlay. The
+[Nuvio Arc README](https://github.com/ysosrs123/NuvioTV-Fork#readme) describes them, with screenshots. Nuvio
+Arc is built on Nuvio; you can support the Nuvio team at [nuvio.tv/support](https://nuvio.tv/support).
 
-## Supporting Nuvio
-
-Nuvio Arc is completely free, and I don't take donations. It's built on Nuvio, so if you enjoy it, please support the Nuvio team at [nuvio.tv/support](https://nuvio.tv/support). Every supporter membership and donation in the app goes straight to the official team, and none of it comes to me.
+---
 
 ## Licence
 
 This is a modified version of [NuvioTV](https://github.com/NuvioMedia/NuvioTV), changed by ysosrs123
 from July 2026 onwards. Every change is in this repository's history on top of the official release
-it builds on (currently 1.1.0). It is licensed under the
-[GNU General Public License v3.0](./LICENSE), the same as NuvioTV. All upstream copyright notices,
-licence headers and author attributions are kept. Full credit to the NuvioTV maintainers and contributors.
+it builds on (currently 1.1.0-beta.8). tinof changed it further from October 2026 onwards, for the
+`perf/shield-pass` branch; those changes are in the same history (`git log main..perf/shield-pass`). It is
+licensed under the [GNU General Public License v3.0](./LICENSE), the same as NuvioTV. All upstream copyright
+notices, licence headers and author attributions are kept. Full credit to the NuvioTV maintainers and
+contributors, and to ysosrs123 for Nuvio Arc.
 
 Parts from other projects keep their own licences:
 - TrueHD MAT packing and the downmix path: ported from Kodi (GPL-2.0-or-later), see
@@ -169,15 +185,15 @@ Parts from other projects keep their own licences:
   cpu_features by Google (Apache-2.0).
 - libdovi by quietvoid (MIT). Matroska extractor files from AndroidX Media3 (Apache-2.0), changed.
 - Release group lists from TRaSH Guides (MIT).
-- Fonts Atkinson Hyperlegible Next, Source Sans 3, and the subtitle fonts Roboto, Montserrat, Noto Sans and Asap Condensed (SIL Open Font License 1.1, texts in
+- Fonts Atkinson Hyperlegible Next and Source Sans 3 (SIL Open Font License 1.1, texts in
   `app/src/main/assets/licenses/`).
 - Watch party avatars: made with DiceBear and Twemoji, under CC BY 4.0, CC0 1.0 and the Bottts terms.
   They are credited in the app under Settings > About > Licenses & attribution and are not covered by the GPL.
-- Calendar episode times come from TVmaze's schedule service and TheTVDB (metadata provided by TheTVDB),
-  credited in the app under Settings > About > Licenses & attribution.
-- The film in the screenshots is *Tears of Steel*, (CC) Blender Foundation, mango.blender.org, under CC BY 3.0.
+- Calendar episode times come from TVmaze's schedule service, credited in the app under
+  Settings > About > Licenses & attribution.
 - Other service logos and names belong to their owners and only show which service the app connects to.
 - Prebuilt libraries that come unchanged from the official app are covered by the official project's
   sources and notices.
 
-This fork is not affiliated with or endorsed by the NuvioTV project or any of the services named.
+This fork is not affiliated with or endorsed by the NuvioTV project, by Nuvio Arc or by any of the services
+named.
