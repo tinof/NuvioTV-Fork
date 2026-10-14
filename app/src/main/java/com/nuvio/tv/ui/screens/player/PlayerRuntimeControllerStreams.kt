@@ -1122,7 +1122,9 @@ internal fun PlayerRuntimeController.switchToSourceStream(
                 // scope), so use the cache-only preflight; the new stream's
                 // track format drives the switch on a cache miss.
                 // Bump the generation so an in-flight track-AFR
-                // coroutine from the previous stream stands down.
+                // coroutine from the previous stream stands down. The player
+                // is kept, so give back the tracks its quiesce disabled first.
+                endTrackAfrQuiesce(reseek = false)
                 afrTrackGeneration++
                 trackAfrAttemptedForCurrentStream = false
                 afrTrackSwitchInFlight = false

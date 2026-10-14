@@ -6,6 +6,8 @@ import android.os.Build
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.Tracks
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.FrameRateUtils
 import com.nuvio.tv.core.util.DebugSwitches
 import com.nuvio.tv.data.local.FrameRateMatchingMode
@@ -36,6 +38,81 @@ private const val TRACK_AFR_SETTLE_HOLD_MAX_MS = 4_000L
 /** Settle hold after a real switch; `adb shell setprop debug.nuvio.afr_settle_ms <ms>` overrides it for A/B tests. */
 internal fun trackAfrSettleHoldMs(overrideMs: Int?): Long =
     overrideMs?.toLong()?.coerceIn(0L, TRACK_AFR_SETTLE_HOLD_MAX_MS) ?: TRACK_AFR_SETTLE_HOLD_MS
+
+/** What the track-AFR step takes down across the display-mode switch. */
+internal enum class TrackAfrQuiesce {
+    NONE,
+    /** Audio only: the live AudioTrack is released before HDMI tears the output down. */
+    AUDIO,
+    /** Audio and video in one step: both renderers leave the tunnel and rejoin it together. */
+    AUDIO_AND_VIDEO
+}
+
+/**
+ * What to quiesce across a track-AFR display-mode switch. Without tunnelling, audio alone.
+ * Under tunnelling, audio alone would move the video renderer out of the tunnel and back, so
+ * nothing is touched, except a TrueHD / DTS-HD track on Nvidia, where audio and video go down
+ * together (debug.nuvio.afr_quiesce_av=1/0 forces that either way). A stream already playing
+ * without audio is never touched.
+ */
+internal fun trackAfrQuiesce(
+    audioDisabled: Boolean,
+    tunnelingApplied: Boolean,
+    losslessAudio: Boolean,
+    avSwitch: Boolean?,
+    manufacturer: String? = Build.MANUFACTURER
+): TrackAfrQuiesce = when {
+    audioDisabled -> TrackAfrQuiesce.NONE
+    !tunnelingApplied -> TrackAfrQuiesce.AUDIO
+    losslessAudio && (avSwitch ?: DeviceProfile.isNvidia(manufacturer)) -> TrackAfrQuiesce.AUDIO_AND_VIDEO
+    else -> TrackAfrQuiesce.NONE
+}
+
+/** Sample MIME type of the selected audio track, or null. */
+internal fun selectedAudioMimeType(tracks: Tracks): String? {
+    for (group in tracks.groups) {
+        if (group.type != C.TRACK_TYPE_AUDIO) continue
+        for (i in 0 until group.length) {
+            if (group.isTrackSelected(i)) return group.getTrackFormat(i).sampleMimeType
+        }
+    }
+    return null
+}
+
+/**
+ * True while track-AFR has audio and video both off. Track and READY callbacks in that
+ * window see a player without its A/V renderers and must not act on it.
+ */
+internal val PlayerRuntimeController.afrAvQuiesceInFlight: Boolean
+    get() = afrQuiesce == TrackAfrQuiesce.AUDIO_AND_VIDEO
+
+/** Forgets the quiesce without touching the player (its track parameters are being rebuilt). */
+internal fun PlayerRuntimeController.dropTrackAfrQuiesce() {
+    afrQuiesce = TrackAfrQuiesce.NONE
+    afrQuiescePlayer = null
+    afrQuiesceGeneration = -1
+}
+
+/**
+ * Re-enables what the track-AFR quiesce disabled, on the player it was disabled on; with
+ * [generation], only when that stream's coroutine set it. After an audio-and-video quiesce,
+ * [reseek] seeks to the current position: the renderers rejoin from a clean position and the
+ * player passes through BUFFERING to a READY that the start path can act on. Main thread.
+ */
+internal fun PlayerRuntimeController.endTrackAfrQuiesce(generation: Int? = null, reseek: Boolean = true) {
+    val mode = afrQuiesce
+    if (mode == TrackAfrQuiesce.NONE) return
+    if (generation != null && generation != afrQuiesceGeneration) return
+    val player = afrQuiescePlayer
+    dropTrackAfrQuiesce()
+    if (player == null || _exoPlayer !== player) return
+    val builder = player.trackSelectionParameters
+        .buildUpon()
+        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+    if (mode == TrackAfrQuiesce.AUDIO_AND_VIDEO) builder.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+    player.trackSelectionParameters = builder.build()
+    if (mode == TrackAfrQuiesce.AUDIO_AND_VIDEO && reseek) player.seekTo(player.currentPosition)
+}
 
 /**
  * Frame-rate matching from ExoPlayer's reported track format instead of a
@@ -129,10 +206,10 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
     // Stamp this attempt with the current stream's generation; the
     // finally block stands down if a per-stream reset happened meanwhile.
     val startGeneration = afrTrackGeneration
-    // Set true only if we actually disable audio for the switch, so
-    // the finally re-enables exactly what was disabled and can never latch a
-    // muted state on an unrelated exit path.
-    var audioQuiesced = false
+    // What was disabled for the switch, for the settle log. afrQuiesce holds
+    // the same for the finally, which re-enables exactly that and can never
+    // latch a muted state on an unrelated exit path.
+    var quiesced = TrackAfrQuiesce.NONE
     var displayModeSwitched = false
     var switchStartElapsedMs = 0L
 
@@ -190,17 +267,30 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                 // existing state machine) and under tunneling (the tunnel
                 // clock is the audio track). The player's applied state, not the
                 // preference: track selection can turn tunneling off for a stream.
-                val tunnelingApplied = withContext(Dispatchers.Main) { _exoPlayer?.isTunnelingEnabled == true }
-                if (!isAudioDisabledForCurrentPlayback && !tunnelingApplied) {
-                    withContext(Dispatchers.Main) {
-                        _exoPlayer?.let { p ->
-                            p.trackSelectionParameters = p.trackSelectionParameters
-                                .buildUpon()
-                                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                                .build()
-                        }
+                // Tunnelled TrueHD / DTS-HD on Nvidia takes audio and video down
+                // together instead (trackAfrQuiesce).
+                quiesced = withContext(Dispatchers.Main) {
+                    val p = _exoPlayer ?: return@withContext TrackAfrQuiesce.NONE
+                    val mode = trackAfrQuiesce(
+                        audioDisabled = isAudioDisabledForCurrentPlayback,
+                        tunnelingApplied = p.isTunnelingEnabled,
+                        losslessAudio = PassthroughWaterLevelPacer.isHbrMime(selectedAudioMimeType(p.currentTracks)),
+                        avSwitch = DebugSwitches.flag("debug.nuvio.afr_quiesce_av")
+                    )
+                    if (mode == TrackAfrQuiesce.NONE || afrTrackGeneration != startGeneration) {
+                        return@withContext TrackAfrQuiesce.NONE
                     }
-                    audioQuiesced = true
+                    afrQuiesce = mode
+                    afrQuiescePlayer = p
+                    afrQuiesceGeneration = startGeneration
+                    val builder = p.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    if (mode == TrackAfrQuiesce.AUDIO_AND_VIDEO) builder.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+                    p.trackSelectionParameters = builder.build()
+                    mode
+                }
+                if (quiesced != TrackAfrQuiesce.NONE) {
                     switchStartElapsedMs = android.os.SystemClock.elapsedRealtime()
                 }
 
@@ -244,7 +334,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                         Log.d(
                             PlayerRuntimeController.TAG,
                             "Track AFR settle complete: elapsedSinceSwitchMs=" + sinceSwitchMs +
-                                " audioQuiesced=" + audioQuiesced +
+                                " quiesced=" + quiesced +
                                 " firstFrame=" + hasRenderedFirstFrame
                         )
                     }
@@ -260,18 +350,12 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
             if (afrTrackGeneration == startGeneration) {
                 afrTrackSwitchInFlight = false
                 if (displayModeSwitched) noteOutputChangeForTunnelWatch()
-                // Symmetric re-enable. Only touch audio if we disabled
-                // it above; runs on every exit path (success, deadline, reset).
-                if (audioQuiesced) {
-                    withContext(Dispatchers.Main) {
-                        _exoPlayer?.let { p ->
-                            p.trackSelectionParameters = p.trackSelectionParameters
-                                .buildUpon()
-                                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                                .build()
-                        }
-                    }
-                }
+                // Symmetric re-enable. Only touch the tracks we disabled
+                // above (afrQuiesce, set together with the disable, so a
+                // deadline between the two cannot leave them off); runs on every
+                // exit path (success, deadline, reset). A per-stream reset
+                // already dropped or ended the quiesce.
+                withContext(Dispatchers.Main) { endTrackAfrQuiesce(startGeneration) }
                 resumePlaybackAfterTrackAfrIfHeld()
             }
         }
