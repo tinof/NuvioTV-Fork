@@ -181,11 +181,11 @@ internal class PlaybackConnectionEventListener(
             "inflight=$inflightAtStart hostInflight=$hostInflightAtStart " +
             "code=$code proto=$protoLabel range=$rangeLabel host=$currentHost"
         // The in-app ring buffer gets every line (it feeds the in-app network
-        // log surface). Logcat gets only slow or failed calls: one line per
-        // connection filled the Shield's 256 KiB logd buffer and pushed the
-        // start of a playback out. `setprop log.tag.NuvioNet D` restores every
-        // line for a log capture.
-        if (netConnToLogcat(outcome, totalMs, ttfbMs, Log.isLoggable(TAG, Log.DEBUG))) {
+        // log surface). Logcat gets only slow, failed or HTTP-error calls: one
+        // line per connection filled the Shield's 256 KiB logd buffer and pushed
+        // the start of a playback out. `setprop log.tag.NuvioNet D` restores
+        // every line for a log capture.
+        if (netConnToLogcat(outcome, headersMs, ttfbMs, code, Log.isLoggable(TAG, Log.DEBUG))) {
             Log.i(TAG, logLine)
         }
         PlaybackConnectionEvents.recordEvent(logLine)
@@ -200,11 +200,20 @@ internal const val NET_CONN_SLOW_MS = 1_000L
 
 /**
  * Whether a NET_CONN line goes to logcat: a call that did not end "ok" (failed,
- * canceled), a total or ttfb of [NET_CONN_SLOW_MS] or more, or [debugLoggable]
- * (the NuvioNet tag set to DEBUG). -1 timings are unknown and never count as slow.
+ * canceled), an HTTP error status (an error response still ends "ok"), headers or
+ * ttfb after [NET_CONN_SLOW_MS] or more, or [debugLoggable] (the NuvioNet tag set to
+ * DEBUG). The total time is not used: it includes reading the body, so every large
+ * media chunk would count as slow. -1 timings and codes are unknown and never count.
  */
-internal fun netConnToLogcat(outcome: String, totalMs: Long, ttfbMs: Long, debugLoggable: Boolean): Boolean =
-    debugLoggable || outcome != "ok" || totalMs >= NET_CONN_SLOW_MS || ttfbMs >= NET_CONN_SLOW_MS
+internal fun netConnToLogcat(
+    outcome: String,
+    headersMs: Long,
+    ttfbMs: Long,
+    code: Int,
+    debugLoggable: Boolean
+): Boolean =
+    debugLoggable || outcome != "ok" || code >= 400 ||
+        headersMs >= NET_CONN_SLOW_MS || ttfbMs >= NET_CONN_SLOW_MS
 
 /**
  * One listener instance per call, so the per-call state above needs no
