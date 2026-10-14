@@ -1,10 +1,12 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.content.Context
+import android.os.Build
 import android.util.AttributeSet
 import android.util.Log
 import android.view.SurfaceHolder
 import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.VideoDecoderCapabilities
 import com.nuvio.tv.core.util.DebugSwitches
 import com.nuvio.tv.data.local.MpvHardwareDecodeMode
@@ -24,6 +26,13 @@ internal const val MPV_TRACK_LIST_PROPERTY = "track-list"
  */
 internal fun mpvHwdecCodecs(hardwareAv1: Boolean): String =
     if (hardwareAv1) "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1" else "h264,hevc,mpeg4,mpeg2video,vp8,vp9"
+
+/**
+ * bt.2446a tone mapping without peak detection for HDR that mpv maps down: on by default on
+ * Nvidia, debug.nuvio.mpv_tonemap=1/0 forces it either way. Elsewhere mpv keeps its default curve.
+ */
+internal fun mpvToneMapEnabled(switch: Boolean?, manufacturer: String? = Build.MANUFACTURER): Boolean =
+    switch ?: DeviceProfile.isNvidia(manufacturer)
 
 class NuvioMpvSurfaceView @JvmOverloads constructor(
     context: Context,
@@ -832,8 +841,7 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         )
         appliedHi10pGnextSoftwareFallback = hi10pGnextSoftwareFallbackActive
         mpv.setOptionString("hwdec-codecs", mpvHwdecCodecs(VideoDecoderCapabilities.hasHardwareDecoder(MimeTypes.VIDEO_AV1)))
-        // Test switch for HDR shown on an SDR output; mpv's default curve stays until the two are compared on a device.
-        if (DebugSwitches.flag("debug.nuvio.mpv_tonemap") == true) {
+        if (mpvToneMapEnabled(DebugSwitches.flag("debug.nuvio.mpv_tonemap"), Build.MANUFACTURER)) {
             mpv.setOptionString("tone-mapping", "bt.2446a")
             mpv.setOptionString("hdr-compute-peak", "no")
         }
