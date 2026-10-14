@@ -25,15 +25,15 @@ enum class AspectMode(@StringRes val labelResId: Int) {
 
 /**
  * The mode the Exo surface gets. Every mode but Fit scales the video view, so tunneled playback,
- * and HDR video where [hdrViewScaleAllowed] says no, fall back to Fit. The chosen mode stays saved.
+ * and HDR video where [hdrScaleAllowed] is false, fall back to Fit. The chosen mode stays saved.
  */
 internal fun aspectModeAppliedToExoSurface(
     tunnelingEnabled: Boolean,
     aspectMode: AspectMode,
     hdrVideo: Boolean = false,
-    hdrViewScaleAllowed: Boolean = true
+    hdrScaleAllowed: Boolean = true
 ): AspectMode {
-    return if (tunnelingEnabled || (hdrVideo && !hdrViewScaleAllowed)) AspectMode.ORIGINAL else aspectMode
+    return if (tunnelingEnabled || (hdrVideo && !hdrScaleAllowed)) AspectMode.ORIGINAL else aspectMode
 }
 
 /**
