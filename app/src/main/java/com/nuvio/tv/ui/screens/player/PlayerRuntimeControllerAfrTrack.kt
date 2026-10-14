@@ -26,8 +26,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 // with margin; 7 s could clip a slow HDMI mode change mid-settle.
 private const val TRACK_AFR_ABSOLUTE_DEADLINE_MS = 8_000L
 
-// Settle hold after a real display-mode switch, mirroring
-// AFR_EXO_SETTLE_HOLD_MS on the preflight path: don't start the A/V pipeline
+// Settle hold after a real display-mode switch, on this path and the
+// preflight one (startPlaybackThroughAfrGates): don't start the A/V pipeline
 // inside the mode transition.
 private const val TRACK_AFR_SETTLE_HOLD_MS = 2_000L
 
