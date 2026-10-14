@@ -31,13 +31,20 @@ private const val TRACK_AFR_ABSOLUTE_DEADLINE_MS = 8_000L
 // inside the mode transition.
 private const val TRACK_AFR_SETTLE_HOLD_MS = 2_000L
 
+// Shorter hold on Nvidia boxes, so the Shield starts sooner after a switch.
+private const val TRACK_AFR_SETTLE_HOLD_NVIDIA_MS = 1_200L
+
 // Ceiling for the debug.nuvio.afr_settle_ms test switch: the absolute
 // deadline above must still cover the mode-switch wait before the hold.
 private const val TRACK_AFR_SETTLE_HOLD_MAX_MS = 4_000L
 
-/** Settle hold after a real switch; `adb shell setprop debug.nuvio.afr_settle_ms <ms>` overrides it for A/B tests. */
-internal fun trackAfrSettleHoldMs(overrideMs: Int?): Long =
-    overrideMs?.toLong()?.coerceIn(0L, TRACK_AFR_SETTLE_HOLD_MAX_MS) ?: TRACK_AFR_SETTLE_HOLD_MS
+/**
+ * Settle hold after a real switch: 1.2 s on Nvidia, 2 s elsewhere.
+ * `adb shell setprop debug.nuvio.afr_settle_ms <ms>` overrides it for A/B tests.
+ */
+internal fun trackAfrSettleHoldMs(overrideMs: Int?, manufacturer: String? = Build.MANUFACTURER): Long =
+    overrideMs?.toLong()?.coerceIn(0L, TRACK_AFR_SETTLE_HOLD_MAX_MS)
+        ?: if (DeviceProfile.isNvidia(manufacturer)) TRACK_AFR_SETTLE_HOLD_NVIDIA_MS else TRACK_AFR_SETTLE_HOLD_MS
 
 /** What the track-AFR step takes down across the display-mode switch. */
 internal enum class TrackAfrQuiesce {
