@@ -174,6 +174,21 @@ class AudioShieldPassTest {
         assertFalse(iec(switch = null, iecOff = true))
     }
 
+    // --- debug.nuvio.hbr_tunnel ---
+
+    @Test
+    fun `hbr tunnelling is on by default on nvidia only`() {
+        assertTrue(hbrTunnelAllowed(null, "NVIDIA"))
+        assertFalse(hbrTunnelAllowed(null, "Amlogic"))
+        assertFalse(hbrTunnelAllowed(null, null))
+    }
+
+    @Test
+    fun `the hbr_tunnel switch forces either side`() {
+        assertFalse(hbrTunnelAllowed(false, "NVIDIA"))
+        assertTrue(hbrTunnelAllowed(true, "Amlogic"))
+    }
+
     // --- debug.nuvio.hbr_buffer_scale ---
 
     @Test
