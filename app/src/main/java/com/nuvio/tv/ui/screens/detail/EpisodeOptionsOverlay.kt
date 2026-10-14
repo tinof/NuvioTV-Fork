@@ -77,6 +77,7 @@ import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import com.nuvio.tv.ui.util.toAbsoluteAlignment
 import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.components.LocalPreblurredGlass
 import com.nuvio.tv.ui.v2.components.NuvioActionPill
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -263,7 +264,11 @@ internal fun EpisodeOptionsOverlay(
             decorFitsSystemWindows = false
         )
     ) {
-        CompositionLocalProvider(LocalDensity provides activityDensity) {
+        CompositionLocalProvider(
+            LocalDensity provides activityDensity,
+            // The pre-blurred page artwork is placed against the page's window, not this one.
+            LocalPreblurredGlass provides null
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
