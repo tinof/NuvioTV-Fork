@@ -15,7 +15,8 @@ internal fun PlayerRuntimeController.onSeekForLateVideoWatch() {
     lateVideoWatchJob = null
     if (lateVideoResyncFailed || isUsingMpvEngine()) return
     val player = _exoPlayer ?: return
-    if (player.isTunnelingEnabled || !currentStreamHasVideoTrack) return
+    // During a track-AFR A/V quiesce the tunnelling read is the both-off selection, not the session's.
+    if (player.isTunnelingEnabled || !currentStreamHasVideoTrack || afrAvQuiesceInFlight) return
     if (nativeVideoSelection.isSelected || partyBridge?.inParty == true) return
     if (!player.isCurrentMediaItemSeekable || player.isCurrentMediaItemLive) return
 
