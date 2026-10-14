@@ -205,6 +205,51 @@ class DolbyVisionBaseLayerPolicyTest {
         assertFalse(noBridge.usesManualConversion)
     }
 
+    // ── Auto's DV7 conversion mode: Nvidia default and the debug switch ──
+
+    private fun manual(result: DolbyVisionBaseLayerPolicy.Result, switch: Boolean?, manufacturer: String?) =
+        DolbyVisionBaseLayerPolicy.autoUsesManualConversion(result, switch, manufacturer)
+
+    @Test
+    fun `nvidia takes the manual conversion on a dv display whatever its decoder lists`() {
+        val p8Only = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheSt = true, bridgeReady = true)
+        val p7 = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheDtb = true, bridgeReady = true)
+        assertFalse(p8Only.usesManualConversion)
+        assertTrue(manual(p8Only, switch = null, manufacturer = "NVIDIA"))
+        assertTrue(manual(p7, switch = null, manufacturer = "NVIDIA"))
+    }
+
+    @Test
+    fun `other boxes keep the capability rule without the switch`() {
+        val p8Only = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheSt = true, bridgeReady = true)
+        val p7 = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheDtb = true, bridgeReady = true)
+        assertFalse(manual(p8Only, switch = null, manufacturer = "Amlogic"))
+        assertTrue(manual(p7, switch = null, manufacturer = "Amlogic"))
+        assertFalse(manual(p8Only, switch = null, manufacturer = null))
+    }
+
+    @Test
+    fun `the dv7 manual switch forces either mode on a dv display conversion`() {
+        val p7 = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheDtb = true, bridgeReady = true)
+        val p8Only = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheSt = true, bridgeReady = true)
+        assertFalse(manual(p7, switch = false, manufacturer = "NVIDIA"))
+        assertTrue(manual(p8Only, switch = true, manufacturer = "Amlogic"))
+    }
+
+    @Test
+    fun `no manual conversion outside a dv display conversion even on nvidia`() {
+        val hdr10Convert = resolve(
+            displayHdr10 = true,
+            codecSupportsDvheSt = true,
+            isSamsung = true,
+            bridgeReady = true
+        )
+        val noBridge = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheDtb = true)
+        assertFalse(manual(hdr10Convert, switch = null, manufacturer = "NVIDIA"))
+        assertFalse(manual(hdr10Convert, switch = true, manufacturer = "NVIDIA"))
+        assertFalse(manual(noBridge, switch = true, manufacturer = "NVIDIA"))
+    }
+
     // ── CONVERT_TO_DV81: Fire TV Karat (Amazon-gated) ──
 
     @Test
