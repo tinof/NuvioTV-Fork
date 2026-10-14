@@ -23,6 +23,14 @@ class DeviceProfileTest {
     }
 
     @Test
+    fun amazonIsMatchedByManufacturerOnly() {
+        assertTrue(DeviceProfile.isAmazon("Amazon"))
+        assertTrue(DeviceProfile.isAmazon(" amazon "))
+        assertFalse(DeviceProfile.isAmazon("NVIDIA"))
+        assertFalse(DeviceProfile.isAmazon(null))
+    }
+
+    @Test
     fun shieldPro2019IsMdarcyOnly() {
         assertTrue(DeviceProfile.isShieldPro2019("NVIDIA", "mdarcy"))
         assertFalse(DeviceProfile.isShieldPro2019("NVIDIA", "sif"))
