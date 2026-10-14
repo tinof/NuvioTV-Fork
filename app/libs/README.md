@@ -15,9 +15,9 @@ files (`CMakeLists.txt`, `build_ffmpeg.sh`, `build.gradle.kts`, `FfmpegLibrary.j
 `FfmpegDecoderException.java`, `package-info.java`, `NOTICE.md`) are the same as in
 `ffmpeg-decoder-downmix`. These files are kept for reference and are not compiled into the app.
 
-Combines official0.9.3 downmix limiter / multi-frame buffer-growth corrections with fork per-MIME denied-codec AC-3 routing and legal-rate high-sample-rate AC-3 resampling. Limiter timing on the planar transcode path uses the output encoder rate.
+Combines official 0.9.3 downmix limiter / multi-frame buffer-growth corrections with fork per-MIME denied-codec AC-3 routing and legal-rate high-sample-rate AC-3 resampling. Limiter timing on the planar transcode path uses the output encoder rate.
 
-Native inputs: FFmpeg7.0.2 release archive (release signature verified, key fingerprint `FCF986EA15E6E293A5644F10B4322F04D67658D8`), Android NDK27.0.12077973, minimumAPI24. Decoder list follows `.github/workflows/build-ffmpeg-decoder.yml`, including the AC-3 encoder. ARMv7/ARM64/x86/x86_64 are included;16KB ELF LOAD alignment and Android system dependencies verified. Public Java API retains all entries from the previous fork AAR. The module's copyright, NOTICE and licences apply.
+Native inputs: FFmpeg 7.0.2 release archive (release signature verified, key fingerprint `FCF986EA15E6E293A5644F10B4322F04D67658D8`), Android NDK 27.0.12077973, minimum API 24. Decoder list follows `.github/workflows/build-ffmpeg-decoder.yml`, including the AC-3 encoder. ARMv7/ARM64/x86/x86_64 are included; 16 KB ELF LOAD alignment and Android system dependencies verified. Public Java API retains all entries from the previous fork AAR. The module's copyright, NOTICE and licences apply.
 
 Host ASan/UBSan tests cover actual JNI decode/transcode code; they do not establish Android passthrough, MAT/DTS/DV or device performance acceptance.
 
@@ -146,3 +146,12 @@ compiles the unpatched upstream file with `--release 8 -g -proc:none` against {t
 lib-common classes, androidx-annotation 1.9.1, checker-qual 3.48.3, android.jar} and stops unless `javap -c -p`
 (constant-pool indices removed) equals the shipped class. It then compiles the patched file the same way and puts
 it back into `classes.jar` and the AAR with entry order and timestamps unchanged.
+
+## lib-extractor-release.aar (moov fix)
+
+`lib-extractor-release.aar` SHA-256:
+`d611a11f7bc6cef11f789c1cae4fe75ab9332a9e393405e98cfa8e147d698316`.
+
+Shipped in da4a6e853 ("ship the extractor moov fix"). With it the extractor prefetches out-of-band
+subtitles, so progressive MP4 no longer needs a single-connection session when parallel downloads are off.
+This repo does not record the source commit or a rebuild recipe for this AAR.
