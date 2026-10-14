@@ -272,18 +272,18 @@ class TraktProgressService @Inject constructor(
     private var continueWatchingWindowDays: Int = TraktSettingsDataStore.DEFAULT_CONTINUE_WATCHING_DAYS_CAP
 
     init {
+        // Read synchronously: the collector below subscribes later, on another thread, and a
+        // switch made before then must still count as a switch rather than as the start value.
+        val startProfileId = profileManager.activeProfileId.value
         scope.launch {
-            var isInitialEmission = true
+            var handledProfileId = startProfileId
             profileManager.activeProfileId
-                .collectLatest {
-                    if (isInitialEmission) {
-                        // The initial emission is the current profile loaded from storage
-                        // on cold start. Don't emit a refresh signal here — the refresh
-                        // loop's onStart already fires the first fetch, and emitting here
-                        // would cancel that in-flight fetch via collectLatest.
-                        isInitialEmission = false
-                        return@collectLatest
-                    }
+                .collectLatest { profileId ->
+                    // The start profile needs no reset or refresh signal: the refresh loop's
+                    // onStart already fires the first fetch, and emitting here would cancel
+                    // that in-flight fetch via collectLatest.
+                    if (profileId == handledProfileId) return@collectLatest
+                    handledProfileId = profileId
                     resetProfileScopedState()
                     restoreSavedWatchedMovies()
                     refreshSignals.tryEmit(Unit)
