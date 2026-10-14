@@ -3,10 +3,8 @@ package com.nuvio.tv.core.player.thumbnail
 import android.app.ActivityManager
 import android.content.ComponentCallbacks2
 import android.content.Context
-import android.os.Build
 import android.os.Process
 import android.util.Log
-import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.MemoryPressure
 import com.nuvio.tv.core.util.DebugSwitches
 import java.io.File
@@ -101,7 +99,7 @@ internal object MemoryGovernor {
      */
     private const val STRONG_MIN_AVAIL_MB = 600L
     private const val STRONG_MIN_SWAP_FREE_MB = 2 * SWAP_FLOOR_MB
-    /** With the swap rule off (Shield TV Pro 2019), full swap still refuses below this MemAvailable. */
+    /** With the swap rule off (debug.nuvio.thumb_swap_rule=false), full swap still refuses below this MemAvailable. */
     private const val STRONG_SWAP_RELAXED_MIN_AVAIL_MB = 900L
     /** 32-bit only: ceiling for VmSize plus the decode's cost, keeps about 700 MB of the 4 GB address space spare. */
     private const val VA_CEILING_32BIT_MB = 3_300L
@@ -183,15 +181,11 @@ internal object MemoryGovernor {
     }
 
     /**
-     * Whether full swap refuses the strong path at any MemAvailable. Off on the Shield TV Pro 2019, where full swap
-     * refuses only below 900 MB available. [switch] (debug.nuvio.thumb_swap_rule): true keeps the rule, false drops
-     * it on any box.
+     * Whether full swap refuses the strong path at any MemAvailable. On by default on every box, the Shield TV Pro 2019
+     * too: there swap was full before playback, 14 cached apps were killed when 4K started and 667 MB was left at stop.
+     * [switch] (debug.nuvio.thumb_swap_rule): false relaxes it, full swap then refuses only below 900 MB available.
      */
-    internal fun swapRuleOn(
-        switch: Boolean?,
-        manufacturer: String? = Build.MANUFACTURER,
-        device: String? = Build.DEVICE,
-    ): Boolean = switch ?: !DeviceProfile.isShieldPro2019(manufacturer, device)
+    internal fun swapRuleOn(switch: Boolean?): Boolean = switch ?: true
 
     /**
      * The heap in use counts garbage not collected yet: when the free-heap rule is the only one that fails, [collect]
