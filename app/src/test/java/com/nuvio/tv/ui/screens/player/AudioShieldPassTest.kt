@@ -144,6 +144,36 @@ class AudioShieldPassTest {
         assertFalse(idleBluetoothPinSurvives(pin, emptyList(), nonBluetoothSinkRemoved = true))
     }
 
+    // --- debug.nuvio.hbr_iec ---
+
+    private fun iec(
+        switch: Boolean?,
+        systemPassthrough: Boolean = false,
+        optical: Boolean = false,
+        bluetooth: Boolean = false,
+        iecOff: Boolean = false
+    ) = hbrIecEnabled(switch, systemPassthrough, optical, bluetooth, iecOff)
+
+    @Test
+    fun `without the switch the system passthrough setting decides the iec packer`() {
+        assertTrue(iec(switch = null, systemPassthrough = false))
+        assertFalse(iec(switch = null, systemPassthrough = true))
+    }
+
+    @Test
+    fun `the hbr_iec switch forces either side over the setting`() {
+        assertTrue(iec(switch = true, systemPassthrough = true))
+        assertFalse(iec(switch = false, systemPassthrough = false))
+    }
+
+    @Test
+    fun `optical, bluetooth and a failed iec stream keep the packer off whatever the switch`() {
+        assertFalse(iec(switch = true, optical = true))
+        assertFalse(iec(switch = true, bluetooth = true))
+        assertFalse(iec(switch = true, iecOff = true))
+        assertFalse(iec(switch = null, iecOff = true))
+    }
+
     // --- debug.nuvio.hbr_buffer_scale ---
 
     @Test
