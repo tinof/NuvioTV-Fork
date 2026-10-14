@@ -133,4 +133,19 @@ class DolbyVisionDecoderChoiceTest {
         // A box whose HEVC decoder also lists DV: the list decides, not the name.
         assertTrue(DolbyVisionBaseLayerPolicy.isDolbyVisionDecoderName("c2.mtk.hevc.decoder", setOf("c2.mtk.hevc.decoder")))
     }
+
+    @Test
+    fun `dv decoders first is the nvidia default on a dv display`() {
+        assertTrue(DolbyVisionCodecFallback.prefersDvDecoders(switch = null, displayDv = true, manufacturer = "NVIDIA"))
+        assertFalse(DolbyVisionCodecFallback.prefersDvDecoders(switch = null, displayDv = true, manufacturer = "Amlogic"))
+        assertFalse(DolbyVisionCodecFallback.prefersDvDecoders(switch = null, displayDv = true, manufacturer = null))
+    }
+
+    @Test
+    fun `dv decoders first switch wins on a dv display only`() {
+        assertFalse(DolbyVisionCodecFallback.prefersDvDecoders(switch = false, displayDv = true, manufacturer = "NVIDIA"))
+        assertTrue(DolbyVisionCodecFallback.prefersDvDecoders(switch = true, displayDv = true, manufacturer = "Amlogic"))
+        assertFalse(DolbyVisionCodecFallback.prefersDvDecoders(switch = true, displayDv = false, manufacturer = "Amlogic"))
+        assertFalse(DolbyVisionCodecFallback.prefersDvDecoders(switch = null, displayDv = false, manufacturer = "NVIDIA"))
+    }
 }
