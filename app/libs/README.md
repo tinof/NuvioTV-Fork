@@ -148,3 +148,14 @@ All other AAR entries and classes are byte-identical to the base AAR.
 Rebuild recipe: as for `lib-exoplayer-release.aar` above, with the extractor's own `classes.jar` first on
 the class path; no typedef removal is needed. The unchanged sources compile to the base classes apart from
 the constant pool order of the three extractors.
+
+## Known gap: lib-datasource-release.aar
+
+`lib-datasource-release.aar` SHA-256:
+`5375c0ff43784d210a69e7bfc438b9da9b2f42d6fb3b967ddae9b55902c7bf3d`.
+
+`LocalhostZeroCopyDataSource.open()` catches its own `InvalidResponseCodeException` and rethrows it as a
+plain `HttpDataSourceException`, and it reports every status other than 200, 206 and 416 as 400. A 404 or
+410 from a localhost stream therefore never reaches the expired-link check in
+`PlayerRuntimeControllerErrorRecovery.kt`. `LocalhostZeroCopyDataSourceTest.testHttpError404` is ignored
+until the class is rebuilt with the real status code; remove the `@Ignore` then.
