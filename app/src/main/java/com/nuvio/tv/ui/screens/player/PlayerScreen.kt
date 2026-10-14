@@ -2740,7 +2740,7 @@ private fun ExoPlayerSurface(
                         tunneledSurfaceFill = latestTunneledSurfaceFill,
                         aspectMode = latestAspectMode,
                         hdrVideo = latestHdrVideo,
-                        hdrViewScaleAllowed = hdrScaleAllowed
+                        hdrScaleAllowed = hdrScaleAllowed
                     )
                     controller.refreshVideoBottomFraction()
                 }
@@ -2753,7 +2753,7 @@ private fun ExoPlayerSurface(
                         tunneledSurfaceFill = latestTunneledSurfaceFill,
                         aspectMode = latestAspectMode,
                         hdrVideo = latestHdrVideo,
-                        hdrViewScaleAllowed = hdrScaleAllowed
+                        hdrScaleAllowed = hdrScaleAllowed
                     )
                     controller.refreshVideoBottomFraction()
                 }
@@ -2783,7 +2783,7 @@ private fun ExoPlayerSurface(
                 tunneledSurfaceFill = latestTunneledSurfaceFill,
                 aspectMode = latestAspectMode,
                 hdrVideo = latestHdrVideo,
-                hdrViewScaleAllowed = hdrScaleAllowed
+                hdrScaleAllowed = hdrScaleAllowed
             )
         }
         onDispose {
@@ -2829,7 +2829,7 @@ private fun ExoPlayerSurface(
                     tunneledSurfaceFill = latestTunneledSurfaceFill,
                     aspectMode = latestAspectMode,
                     hdrVideo = latestHdrVideo,
-                    hdrViewScaleAllowed = hdrScaleAllowed
+                    hdrScaleAllowed = hdrScaleAllowed
                 )
             }
         }
@@ -2852,7 +2852,7 @@ private fun ExoPlayerSurface(
             tunneledSurfaceFill = tunneledSurfaceFill,
             aspectMode = aspectMode,
             hdrVideo = hdrVideo,
-            hdrViewScaleAllowed = hdrScaleAllowed
+            hdrScaleAllowed = hdrScaleAllowed
         )
     }
 
@@ -2899,7 +2899,7 @@ private fun PlayerView.syncExoSurfaceLayout(
     tunneledSurfaceFill: Boolean,
     aspectMode: AspectMode,
     hdrVideo: Boolean,
-    hdrViewScaleAllowed: Boolean
+    hdrScaleAllowed: Boolean
 ) {
     val targetResizeMode = PlayerDisplayModeUtils.exoSurfaceResizeMode(
         tunnelingEnabled = tunnelingEnabled,
@@ -2909,7 +2909,7 @@ private fun PlayerView.syncExoSurfaceLayout(
         resizeMode = targetResizeMode
     }
     applyExoAspectMode(
-        aspectModeAppliedToExoSurface(tunnelingEnabled, aspectMode, hdrVideo, hdrViewScaleAllowed)
+        aspectModeAppliedToExoSurface(tunnelingEnabled, aspectMode, hdrVideo, hdrScaleAllowed)
     )
     reportSubtitleTextMetrics()
 }
