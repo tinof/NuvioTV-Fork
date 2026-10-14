@@ -437,6 +437,9 @@ internal fun PlayerRuntimeController.initializePlayer(
             afrTrackGeneration++
             trackAfrAttemptedForCurrentStream = false
             afrTrackSwitchInFlight = false
+            // A new or reused player gets fresh track parameters below, which
+            // already undo a quiesce the previous stream's AFR step left.
+            dropTrackAfrQuiesce()
             afrModeAppliedPreStart = false
             afrSeededRateRaw = 0f
             // Never carry a preview position into a new player /
@@ -1987,6 +1990,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 pendingSeekTelemetryReadyLatencyMs = latencyMs
                             }
                             logSeekReady("ready")
+                            // Track-AFR has audio and video both off for a tunnelled switch:
+                            // this READY has no A/V renderers and must not use up the first-READY
+                            // start. endTrackAfrQuiesce re-enables them with a seek, so a
+                            // real READY follows.
+                            if (afrAvQuiesceInFlight) return
                             // Don't auto-play on the initial STATE_READY — wait
                             // for onRenderedFirstFrame() to ensure A/V sync.
                             // Exception: tunneled playback never fires
