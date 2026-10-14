@@ -52,14 +52,17 @@ jobs:
             touch local.dev.properties
           fi
 
-          # Logs of this public repo are public: mask every value, then list the key names only.
+          # Logs of this public repo are public: mask the credentials and list key names only. Plain names
+          # and URLs stay unmasked, or a value like "nuvio" would hide the package name in every log line.
           keys=""
           for file in local.properties local.dev.properties; do
             while IFS='=' read -r key value || [ -n "$key" ]; do
               key="$(printf '%s' "$key" | tr -d '[:space:]')"
               case "$key" in ''|'#'*) continue ;; esac
               value="$(printf '%s' "$value" | tr -d '\r')"
-              [ -n "$value" ] && echo "::add-mask::$value"
+              case "$key" in *KEY*|*SECRET*|*CLIENT_ID*|*TOKEN*|*PASSWORD*)
+                [ -n "$value" ] && echo "::add-mask::$value" ;;
+              esac
               [ -n "$value" ] && keys="$keys $key"
             done < "$file"
           done
