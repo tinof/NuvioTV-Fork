@@ -41,6 +41,9 @@ db/
 backups/
 .supabase_db.env
 scripts/*
+!scripts/shield_measure.py
+!scripts/shield_snapshot.sh
+!scripts/shield_restore.sh
 !scripts/generate-release-notes.sh
 !scripts/generate_release_notes.py
 !scripts/release_notes/
@@ -61,6 +64,7 @@ local-assets/supporter-profile-backgrounds/
 logs
 AGENTS.md
 /PR.md
-docs/
+/docs/*
+!/docs/ROADMAP_LOG.md
 status-page/
 sentry.properties
