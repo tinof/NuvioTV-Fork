@@ -52,8 +52,12 @@ measurement, engine, upstream, docs), rank only steps under it, but still report
      prints only the signing-certificate digest, which is the same for every build. versionCode is
      hardcoded and cannot tell builds apart either.
 
-  A missing package, a failed hash or no matching run means "new build needed". Never treat an unknown
-  result as fresh.
+  **Local build instead of CI.** When no CI run matches, the installed APK still counts as fresh when
+  its hash appears in `.local/shield-builds.tsv` (written by `scripts/shield_build_install.sh`) on a row
+  whose commit is `git rev-parse HEAD` with no `(dirty tree)` mark. Name it "local build" in the answer.
+
+  A missing package, a failed hash or no matching run or local row means "new build needed". Never treat
+  an unknown result as fresh.
 
   A debuggable build (heap dumps, `run-as` backups) never comes from CI: it is a local
   `./gradlew :app:assembleFullDebug -Pdebuggable=true -PnuvioAppIdSuffix=.shielddbg` from a clean tree at
