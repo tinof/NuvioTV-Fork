@@ -10,6 +10,26 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-16: Appendix A, on-device Dolby Vision conversion
+
+The owner asked whether the fork can convert HDR10+, HDR10 and HLG to Dolby Vision during playback,
+with hdr-analyze's code and the Shield's GPU. The plan is a separate track in `ROADMAP.md` Appendix A,
+items DV1–DV6, outside the Priorities list.
+
+- HDR10+ → 8.1 needs no pixels: L1 is arithmetic on each AU's HDR10+ SEI. CUDA is not available to
+  Shield apps; measured L1 for HDR10 and HLG would use Vulkan compute on a second decoder, behind device
+  gates for 10-bit frame import (G-A), a concurrent 4K decode (G-B) and Dolby Vision from synthesized
+  signalling (G-C).
+- Codex pass 0 (gpt-6-astra, medium; it saw no draft) contributed the injector with interchangeable L1
+  providers, the late replacement at renderer input, the watermark, and the evidence that Profile 8.4
+  plays through a Shield TV Pro into an LG C9 (hdr-analyze `docs/ROADMAP_LOG.md:237-262`).
+- A Claude citation check of the draft found four errors, all fixed: Media3 passes the dvcC to the
+  decoder for MP4; dovi_tool takes HDR10+ L1 from each scene's first frame; the two gpuinfo reports are
+  1.0.61 and 1.0.56; the CUDA evidence is one forum thread. It also showed that holding back a track's
+  Format can deadlock preparation (`MatroskaExtractor.java:1411-1414`). Details in
+  `docs/dv-conversion/claude-factcheck-r1.md`.
+- Codex's critique of the draft did not run: the account hit its usage limit.
+
 ## 2026-10-16: upstream plan and toolchain
 
 The Shield work is meant to reach `ysosrs123/NuvioTV-Fork` as pull requests later. Three principles were
