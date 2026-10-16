@@ -66,5 +66,6 @@ AGENTS.md
 /PR.md
 /docs/*
 !/docs/ROADMAP_LOG.md
+!/docs/REVIEW.md
 status-page/
 sentry.properties
