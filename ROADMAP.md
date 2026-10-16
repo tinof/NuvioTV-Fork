@@ -23,7 +23,10 @@ gate; **Core complete** meets the gate but keeps named follow-up work; **Deferre
 scheduled. Items with no follow-up left move to the log.
 
 **Step format.** Every open step is one line that `/roadmap-next` reads:
-`- [tags] <step>. Gate: <evidence>.` with an optional `Needs: <item step>` for a prerequisite.
+`- [<ID>][tags] <step>. Gate: <evidence>.` with an optional `Needs: <ID>[, <ID>]` for a prerequisite.
+IDs are `<item>.<n>` (for example `R2.1`), assigned once and never reused or renumbered. A new step
+takes 1 + the highest number ever used for that item in `ROADMAP.md`, `docs/ROADMAP_LOG.md` and
+`Roadmap-Step:` commit trailers.
 
 | Tag | Meaning |
 |---|---|
@@ -33,8 +36,16 @@ scheduled. Items with no follow-up left move to the log.
 | `new-build` | Needs a debug APK of the current HEAD installed on the Shield |
 
 **How to update.** Change the item's status and open steps in place. Add one row to the progress log
-(one sentence plus the commit or PR) and the full text of the step to
+(one sentence plus the PR) and the full text of the step to
 [`docs/ROADMAP_LOG.md`](docs/ROADMAP_LOG.md). Measurements go to the log, not into the item.
+
+- When a step ships, `/ship` removes its line in a `fork:` commit, updates the item's status, adds a
+  progress-log row that cites the PR number (never a commit SHA: rebase merges rewrite SHAs), and adds
+  the full step text with its ID, the gate evidence and the PR to the log.
+- A step whose gate needs device or owner evidence that does not exist yet stays, with `Landed: PR #n;
+  gate pending.` appended.
+- A review finding that only the Shield can settle becomes a new `[device]` step with a fresh ID.
+- An item with no steps left moves to the log.
 
 ## Current status (updated 2026-10-15)
 
@@ -68,16 +79,16 @@ the UI mode.
 Steps that need a decision or a reading from the owner. Other steps of the same item stay startable.
 `/roadmap-next` reads this list; remove an entry when it is settled.
 
-- **UI refresh rate (S4).** 24/25 Hz against 50/60 Hz for the UI, decided from the M1 A/B on the Home
+- **UI refresh rate (S4.1).** 24/25 Hz against 50/60 Hz for the UI, decided from the M1 A/B on the Home
   journeys. It trades UI fluidity against mode switches at every start.
-- **AVR readings (Q1).** The Atmos, DTS:X and E-AC3 Atmos indicators during the passthrough A/Bs, with the
-  TV and AVR models recorded.
-- **`hbr_iec` default (Q1).** A listening A/B of the platform path against the fork's IEC61937 packer.
-- **Hot-Stop session (R2).** The owner must be able to power-cycle the Shield during the session.
-- **Defaults after measuring (Q2, R2).** The AFR settle hold (600 or 1200 ms) and whether "keep the
+- **AVR readings (Q1.2, Q1.3).** The Atmos, DTS:X and E-AC3 Atmos indicators during the passthrough
+  A/Bs, with the TV and AVR models recorded.
+- **`hbr_iec` default (Q1.2).** A listening A/B of the platform path against the fork's IEC61937 packer.
+- **Hot-Stop session (R2.4).** The owner must be able to power-cycle the Shield during the session.
+- **Defaults after measuring (Q2.5, R2.4).** The AFR settle hold (600 or 1200 ms) and whether "keep the
   content frame rate after playback" becomes the Nvidia default.
 - **Merge into `main`.** Criteria: R1 done, the R2 mitigation shipped, Q2 done, CI green.
-- **Ask the upstream maintainer (U1).** Whether Shield work is wanted upstream and in what form; the
+- **Ask the upstream maintainer (U1.1).** Whether Shield work is wanted upstream and in what form; the
   owner decides how and when to ask.
 
 ## Progress log
@@ -155,13 +166,13 @@ because a wrong passthrough path is invisible until measured.
   the window to transparent for true black bars, the bar areas keep old pixels. The default never made
   the app layer opaque to the compositor either: once a SurfaceView has attached, the window format is
   forced to TRANSLUCENT (Home showed `isOpaque=0`). Nothing outside the commit reads `opaque_window`.
-- [desk] Revert be0ce8ec9 (it applies cleanly) and remove the `opaque_window` row from the defaults
+- [R1.1][desk] Revert be0ce8ec9 (it applies cleanly) and remove the `opaque_window` row from the defaults
   table. Gate: unit tests green.
-- [device] On the current APK, confirm the mechanism: `setprop debug.nuvio.opaque_window 0`, restart the
+- [R1.2][device] On the current APK, confirm the mechanism: `setprop debug.nuvio.opaque_window 0`, restart the
   app, play a 2.40:1 title with True black bars on. Gate: bars black with `0`, stale with the default.
-- [device][new-build] Two 2.40:1 titles with True black bars on, started from the detail page, with ASS
+- [R1.3][device][new-build] Two 2.40:1 titles with True black bars on, started from the detail page, with ASS
   subtitles on the canvas overlay and on Overlay OpenGL. Gate: black bars, one subtitle line, no CLIENT
-  composition in `dumpsys SurfaceFlinger`. Needs: R1 revert.
+  composition in `dumpsys SurfaceFlinger`. Needs: R1.1.
 
 ### R2: switch-back after Stop (incident 01)
 
@@ -169,32 +180,32 @@ because a wrong passthrough path is invisible until measured.
 - In the incident the video layer was already gone when the switch-back hung; HDCP read failures had
   started right after the switch-in. Of the strategies weighed, only skipping the switch-back removes the
   mode set at Stop (H4). A clean run of 30 Stops cannot tell the delay from no delay (H5).
-- [desk] When the activity is finishing or destroyed, or the window is detached, return Skip plus
-  `clearOriginalDisplayMode()` on Nvidia instead of restoring at once (`FrameRateUtils.kt:808`,
-  `:840-844`), with a unit test for `displayModeRestorePlan`. Gate: test green.
-- [desk] A pending restore is cancelled when any new player attaches, not only one that plans a mode
+- [R2.1][desk] When the activity is finishing or destroyed, or the window is detached, return Skip plus
+  `clearOriginalDisplayMode()` on Nvidia instead of restoring at once (`FrameRateUtils.kt:808`, `:840-844`),
+  with a unit test for `displayModeRestorePlan`. Gate: test green.
+- [R2.2][desk] A pending restore is cancelled when any new player attaches, not only one that plans a mode
   (B2). Gate: unit test.
-- [desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
+- [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
   default off. Gate: setting persists; switch still overrides.
-- [device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
-  play 60–120 s, Stop), rotating arms A/B/C = `afr_restore_delay_ms` 0 / 750 / 3000 (each with `afr_restore_skip 0` set explicitly) and
-  D = `afr_restore_skip 1`. A Stop is "hot" when `NvTsecHdcpReadCaps failed` appears in the 30 s before
-  it. Record hot and cold Stops and hangs per arm. Gate: the per-arm table is in the log; the skip setting
-  ships either way; a delay arm becomes the default only with at least 5 hot Stops and no hang on it, and
-  otherwise the fault is documented with no fix claimed. Needs: M2 scripts.
+- [R2.4][device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
+  play 60–120 s, Stop), rotating arms A/B/C = `afr_restore_delay_ms` 0 / 750 / 3000 (each with
+  `afr_restore_skip 0` set explicitly) and D = `afr_restore_skip 1`. A Stop is "hot" when `NvTsecHdcpReadCaps
+  failed` appears in the 30 s before it. Record hot and cold Stops and hangs per arm. Gate: the per-arm table
+  is in the log; the skip setting ships either way; a delay arm becomes the default only with at least 5 hot
+  Stops and no hang on it, and otherwise the fault is documented with no fix claimed. Needs: M2.1.
 - Deferred: reading logcat for the HDCP failure as a leading sign (H3); it needs `READ_LOGS` granted over
   adb and is only worth it if the hot-Stop test shows the condition matters.
 
 ### R3: small correctness fixes
 
 - **Status:** Open. Findings A-M3, A-M7.
-- [desk] Make the four `PlayerSettings` data-class defaults Nvidia-aware, as `libassRenderType` already is
-  (`PlayerSettingsDataStore.kt:263, 307, 309, 311`); the corrupt-store fallback at `:1418` uses them.
-  Gate: unit test on a Nvidia profile.
-- [desk] Save watch progress on the mpv lifecycle pause (`PlayerRuntimeControllerMpv.kt:247-254`), so a
+- [R3.1][desk] Make the four `PlayerSettings` data-class defaults Nvidia-aware, as `libassRenderType` already
+  is (`PlayerSettingsDataStore.kt:263, 307, 309, 311`); the corrupt-store fallback at `:1418` uses them. Gate:
+  unit test on a Nvidia profile.
+- [R3.2][desk] Save watch progress on the mpv lifecycle pause (`PlayerRuntimeControllerMpv.kt:247-254`), so a
   CEC sleep keeps the resume point. Gate: unit or integration test.
-- [device][owner][new-build] CEC sleep: turn the TV off during playback with ExoPlayer and with mpv, kill
-  the app, check the resume point. Gate: progress saved on both. Needs: R3 mpv progress.
+- [R3.3][device][owner][new-build] CEC sleep: turn the TV off during playback with ExoPlayer and with mpv,
+  kill the app, check the resume point. Gate: progress saved on both. Needs: R3.2.
 
 ## Playback quality
 
@@ -202,73 +213,74 @@ because a wrong passthrough path is invisible until measured.
 
 - **Status:** Partial. TrueHD reached the AVR as direct passthrough with 0 underruns on the HUD. The
   `hbr_iec` default was never A/B tested and no AVR indicator was recorded. Findings A1–A3, A6, D2, D3.
-- [desk] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
+- [Q1.1][desk] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
   skipped and the first cluster time in `MKV_RESYNC` (A2); the delta and time since the last seek on
   `UnexpectedDiscontinuityException` (A3). Gate: tests on the log helpers.
-- [device][owner][new-build] `hbr_iec` 0 against 1 on a TrueHD Atmos title and a DTS-HD MA title
+- [Q1.2][device][owner][new-build] `hbr_iec` 0 against 1 on a TrueHD Atmos title and a DTS-HD MA title
   (tunneling off). Record the AVR indicator, `HBR active payload=` against `HBR DIRECT`, and
-  `restartIfDisabled`. Gate: readings in the log; default decided. Needs: Q1 log changes.
-- [device][owner] E-AC3 Atmos: play an E-AC3 JOC stream and record the AVR indicator. Gate: reading in
+  `restartIfDisabled`. Gate: readings in the log; default decided. Needs: Q1.1.
+- [Q1.3][device][owner] E-AC3 Atmos: play an E-AC3 JOC stream and record the AVR indicator. Gate: reading in
   the log.
-- [device] `hbr_buffer_scale` 1 against 2 over 10 seeks: time from `SEEK_READY` to the first advance of
-  the AudioTrack playback head (logcat), and underruns. Gate: numbers in the log; the ×2 cap kept or
-  dropped.
-- [device][owner] TrueHD stress: 20 seeks and 10 pause/resume cycles, then switch the AVR input away
-  and back (D2, D3). Gate: no mute, no crash, sound returns without a restart; otherwise a re-prepare step is
+- [Q1.4][device] `hbr_buffer_scale` 1 against 2 over 10 seeks: time from `SEEK_READY` to the first advance of
+  the AudioTrack playback head (logcat), and underruns. Gate: numbers in the log; the ×2 cap kept or dropped.
+- [Q1.5][device][owner] TrueHD stress: 20 seeks and 10 pause/resume cycles, then switch the AVR input away and
+  back (D2, D3). Gate: no mute, no crash, sound returns without a restart; otherwise a re-prepare step is
   added here.
-- [desk] Optional: detect E-AC3 JOC (Atmos) from the first syncframe and show it on the HUD (A6).
-  Gate: unit test on a JOC syncframe.
-- [device][new-build] The HUD shows Atmos on an E-AC3 JOC stream. Gate: screenshot in the log. Needs:
-  Q1 JOC detection.
+- [Q1.6][desk] Optional: detect E-AC3 JOC (Atmos) from the first syncframe and show it on the HUD (A6). Gate:
+  unit test on a JOC syncframe.
+- [Q1.7][device][new-build] The HUD shows Atmos on an E-AC3 JOC stream. Gate: screenshot in the log. Needs:
+  Q1.6.
 
 ### Q2: AFR plan and settle correctness
 
 - **Status:** Open. Findings B1, B4, B5, D1, D5.
-- [desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that the
-  display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
+- [Q2.1][desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that
+  the display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
   `FrameRateUtils.kt:681`). Gate: unit test of the plan.
-- [desk] Do not update `isHdrVideo` and `tunnelingApplied` from the both-off selection during an
+- [Q2.2][desk] Do not update `isHdrVideo` and `tunnelingApplied` from the both-off selection during an
   audio-and-video quiesce (B4, `PlayerRuntimeControllerTracks.kt:174`). Gate: unit test.
-- [desk] Clamp the settle hold to 3000 ms so the track-AFR deadline cannot run out (B5). Gate: unit test.
-- [device][new-build] Re-entry: Stop a title whose rate differs from the UI mode, then start another of
-  the same rate while the restore to the UI mode is issued but not yet reached. Gate: the new title plays at its own rate. Needs: Q2
-  re-entry wait.
-- [device][owner] Settle hold 600 against 1200 ms, three starts each of a TrueHD title whose rate differs
-  from the UI mode. Gate: no AudioSink write errors, no `restartIfDisabled`,
-  picture and sound locked; default decided.
+- [Q2.3][desk] Clamp the settle hold to 3000 ms so the track-AFR deadline cannot run out (B5). Gate: unit
+  test.
+- [Q2.4][device][new-build] Re-entry: Stop a title whose rate differs from the UI mode, then start another of
+  the same rate while the restore to the UI mode is issued but not yet reached. Gate: the new title plays at
+  its own rate. Needs: Q2.1.
+- [Q2.5][device][owner] Settle hold 600 against 1200 ms, three starts each of a TrueHD title whose rate
+  differs from the UI mode. Gate: no AudioSink write errors, no `restartIfDisabled`, picture and sound locked;
+  default decided.
 
 ### Q3: frame pacing and display-listener leak
 
 - **Status:** Open. Findings H6, C2, C4.
 - SurfaceFlinger logged "Timestamp … seems implausible" on every frame of the HEVC and native DV runs
   and never on the run whose mode switch came before the codec started.
-- [device] `render_trace 1`, check `releaseInMs` is 0–50 ms while the warning shows; then the same title
+- [Q3.1][device] `render_trace 1`, check `releaseInMs` is 0–50 ms while the warning shows; then the same title
   with `afr_quiesce_av 1`. Gate: the live mode switch confirmed or ruled out as the trigger.
-- [device][new-build] On a `-Pdebuggable=true` build installed beside the CI build with its own suffix
-  (`-PnuvioAppIdSuffix=.shielddbg`; heap dumps only, never timings): `am dumpheap` after 3 playbacks and find the owner of each `DisplayListenerDelegate`. Gate: owner identified.
-- [desk] Patch `VideoFrameReleaseHelper$DisplayHelper` (already in the rebuilt set) with an idempotent
-  unregister, and fold in cb0d86f25f (no `Surface.setFrameRate` on an invalid surface). Gate: the AAR
-  rebuild recipe reproduces the unchanged classes; unit tests green. Needs: Q3 heap dump.
-- [device][new-build] Five playbacks on the patched build. Gate: no "Handler on a dead thread" lines;
-  the listener count stays flat. Needs: Q3 patch.
+- [Q3.2][device][new-build] On a `-Pdebuggable=true` build installed beside the CI build with its own suffix
+  (`-PnuvioAppIdSuffix=.shielddbg`; heap dumps only, never timings): `am dumpheap` after 3 playbacks and find
+  the owner of each `DisplayListenerDelegate`. Gate: owner identified.
+- [Q3.3][desk] Patch `VideoFrameReleaseHelper$DisplayHelper` (already in the rebuilt set) with an idempotent
+  unregister, and fold in cb0d86f25f (no `Surface.setFrameRate` on an invalid surface). Gate: the AAR rebuild
+  recipe reproduces the unchanged classes; unit tests green. Needs: Q3.2.
+- [Q3.4][device][new-build] Five playbacks on the patched build. Gate: no "Handler on a dead thread" lines;
+  the listener count stays flat. Needs: Q3.3.
 - Deferred: building the player while the preflight mode switch settles (P-03). `prepare()` can render
   through a live codec, the suspected timestamp trigger.
 
 ### Q4: decode-path bugs
 
 - **Status:** Open. Findings A-M2, D7, D8.
-- [desk] The Dolby Vision 7 flag is set from the setting and the probe without a content check, so an
-  HDR10 file logs `dv7dovi=true` and runs the DV extractor factory (`PlayerRuntimeControllerInitialization.kt:746-747`).
-  Require a DV7 track. Gate: unit test.
-- [desk] HDR Fit lock: while HDR video is locked to Fit, show "Fit (HDR)" and do not cycle or save the
+- [Q4.1][desk] The Dolby Vision 7 flag is set from the setting and the probe without a content check, so an
+  HDR10 file logs `dv7dovi=true` and runs the DV extractor factory
+  (`PlayerRuntimeControllerInitialization.kt:746-747`). Require a DV7 track. Gate: unit test.
+- [Q4.2][desk] HDR Fit lock: while HDR video is locked to Fit, show "Fit (HDR)" and do not cycle or save the
   aspect mode (`PlayerAspectScaleUtils.kt:34`). Gate: unit test.
-- [device] `async_codec` 0 against 1 on a 4K60 title: dropped frames with thumbnails on. Gate: numbers in
-  the log; default kept or reverted.
-- [device] A high-bitrate DV remux with Atmos over Wi-Fi and over Ethernet (D7). Gate: rebuffers and
+- [Q4.3][device] `async_codec` 0 against 1 on a 4K60 title: dropped frames with thumbnails on. Gate: numbers
+  in the log; default kept or reverted.
+- [Q4.4][device] A high-bitrate DV remux with Atmos over Wi-Fi and over Ethernet (D7). Gate: rebuffers and
   drops recorded.
-- [device][owner] Dolby Vision signalling: read the TV's info screen for a profile 5 and a profile 8
-  title (DV mode and, where shown, the signal format) against the hwcomposer mode name in logcat (D8).
-  Gate: readings in the log.
+- [Q4.5][device][owner] Dolby Vision signalling: read the TV's info screen for a profile 5 and a profile 8
+  title (DV mode and, where shown, the signal format) against the hwcomposer mode name in logcat (D8). Gate:
+  readings in the log.
 
 ## Snappiness
 
@@ -278,13 +290,13 @@ because a wrong passthrough path is invisible until measured.
 - On a track-AFR start, playback began 1.8–2.7 s after the first frame. The stable time is read on an IO
   thread, but the result and the fixed 1200 ms hold run on the main thread, which the HDMI re-link
   stalls (`PlayerRuntimeControllerAfrTrack.kt:340-347`).
-- [desk] Re-read P-01, P-02 and P-11 against the code and the report logs before any change. Gate: each
+- [S1.1][desk] Re-read P-01, P-02 and P-11 against the code and the report logs before any change. Gate: each
   confirmed or dropped in the log.
-- [desk] Record the stable time on the IO thread and hold only `max(0, hold − (now − stableAt))`; apply
-  the same rule to the pre-start path. Gate: unit test. Needs: S1 re-read.
-- [desk] When parallel networking is off, drop the 4 MB tail prewarm (P-12). Gate: unit test.
-- [device][new-build] Three starts of a 4K TrueHD remux that switches rate. Gate: click →
-  `PLAYBACK_STARTED` beats the M1 baseline. Needs: M1 baseline.
+- [S1.2][desk] Record the stable time on the IO thread and hold only `max(0, hold − (now − stableAt))`; apply
+  the same rule to the pre-start path. Gate: unit test. Needs: S1.1.
+- [S1.3][desk] When parallel networking is off, drop the 4 MB tail prewarm (P-12). Gate: unit test.
+- [S1.4][device][new-build] Three starts of a 4K TrueHD remux that switches rate. Gate: click →
+  `PLAYBACK_STARTED` beats the M1 baseline. Needs: M1.4.
 
 ### S2: seek and thumbnails
 
@@ -292,44 +304,42 @@ because a wrong passthrough path is invisible until measured.
 - The Shield counts as a strong box, so the 4K thumbnail sweep runs unpaced with 2 lanes while a remux
   plays (`SeekThumbnailEngine.kt:993`, `:1962`); strong boxes also skip the playback monitor
   (`:725`). The round-3 swap rule did not apply: SwapFree was 385 MB in that run.
-- [desk] Re-read P-05 to P-07 against the code and logs. Gate: confirmed or dropped in the log.
-- [desk] While a 4K remux plays on mdarcy: paced path, 1 lane, playback monitor on. Gate: unit test.
-  Needs: S2 re-read.
-- [desk] Hold thumbnail work while playback is starting or an AFR hold is active (an explicit start/hold
-  state: the AFR path keeps `playWhenReady` false during the hold,
-  `PlayerRuntimeControllerAfrTrack.kt:223`), and cancel non-urgent thumbnail fetches when a seek is
-  committed (P-06). Gate: unit test.
-- [desk] Abort the socket when a load is cancelled, so a stalled read does not delay the seek (P-07).
+- [S2.1][desk] Re-read P-05 to P-07 against the code and logs. Gate: confirmed or dropped in the log.
+- [S2.2][desk] While a 4K remux plays on mdarcy: paced path, 1 lane, playback monitor on. Gate: unit test.
+  Needs: S2.1.
+- [S2.3][desk] Hold thumbnail work while playback is starting or an AFR hold is active (an explicit start/hold
+  state: the AFR path keeps `playWhenReady` false during the hold, `PlayerRuntimeControllerAfrTrack.kt:223`),
+  and cancel non-urgent thumbnail fetches when a seek is committed (P-06). Gate: unit test.
+- [S2.4][desk] Abort the socket when a load is cancelled, so a stalled read does not delay the seek (P-07).
   Gate: test with a stalled source.
-- [desk] Read the MKV Cues element in bulk with a size cap; keep the audio cue points (per-track seek and
-  the audio-only fallback use them) (P-04). Gate: extractor tests green.
-- [device][new-build] Identical cold starts of a 4K remux with thumbnails on and off, measured over 60 s
+- [S2.5][desk] Read the MKV Cues element in bulk with a size cap; keep the audio cue points (per-track seek
+  and the audio-only fallback use them) (P-04). Gate: extractor tests green.
+- [S2.6][device][new-build] Identical cold starts of a 4K remux with thumbnails on and off, measured over 60 s
   from the moment the sweep starts. Gate: with thumbnails on, CPU within 5 percentage points, native heap
-  within 50 MB and dropped frames within 2 of thumbnails off. Needs: M1 baseline.
+  within 50 MB and dropped frames within 2 of thumbnails off. Needs: M1.4.
 
 ### S3: Stop freeze
 
 - **Status:** Open. Finding P-08. Not skeptic-checked.
-- [desk] Take the `MEM_FINAL` snapshot off the main thread, and time snapshot, stop, surface clear and
-  release separately (`PlayerMemoryReporter.kt:80-83`). Stop and surface clearing already run before
-  release (`PlayerRuntimeControllerLifecycle.kt:90-94`); do not reorder them. Gate: phase times logged.
-- [device][new-build] Ten Stops: main-thread stall and JankStats on the player route. Gate: beats the M1
-  baseline. Needs: S3 phase timing, M1 baseline.
+- [S3.1][desk] Take the `MEM_FINAL` snapshot off the main thread, and time snapshot, stop, surface clear and
+  release separately (`PlayerMemoryReporter.kt:80-83`). Stop and surface clearing already run before release
+  (`PlayerRuntimeControllerLifecycle.kt:90-94`); do not reorder them. Gate: phase times logged.
+- [S3.2][device][new-build] Ten Stops: main-thread stall and JankStats on the player route. Gate: beats the M1
+  baseline. Needs: S3.1, M1.4.
 
 ### S4: UI frames and navigation
 
 - **Status:** Open.
 - The report measured Home at 0.23 % janky frames, and player-route frames up to 1442 ms at start and
   748 ms at Stop. No visual-quality default reads `DeviceProfile.isNvidia`.
-- [device][owner] UI refresh rate A/B: the M1 Home journeys at the current UI rate and at 50/60 Hz. Gate: numbers in
-  the log; owner decides. Needs: M1 script.
-- [desk] Candidates, each behind a debug switch so one build can A/B them: the Home focus debounce of
+- [S4.1][device][owner] UI refresh rate A/B: the M1 Home journeys at the current UI rate and at 50/60 Hz.
+  Gate: numbers in the log; owner decides. Needs: M1.2.
+- [S4.2][desk] Candidates, each behind a debug switch so one build can A/B them: the Home focus debounce of
   110/250 ms (`ModernHomeRows.kt:189-198`); the Coil cache and decode settings
   (`NuvioApplication.kt:163-293`); the automatic visual-quality tier on Nvidia (`VisualQuality.kt:32-47`).
   Gate: unit tests; each switch reverts.
-- [device][new-build] A/B each candidate, and `speed` compilation against the committed baseline
-  profile, on the M1 journeys. Gate: a candidate lands only if it beats the baseline. Needs: S4
-  candidates, M1 baseline.
+- [S4.3][device][new-build] A/B each candidate, and `speed` compilation against the committed baseline
+  profile, on the M1 journeys. Gate: a candidate lands only if it beats the baseline. Needs: S4.2, M1.4.
 - Baseline-profile regeneration needs an API 34+ device or emulator (`scripts/perf_baseline.py:76-77`);
   the committed profile stays until then.
 - Deferred: the focused-card width animation (a row redesign).
@@ -342,24 +352,23 @@ because a wrong passthrough path is invisible until measured.
 - `scripts/perf_baseline.py` compiles the target (`:90`), and the macrobenchmark accepts only the v2 test
   packages (`NuvioNavigationBenchmark.kt:28`) at about 60 Hz (`:39-43`). Neither fits the daily apps or a
   24/25 Hz UI.
-- [desk] Log a `PLAYBACK_STARTED` stage with the time since the click, next to the first frame, so the
+- [M1.1][desk] Log a `PLAYBACK_STARTED` stage with the time since the click, next to the first frame, so the
   playback baseline measures what the viewer sees. Gate: unit test on the stage helper.
-- [desk][device] Write `scripts/shield_measure.py`. It takes `--serial` and wraps every adb call in a timeout. It
-  runs D-pad journeys with `input keyevent` (Home row, rows down, sidebar, details, settings) and reads
-  `dumpsys gfxinfo <pkg> reset` / `framestats`, `am start -W` and a JankStats summary. For playback it
-  reads click → `PLAYBACK_STARTED`, seek → first frame, drops, underruns and `restartIfDisabled`. On a
-  daily app it never compiles, force-stops or clears: it measures a cold start only when the app is not
-  running. No `dumpsys meminfo` during audio (it caused an underrun restart in the report). The details
-  journey reads the `DetailEntryTrace` stages the app already logs (`viewmodel_setup` to
-  `controls_focus`, tag `NuvioDetails`). Gate: dry run against the Shield. Needs: M2 scripts.
-- [desk] Build the `benchmark` variant of this branch for the UI journeys (`:app:assembleFullBenchmark`;
-  minified, shrunk, with the baseline profile, signed with the debug key). It installs as its own app with
-  the `.debug` suffix and needs one login. Gate: the APK installs on the Shield and passes the M1 dry run.
-  Needs: M1 script.
-- [device][new-build] Baselines on the same journeys: UI for this branch's `benchmark` build and the
-  upstream `com.nuvio.tv.test` release build; playback for the CI debug build of this branch and the
-  upstream app. Record the build type of each. Gate: both tables in the log. Needs: M1 script, M1
-  playback stage, M1 benchmark build.
+- [M1.2][desk][device] Write `scripts/shield_measure.py`. It takes `--serial` and wraps every adb call in a
+  timeout. It runs D-pad journeys with `input keyevent` (Home row, rows down, sidebar, details, settings) and
+  reads `dumpsys gfxinfo <pkg> reset` / `framestats`, `am start -W` and a JankStats summary. For playback it
+  reads click → `PLAYBACK_STARTED`, seek → first frame, drops, underruns and `restartIfDisabled`. On a daily
+  app it never compiles, force-stops or clears: it measures a cold start only when the app is not running. No
+  `dumpsys meminfo` during audio (it caused an underrun restart in the report). The details journey reads the
+  `DetailEntryTrace` stages the app already logs (`viewmodel_setup` to `controls_focus`, tag `NuvioDetails`).
+  Gate: dry run against the Shield. Needs: M2.1.
+- [M1.3][desk] Build the `benchmark` variant of this branch for the UI journeys (`:app:assembleFullBenchmark`;
+  minified, shrunk, with the baseline profile, signed with the debug key). It installs as its own app with the
+  `.debug` suffix and needs one login. Gate: the APK installs on the Shield and passes the M1 dry run. Needs:
+  M1.2.
+- [M1.4][device][new-build] Baselines on the same journeys: UI for this branch's `benchmark` build and the
+  upstream `com.nuvio.tv.test` release build; playback for the CI debug build of this branch and the upstream
+  app. Record the build type of each. Gate: both tables in the log. Needs: M1.2, M1.1, M1.3.
 
 ### M2: device-safety protocol
 
@@ -383,17 +392,16 @@ because a wrong passthrough path is invisible until measured.
   settings and the UI display mode, then diff against the snapshot.
 - **If the Shield stops answering**, or Watchdog or `flush_work` shows up: stop, save the logs, and tell
   the owner. Only a power cycle recovers it.
-- [desk][device] Scripts `scripts/shield_snapshot.sh` and `scripts/shield_restore.sh` (serial and
-  timeouts as in M1; `scripts/` is gitignored, and `.gitignore` already lists these and
-  `shield_measure.py` as exceptions). Gate: one snapshot and restore round trip on the Shield with an
-  empty diff.
+- [M2.1][desk][device] Scripts `scripts/shield_snapshot.sh` and `scripts/shield_restore.sh` (serial and
+  timeouts as in M1; `scripts/` is gitignored, and `.gitignore` already lists these and `shield_measure.py` as
+  exceptions). Gate: one snapshot and restore round trip on the Shield with an empty diff.
 
 ### M3: diagnostics
 
 - **Status:** Open. Findings A4, A5.
-- [desk] Count playback-head stalls (the client's `disabled due to previous underrun` restarts) on the
+- [M3.1][desk] Count playback-head stalls (the client's `disabled due to previous underrun` restarts) on the
   HUD, cumulative across track rebuilds (A4). Gate: unit test.
-- [desk] Log `STHRESH` only on API 31+ (A5). Gate: unit test.
+- [M3.2][desk] Log `STHRESH` only on API 31+ (A5). Gate: unit test.
 
 ## Engine
 
@@ -401,11 +409,11 @@ because a wrong passthrough path is invisible until measured.
 
 - **Status:** Open. Findings C1, C3–C12. The engine is Media3 1.8.0 with the backports listed in
   [`app/libs/README.md`](app/libs/README.md). None of these release notes mentions NVIDIA or Tegra.
-- [desk] Ready grace (be15915b6a, 1.11.0, androidx/media#3210): override `isReady()` in
+- [E1.1][desk] Ready grace (be15915b6a, 1.11.0, androidx/media#3210): override `isReady()` in
   `PlaybackSpeedAwareAudioRenderer` with the 100 ms grace and install that renderer on every Shield start.
   Read the upstream commit first. Gate: unit test.
-- [device][new-build] Ten starts and ten seeks with the ready grace. Gate: no new transient buffering
-  states in the log. Needs: E1 ready grace.
+- [E1.2][device][new-build] Ten starts and ten seeks with the ready grace. Gate: no new transient buffering
+  states in the log. Needs: E1.1.
 - Only on a symptom in device logs:
   - PCM AudioTrack buffer of 500 ms (560be5a871, 1.11.0, app-side) (C5);
   - operating-rate fallback (d1a3251ca4, 1.11.0; the audio half is app-side) (C6);
@@ -425,19 +433,18 @@ because a wrong passthrough path is invisible until measured.
 - **Status:** Open. The branch is 80 commits ahead of `upstream/main` and 0 behind (2026-10-16).
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
-- [owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
+- [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
   theme. Gate: the answer recorded in the log.
-- [desk] Sort the commits in `git log upstream/main..perf/shield-pass` into fork-only and upstreamable,
-  and list the every-device changes with the reason each applies everywhere (audio route under a
-  Bluetooth pin, lossless track default, controller buttons, native libraries loaded from the APK).
-  Gate: the table in the log; fork-only commits named.
-- [desk] For each theme, one branch from `upstream/main` with the upstreamable commits cherry-picked
-  (themes: AFR and display, audio passthrough, UI and performance, engine AARs with their rebuild
-  recipes). Gate: each branch builds and passes the unit tests in CI. Needs: U1 commit sort, U1 maintainer
-  answer.
-- [desk] Pull request text per theme with the M1 numbers it rests on and the revert switches. Gate: the
-  numbers come from the log. Needs: U1 theme branches, M1 baseline.
-- [desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits behind
+- [U1.2][desk] Sort the commits in `git log upstream/main..perf/shield-pass` into fork-only and upstreamable,
+  and list the every-device changes with the reason each applies everywhere (audio route under a Bluetooth
+  pin, lossless track default, controller buttons, native libraries loaded from the APK). Gate: the table in
+  the log; fork-only commits named.
+- [U1.3][desk] For each theme, one branch from `upstream/main` with the upstreamable commits cherry-picked
+  (themes: AFR and display, audio passthrough, UI and performance, engine AARs with their rebuild recipes).
+  Gate: each branch builds and passes the unit tests in CI. Needs: U1.2, U1.1.
+- [U1.4][desk] Pull request text per theme with the M1 numbers it rests on and the revert switches. Gate: the
+  numbers come from the log. Needs: U1.3, M1.4.
+- [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits behind
   at each pull request.
 
 ## Docs
@@ -446,7 +453,7 @@ because a wrong passthrough path is invisible until measured.
 
 - **Status:** Partial. The corrections to [`docs/shield-todo.md`](docs/shield-todo.md) listed in the log
   (2026-10-15) were applied with this roadmap. Findings A-M1, A-M4 to A-M6, B6, C12, W5, H6, H7, P-09, P-10.
-- [desk] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Gate: string present in every locale.
-- [desk] Settings label for libass: Overlay OpenGL is still marked "recommended" although Nvidia starts on
-  canvas; change it after the R1 subtitle check. Gate: label matches the default. Needs: R1 device check.
+- [D1.1][desk] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Gate: string present in every locale.
+- [D1.2][desk] Settings label for libass: Overlay OpenGL is still marked "recommended" although Nvidia starts
+  on canvas; change it after the R1 subtitle check. Gate: label matches the default. Needs: R1.3.
 - Closed: the Shield thermal threshold is not readable without root on SE 9.2.4; it stays unset.
