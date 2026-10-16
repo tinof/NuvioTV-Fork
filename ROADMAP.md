@@ -385,6 +385,12 @@ because a wrong passthrough path is invisible until measured.
   A `-Pdebuggable=true` build allows `run-as … tar`; it is used for heap dumps and backups, never for
   timings. Built locally it has a different signing key, so it installs beside the CI build under its own
   suffix (`.shielddbg`), never over it.
+- **Local builds.** `scripts/shield_build_install.sh [--suffix S] [--benchmark] [--debuggable] [--install]`
+  builds with JDK 17 like CI, logs HEAD, package, certificate and APK hash to `.local/shield-builds.tsv`, and with
+  `--install` runs `adb install -r` on `$ANDROID_SERIAL` and checks the installed hash. It builds `.shield` only
+  with the CI debug keystore (`NUVIO_DEBUG_STORE_FILE`, or `~/.config/nuvio/nuvio-debug.keystore`), and it
+  refuses to install when the installed app's certificate differs. Without that keystore, local builds use
+  their own suffix (`.shieldlocal`) beside the CI build.
 - **Daily apps** (`com.nuvio.tv.test`, Stremio): launch and measure only. Never `pm clear`, `force-stop`,
   `compile` or a setprop aimed at them.
 - **After a session**, restore every `debug.nuvio.*` property this session changed to its snapshot
