@@ -13,7 +13,7 @@ files, creates branches, opens PRs, installs APKs or sets device properties. It 
 scratchpad (the draft, the Codex answer, a downloaded APK for hashing).
 
 If `$ARGUMENTS` names an item ID (R1, Q2, S4, …) or a theme (reliability, quality, snappiness,
-measurement, engine, docs), rank only steps under it, but still report what is waiting for the owner.
+measurement, engine, upstream, docs), rank only steps under it, but still report what is waiting for the owner.
 
 ## 1. Gather state (one Bash call)
 
