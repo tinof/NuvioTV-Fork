@@ -17,9 +17,11 @@ with hdr-analyze's code and the Shield's GPU. The plan is a separate track in `R
 items DV1–DV6, outside the Priorities list.
 
 - HDR10+ → 8.1 needs no pixels: L1 is arithmetic on each AU's HDR10+ SEI. CUDA is not available to
-  Shield apps; measured L1 for HDR10 and HLG would use Vulkan compute on a second decoder, behind device
-  gates for 10-bit frame import (G-A), a concurrent 4K decode (G-B) and Dolby Vision from synthesized
-  signalling (G-C).
+  Shield apps; measured L1 for HDR10 and HLG would use Vulkan compute, first while nothing plays (one
+  decoder), then during playback on a second decoder, behind device gates for the pixel path (G-A), a
+  concurrent 4K decode (G-B), Dolby Vision from synthesized signalling (G-C) and a thermal run (G-F).
+- The evidence, the architecture, the budget and the risks moved to `docs/dv-conversion/DESIGN.md`, so
+  the appendix keeps only the goal, tiers, gates and steps.
 - Codex pass 0 (gpt-6-astra, medium; it saw no draft) contributed the injector with interchangeable L1
   providers, the late replacement at renderer input, the watermark, and the evidence that Profile 8.4
   plays through a Shield TV Pro into an LG C9 (hdr-analyze `docs/ROADMAP_LOG.md:237-262`).
@@ -28,7 +30,15 @@ items DV1–DV6, outside the Priorities list.
   1.0.61 and 1.0.56; the CUDA evidence is one forum thread. It also showed that holding back a track's
   Format can deadlock preparation (`MatroskaExtractor.java:1411-1414`). Details in
   `docs/dv-conversion/claude-factcheck-r1.md`.
-- Codex's critique of the draft did not run: the account hit its usage limit.
+- Codex's critique of draft 2 (gpt-6-astra, medium) raised 21 points, three of them blockers: a shot's
+  provider and L1 must be committed and frozen before its first AU is queued; an AU needs more identity
+  than its presentation time, with a new analysis generation at every seek, flush and release; and HLG
+  needs the full 8.4 colour contract and composer-domain measurement from the first measured tier. The
+  plan now adds a playback manifest, a signalling decision table, probes separate from qualification
+  (`docs/dv-conversion/QUALIFICATION.md`), idle-time analysis on one decoder before playback-time
+  analysis, and split steps. The disposition of each point is in `docs/dv-conversion/codex-r1-review.md`.
+- Codex's re-check of those changes found 12 points resolved and 9 partly resolved; its replacement texts
+  were applied (`docs/dv-conversion/codex-r2-recheck.md`). Codex accepted keeping HDR10+ in T0.
 
 ## 2026-10-16: upstream plan and toolchain
 

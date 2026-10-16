@@ -464,10 +464,11 @@ because a wrong passthrough path is invisible until measured.
 
 A separate track, outside the north star and the Priorities list. `/roadmap-next` does not rank these
 steps; they are picked by hand. Steps use the format above, with item IDs DV1 to DV6. Work in
-`hdr-analyze` (`tinof/hdr-analyze`) is named as such. The plan was drafted on 2026-10-16 with Codex
-(gpt-6-astra, medium) as co-designer. Codex's independent design and the citation check of this draft
-are in [`docs/dv-conversion/`](docs/dv-conversion/). Codex's critique of the draft has not run yet: the
-account hit its usage limit on 2026-10-16.
+`hdr-analyze` (`tinof/hdr-analyze`) is named as such. Conversion steps follow the development
+principles: each conversion is gated by `DeviceProfile`, yields to a saved setting, has a
+`debug.nuvio.*` revert switch and is documented. The plan was drafted on 2026-10-16 with Codex
+(gpt-6-astra, medium) as co-designer; the design, its evidence and the reviews are in
+[`docs/dv-conversion/`](docs/dv-conversion/).
 
 ### A.1 Goal
 
@@ -484,305 +485,223 @@ Why: the 2019 Shield outputs Dolby Vision and HDR10 but not HDR10+, so HDR10+ ti
 HDR10 today. HDR10 and HLG titles gain a dynamic, TV-led mapping only when the L1 metadata is good.
 
 **Plan in one paragraph.** One RPU injection layer with interchangeable L1 providers. First the
-providers that need no pixels (HDR10+, static, shot lists from the desktop or a LAN PC), then
-on-device measurement with Vulkan compute, which waits on three device gates. hdr-analyze contributes
-code (the RPU builders, the per-frame statistics, the shot aggregation, the HLG composer), not its CLI:
-`mkvdovi` calls `hdr10plus_tool`, `dovi_tool`, `ffmpeg` and `mkvmerge` as programs, which cannot run
-inside the APK.
+providers that need no pixels (static, HDR10+), then shot lists made on a PC (a local sidecar, then a LAN
+server), then analysis on the Shield: first while nothing plays, last during playback on a second
+decoder. hdr-analyze contributes code (the RPU builders, the per-frame statistics, the shot aggregation,
+the HLG composer), not its CLI: `mkvdovi` calls `hdr10plus_tool`, `dovi_tool`, `ffmpeg` and `mkvmerge` as
+programs, which cannot run inside the APK.
 
-### A.2 What is established
+### A.2 Design summary
 
-Checked in code on 2026-10-16. hdr-analyze paths are relative to that repository.
+The evidence, the architecture, the budget and the risks are in
+[`docs/dv-conversion/DESIGN.md`](docs/dv-conversion/DESIGN.md). In short:
 
-- **Fork pipeline.** Dolby Vision 7 → 8.1 runs per sample in the extractor (the NAL loop of
-  `DolbyVisionMatroskaTransformer.kt:426-474`). The extractor rewrites the Format before Media3 picks a
-  decoder. For Matroska, HEVC `initializationData` is the parameter sets from the hvcC only
-  (`MatroskaExtractor.java:3277`), so the Shield's Dolby Vision decoder already plays the fork's 8.1
-  output with no dvcC: the MIME type and the codecs string select it. MP4 is different: Media3 appends
-  the dvcC to `initializationData` (`BoxParser.java:1477-1493` in Media3 1.8.0), and the renderer sends it
-  as csd-1. An HDR10 or HLG source has no dvcC to pass, which matches the Matroska case.
-- **Signalling gap.** Both rewrite hooks run only for tracks that already carry Dolby Vision: a dvcC
-  (`MatroskaExtractor.java:3446`) or a `dvhe.`/`dvh1.` codecs string (`:3489`). HDR10, HDR10+ and HLG
-  tracks need a new branch that sets `video/dolby-vision` and `dvhe.08.xx`. The extractor publishes each
-  track's Format at the end of its TrackEntry, before any frame (`MatroskaExtractor.java:1402-1415`).
-- **RPU generation.** The bundled libdovi C API parses, converts and writes RPUs; it cannot generate
-  one per frame (`DV7/libdovi/android-arm64/include/libdovi/rpu_parser.h:551-741`). The pure-Rust crates
-  can: `dolby_vision` 3.4 (`DoviRpu::profile81_config`, `profile84_config`, `write_hevc_unspec62_nalu`),
-  `hdr10plus` 2.1.5 (`Hdr10PlusMetadata::parse` reads one ST 2094-40 payload) and hdr-analyze's
-  `dovi84_composer` (a lib crate). None has C dependencies.
-- **HDR10+ → L1** is arithmetic on metadata (dovi_tool `src/dovi/generator.rs:211-216`): min 0, max from
-  the peak source (default `histogram`), average from `average_rgb / 10`, then the generator clamps
-  (max in 2081..4095, avg ≥ 819 or 1229, min ≤ 12). dovi_tool takes these values from the first frame of
-  each HDR10+ scene and holds them for the shot (`generator.rs:189`, `:205-209`); `hdr10plus_tool` starts
-  a new scene when the metadata differs from the previous frame. A live port computes L1 from each AU's
-  own SEI and holds it while the payload stays the same.
-- **hdr-analyze per frame.** The statistics (PQ histogram, max-RGB peak, the min at P0.1, means) need
-  only the current frame (`hdr_analyzer_mvp/src/analysis/frame.rs:644-919`).
-- **hdr-analyze per shot.** Scene detection looks 4 analyzed frames around each frame for the score and
-  12 before and 12 after for the baseline (`analysis/scene.rs:6`, `:10`). It then sorts all candidates of the file,
-  strongest first (`scene.rs:135`). Shot L1 is the min of the frame minimums, the mean of the frame
-  max-RGB means and the max of the frame peaks (`l1_sidecar.rs:278-295`), so a shot's L1 is known only
-  after its last frame.
-- **Not needed for L1.** The optimizer, the hue histogram and the histogram smoothing feed only the madVR
-  output. Crop detection seeks 7 times across the file; `--crop-probes 0` commits on the first usable
-  frame, which is the causal route.
-- **Authoring practice.** In the nine retail RPUs hdr-analyze checked, L1 changes only at shot starts
-  (`docs/CM_ANALYZE_PARITY.md:192-193`). A per-frame L1 that changes inside a shot is not what a
-  Dolby Vision display expects.
-- **HLG → 8.4.** The composer is fixed per title (`dovi84_composer/src/lib.rs:42-65`, `:107-145`), and
-  so is everything else except L1. `mkvdovi` refuses HLG without measured L1
-  (`mkvdovi/src/metadata/rpu_config.rs:46-47`), so a static-L1 8.4 RPU is a new policy, not a port.
-- **8.4 on this Shield model.** Plex on a Shield TV Pro into an LG C9 showed the Dolby Vision badge for
-  8.4 files, and a canary composer turned the unchanged HLG base layer green (hdr-analyze
-  `docs/ROADMAP_LOG.md:237-262`). The Shield-to-TV chain therefore decodes 8.4 and applies the composer.
-  The fork's path is untested. In the same test, an HLG source signalled only in the VUI played as SDR.
-- **Fork HLG detection** reads only the Matroska Colour element (`MatroskaExtractor.java:1699-1705`); the
-  SPS VUI and the alternative-transfer SEI are ignored.
-- **CUDA is not an option.** CUDA for Android ended with CodeWorks for Android (1R6 had CUDA 6.5 and
-  7.0; 1R7 dropped CUDA). One NVIDIA forum thread (forums.developer.nvidia.com/t/77215, June 2019)
-  reports `cudaErrorInsufficientDriver` on Shield TV with Android 8.0. hdr-analyze's GPU path needs
-  CUDA 12 and NVRTC.
-- **Vulkan on the Shield is not confirmed for this firmware.** The Shield TV reports on
-  vulkan.gpuinfo.org are from Android 7.0 (driver 361.0.0.0): report 2952 at Vulkan 1.0.61 with
-  `VK_KHR_sampler_ycbcr_conversion`, report 1977 at 1.0.56 without it. Both list `shaderInt64` and
-  48 KB compute shared memory, and neither lists `VK_ANDROID_external_memory_android_hardware_buffer`.
-  Vulkan 1.1 on SE 9.2.4 is a claim for DV1.2 to check.
-- **wgpu cannot import decoder frames.** It has no YCbCr samplers or external formats
-  (github.com/water-rs/wgpu-external-frame issue 16 and PR 17); the import needs raw Vulkan (`ash` or
-  C++). wgpu could still run the reductions after a copy.
-- **Renderer input.** In Media3 1.8.0, `onQueueInputBuffer` receives the codec's own input buffer
-  (`MediaCodecRenderer.java:432`, `:1394`). The hook runs at `:1542`, and `queueInputBuffer` sends
-  `limit()` bytes after it (`:1555-1560`). A subclass can rewrite bytes in place or append up to the
-  buffer's capacity; it cannot grow the buffer. The fork's `DecodeOrderPtsVideoRenderer.kt:82` already
-  overrides the hook.
-- **Look-ahead.** The player loads 15 to 45 s ahead of the playhead
-  (`NuvioExoPlayerPerformanceHelper.kt:66-67`), within a byte budget of at most 500 MB on the 3 GB
-  Shield Pro (`BufferSizing.kt:17`; the 2 GB Shield gets 150 MB).
-- **Second decode today.** The app has no Vulkan or GLES code. Seek thumbnails decode sparse keyframes
-  in software through a dlopen'd FFmpeg; the device report measured that sweep at 43 % CPU and 387 MB
-  native heap.
-- **Output formats.** The 2019 Shield outputs Dolby Vision and HDR10, not HDR10+ (The Verge,
-  2019-10-28; androidtvnews.com, "NVIDIA Shield differences").
-- **Decoder.** NVIDIA specifies "up to 4K HDR playback at 60 FPS (H.265/HEVC)" (nvidia.com/shield). No
-  source shows two concurrent 4K decodes. On
-  the desktop, decode limits hdr-analyze, not analysis (1888 fps against 766 fps for 4K HLG,
-  `docs/CUDA_PIPELINE.md:215-217`); on the Shield the second decode and the shared LPDDR4 are the scarce
-  resources, not the 256 GPU cores.
+- Every AU carries a complete RPU. Providers are judged on admissibility (identity, timeline, colour
+  contract, provenance), completeness and quality class (`full`, `approximate`, `static`); HDR10+
+  content keeps its HDR10+ metadata unless an A/B says otherwise.
+- L1 holds per shot. Before the first AU of a shot reaches the decoder, the shot's provider and L1 are
+  committed and frozen; later results go to the cache or to a later shot.
+- Providers that are ready at once inject in the extractor. Later providers swap a complete, newly
+  written RPU into the codec input buffer at `onQueueInputBuffer`, which never waits.
+- AUs are identified by track, configuration, analysis generation, decode order and presentation time;
+  every seek, flush, release or discontinuity starts a new generation.
+- Dolby Vision is signalled at track init from container metadata and the SPS; an unknown transfer or
+  contradicting colour tags mean native playback. Untagged HLG range, matrix and primaries follow the
+  logged defaults of `DESIGN.md` 2.5. Matroska first.
+- CUDA is not available to Shield apps. Vulkan compute needs raw Vulkan (`ash` or C++) for the frame
+  import; what the current firmware offers is for DV1.2 to find out.
 
-### A.3 Architecture
-
-```text
-extractor, per AU in decode order
- ├─ HDR10+ SEI ───────────────► HDR10+ provider ───────────┐
- ├─ copy of the AU ──► analysis decoder ──► Vulkan statistics ──► shot builder ──┐
- │                                                                              │
- ├─ placeholder RPU from the best ready provider ──► SampleQueue ──► renderer input:
- │                                                     replace the placeholder with a better RPU
- │                                                     when one is ready ──► DV decoder ──► TV
- └─ Format at track init: video/dolby-vision, dvhe.08.xx
-shot lists (desktop mkvdovi, LAN server, earlier plays) ──► shot-list provider ─┘
-```
-
-Decisions:
-
-- **One injector, many providers.** Precedence per AU: exact shot list (cache or measured with the whole
-  shot seen) > HDR10+ > provisional measurement > static. Every AU carries an RPU: the extractor
-  always writes a placeholder from the best provider ready at that moment.
-- **Two injection points.** Providers that are ready at once (static, HDR10+, a cached shot list) inject
-  in the extractor, through the existing transformer. Late providers (measurement, a LAN server) replace
-  the placeholder at renderer input. A replacement only rewrites L1 and the scene-refresh flag, so its
-  length differs from the placeholder's by a few bytes at most (emulation prevention). The bytes after
-  the RPU move inside the codec buffer; when the result does not fit, the placeholder stays.
-- **Signalling at track init.** The Matroska extractor outputs the track Format before it reads any
-  frame, so the decision cannot wait for the first SEI. Signal Dolby Vision when the track is HEVC
-  Main10 with PQ or HLG, the display and decoder support Dolby Vision, the content is not protected,
-  and the setting is on. Fallback: the static RPU. Not an option: holding the Format back until the
-  first block. The extractor's own comment warns that this blocks `endTracks()` and can deadlock
-  preparation (`MatroskaExtractor.java:1411-1414`).
-- **Shot-constant L1.** L1 changes only at a shot start, with `scene_refresh_flag` set there. No
-  unsmoothed per-frame L1.
-- **Seeks.** Providers are keyed by presentation time. A seek resets the measurement watermark; AUs get
-  the static or cached RPU until analysis is ahead again.
-- **Shared Rust core.** hdr-analyze gets a lib crate (per-frame statistics from planes, a streaming scene
-  detector with a bounded delay of about 24 analyzed frames, derived from the 12-frame baseline window
-  after a candidate plus the 12-frame minimum scene length, shot L1, the L1 sidecar format, and the
-  8.1, 8.4 and HDR10+ RPU builders). `mkvdovi` and the Android staticlib both use it, so parity is
-  tested on the desktop.
-- **Shot-list format.** hdr-analyze's existing L1 sidecar. The key must exist before the whole file is
-  read: file size plus hashes of the first and last chunks (and the debrid infohash and file index when
-  known). Before use, the frame count and the first presentation time are checked.
-
-Rejected: analysing the frames the playback decoder outputs. Reasoning, not measured: the Dolby Vision
-decoder sends its frames and their metadata to the display path; reading them would mean rendering them
-in the app, which loses Dolby Vision output, and tunnelled playback hides them anyway. Every on-device
-measurement therefore uses a second decoder.
-
-### A.4 Tiers
+### A.3 Tiers
 
 Each tier adds a provider to the same injector. A later tier is never required for an earlier one.
 
-- **T0, no pixels.** HDR10+ → 8.1 per AU. HLG → 8.4 with the bt2100 composer and a static L1 (max 3079,
-  the top of the source range, which bright broadcast content reaches in every scene; a fixed average).
-  HDR10 → 8.1 with L1 from MaxCLL and MaxFALL, opt-in only: it gives the TV no more than HDR10 static
-  metadata, and in Dolby Vision mode the TV probably does not apply its own HDR10 dynamic tone mapping
-  (a guess, tested in G-E).
-- **T1, shot lists made elsewhere.** Import a sidecar or `RPU.bin` that `mkvdovi` made. A LAN server mode
-  in hdr-analyze: the PC reads the same source from the playhead on and streams shots back (its CUDA path
-  runs at about 325 fps for 4K HDR10 and 490 fps for 4K HLG, 13 to 20 times real time at 24p). Later,
-  idle-time pre-analysis of the next episode on that server.
-- **T2, measured on the Shield with look-ahead.** A second, best-effort `MediaCodec` instance decodes a
+- **T0, no pixels.** Compatibility first: RPUs made on the desktop and played through the app. Then
+  static providers and HDR10+ → 8.1 (L1 from each AU's own SEI, held while the payload is unchanged).
+  HLG → 8.4 uses the bt2100 composer with a conservative nominal L1: maximum 3079 (the source-range
+  ceiling, not a measured value) and a fixed average. HDR10 → 8.1 static derives a heuristic L1 from
+  MaxCLL and MaxFALL, with rules for missing, zero or implausible values, and is opt-in only: in Dolby
+  Vision mode the TV probably does not apply its own HDR10 dynamic tone mapping (a guess, tested in G-E).
+- **T1, shot lists made on a PC.** First a local sidecar with a playback manifest, made by `mkvdovi`.
+  Then a LAN server mode in hdr-analyze that analyses the same source from a random-access point before
+  the playhead and streams finished shots (its CUDA path runs at about 325 fps for 4K HDR10 and 490 fps
+  for 4K HLG, 13 to 20 times real time at 24p).
+- **T2, analysed on the Shield while idle.** One decoder, no playback: the next episode or a
+  continue-watching item is analysed and cached. Needs the pixel path (G-A) and a thermal run (G-F), not
+  a second concurrent decode.
+- **T3, analysed on the Shield during playback.** A second, best-effort `MediaCodec` instance decodes a
   copy of the AUs the extractor has loaded, ahead of the playhead. Modes: every frame, without the
   sub-layer non-reference pictures (`_N` NAL types) of the highest TemporalId, which no other picture
   references (RFC 7798 §1.1.4; in the usual single-layer x265 encode all pictures have TemporalId 0),
-  or IRAP only. Vulkan reduces each frame to its statistics,
-  the streaming scene detector cuts shots, and the shot builder emits L1 once a shot is complete. A shot
-  longer than the look-ahead gets a provisional L1 from what has been seen, refreshed at most once. At
-  the start and after a seek, AUs carry the static RPU until the analysis is ahead; an optional pre-roll
-  waits a few seconds instead. Finished shots go into the cache, so the next play of the same file is exact.
-- **T3, full parity.** Every frame at full resolution, the robust peak estimator, the HLG compose pass on
-  the GPU, L1 within the parity tolerance of the desktop.
+  or IRAP only. PQ first, then HLG with the composer reconstruction from the start. A shot is committed
+  with measured L1 only when the whole shot is analysed in time; otherwise it keeps its fallback. Shots
+  are cached at their quality class.
+- **T4, full parity.** Every frame at full resolution, the robust peak estimator, L1 within the parity
+  tolerance of the desktop.
 
-### A.5 Device gates
+### A.4 Device gates
 
-The Shield must answer these before the matching work starts.
+Probes and implementation may run before qualification. Enabling a configuration needs a passing result
+for every gate that applies to its tier, recorded in
+[`docs/dv-conversion/QUALIFICATION.md`](docs/dv-conversion/QUALIFICATION.md) against the device and
+firmware, transfer and composer, resolution, frame rate, decode mode, pixel path and the playback and
+display chain. A missing, failed or unrun result keeps that configuration off. Idle analysis (T2) needs
+neither G-B nor the playback-time G-F run.
 
-- **G-A, 10-bit frames in Vulkan (T2, T3).** `vulkaninfo` on SE 9.2.4. An `ImageReader` (PRIVATE,
-  `USAGE_GPU_SAMPLED_IMAGE`) on the plain HEVC decoder, the AHardwareBuffer imported with
-  `vkGetAndroidHardwareBufferPropertiesANDROID` (log format, external format, suggested YCbCr model), and
-  a 10-bit ramp sampled through an `RGB_IDENTITY` conversion with `NEAREST` filtering. Pass: the codes
-  read back match the ramp and are not all multiples of 4. Fallbacks: decoder output as P010 in a
-  ByteBuffer read on the CPU at a stride; GLES external sampling only for scene cuts (its colour
-  conversion and precision are unknown).
-- **G-B, a second 4K decode (T2).** `getMaxSupportedInstances` for the HEVC and Dolby Vision decoders.
-  Dolby Vision playback plus an analysis decoder at every frame, reference only and IRAP only, for 4K24
-  and 4K60 sources, with the analysis decoder at `KEY_PRIORITY` 1. Measure dropped frames against the
-  same title without analysis, the analysis frame rate and the native memory.
-- **G-C, Dolby Vision from synthesized signalling (all tiers).** First, files that `mkvdovi` made (8.1
-  from HDR10 and from HDR10+, 8.4 with bt2100 and with the canary composer) played through Nuvio. Then
-  the same sources converted in the app. Pass: Dolby Vision on the TV, the canary turns green, no added
-  dropped frames.
-- **G-D, renderer replacement (T1 server, T2).** The sample framing at `onQueueInputBuffer` for MKV, MP4
-  and TS (length-prefixed or Annex B after the patched AARs), and the input-buffer headroom for 4K HEVC
-  (`KEY_MAX_INPUT_SIZE`). Desk read first, then a device log.
-- **G-E, worth it (T0 HDR10, T2).** Owner A/B on the TV: static HDR10 → 8.1 against native HDR10, and
-  measured L1 against static.
+- **G-A, pixel path (T2, T3).** `vulkaninfo` on SE 9.2.4; an `ImageReader` (PRIVATE,
+  `USAGE_GPU_SAMPLED_IMAGE`) on the plain HEVC decoder; the AHardwareBuffer import; and patterns decoded
+  on the Shield and compared with the code values the desktop decoder gives for the same file. PQ and
+  HLG are qualified separately. Patterns: Y, Cb and Cr ramps, endpoints, saturated patches, chroma edges
+  and siting, odd strides and crops. Also repeated buffer reuse, acquire and release fences, and image
+  lifetime until the GPU finishes. A P010 ByteBuffer output read on the CPU is a second probe. GLES
+  external sampling is allowed for scene cuts only.
+- **G-B, a second 4K decode (T3).** `getMaxSupportedInstances` is an upper bound only. Dolby Vision
+  playback plus an analysis decoder at `KEY_PRIORITY` 1, per mode, at 4K24 and 4K60. Pass for a
+  configuration: no added dropped frames or rebuffers against the same title without analysis, memory
+  within the budget model, the decoder reclaimed or analysis stopped cleanly under pressure, and
+  sustained analysis faster than playback.
+- **G-C, Dolby Vision from synthesized signalling (all tiers).** Files made by `mkvdovi` (8.1 from HDR10
+  and from HDR10+, 8.4 bt2100 and canary) and the same title with deliberately different L1 values,
+  played through Nuvio; then the same sources converted in the app. Pass: Dolby Vision on the TV, the
+  canary turns green, the L1 variants change the picture as expected, the RPUs pulled from the debug
+  log validate with `dovi_tool info`, no added dropped frames.
+- **G-D, renderer replacement (T1 server, T3).** The framing and capacity read in DV1.1, then the
+  replacement tests of `DESIGN.md` 2.3 and 2.4 (mutation, flushes, seeks, reuse) passing on the device.
+- **G-E, worth it (T0 HDR10, T1, T3).** Owner A/B on the TV over a fixed corpus: dark scenes,
+  highlights, fades, HLG broadcast and HLG dark material. Static HDR10 → 8.1 against native HDR10,
+  shot lists against static, HDR10+ against measured.
+- **G-F, sustained run (T2, T3).** A thermal steady-state run of two hours, once for idle analysis (T2)
+  and once for playback with analysis (T3), recording frame drops, analysis rate and lead, memory
+  high-water and the thermal state.
 
-### A.6 Budget
+Every device run records, against the same title with the same settings: dropped frames, rebuffers,
+start and seek latency, memory high-water, the analysis lead, and the share of AUs with a `full`,
+`approximate` and `static` RPU. Before a gate is declared passed, its corpus, expected outcomes and
+numerical tolerances are frozen. The corpus includes long uncut shots, repeated seeks, network stalls
+and resource reclaim; the report covers recovery and fallback coverage as well as the steady state.
 
-Derived, not measured. One 4K frame in P010 is 24.9 MB.
-
-| Resource | 4K24 | 4K60 |
-|---|---:|---:|
-| Pixels analysed per second, every frame | 199 M | 498 M |
-| One full read of every frame | 0.60 GB/s | 1.49 GB/s |
-| Frame interval | 41.7 ms | 16.7 ms |
-
-- **Bandwidth.** The read is 2 to 6 % of the Tegra X1's 25.6 GB/s LPDDR4 peak (the X1+ figure is
-  unconfirmed), on top of two decodes, the display
-  and the HDR composition. A stride of 2 in both directions reads a quarter.
-- **GPU.** Guess: 10 to 20 ms per 4K frame at stride 1 on the Maxwell GPU, a quarter at stride 2. Measure
-  in G-A.
-- **RAM.** Guess: 150 to 400 MB for the analysis decoder's reference frames and output images. It must
-  come out of the `BufferSizing` budget, not be added to it.
-- **Decode.** Two full-rate 4K24 streams need 48 decoded frames per second; two 4K60 streams need 120,
-  which is beyond the 4K60 spec. Until G-B says otherwise, 4K60 sources get T0 and T1 only.
-- **Thermal.** Unknown. Under pressure the analysis lowers its rate first, then stops; playback keeps
-  the static or cached RPU.
-
-### A.7 Risks and rejected ideas
-
-- Static HDR10 → 8.1 may look worse than the TV's own HDR10 processing. It stays opt-in until G-E.
-- A per-frame L1 without shot holding risks visible pumping. Rejected.
-- Peaks measured through GLES external sampling: unknown colour conversion, possibly 8 bits. Allowed
-  for cut detection only.
-- A full-rate second 4K60 decode. Not planned unless G-B shows headroom.
-- Shot lists shared with other users: a wrong match spoils a film, and the key reveals what a user plays.
-  Own devices only.
-- An untagged HLG stream signalled as 8.1 would get HDR10 colour info. DV2.4 comes before any HLG tier.
-- Dolby Vision is a Dolby trademark; this is an unofficial conversion with no certification claim, as in
-  hdr-analyze's `docs/PROVENANCE.md`.
-
-### A.8 Steps
+### A.5 Steps
 
 #### DV1: device gates and desk checks
 
 - **Status:** Open.
-- [DV1.1][desk] Read the Media3 1.8.0 renderer path and the patched AARs for G-D: the sample framing at
-  `onQueueInputBuffer` per container, the input-buffer size for 4K HEVC, and how a flush reaches the
-  renderer. Gate: findings with file:line in the log.
-- [DV1.2][device] G-A probe: `vulkaninfo` output, AHardwareBuffer import of decoder output, the 10-bit
-  ramp test. Gate: pass or fail with the report in the log.
-- [DV1.3][device] G-B probe: decoder instances, dropped frames and analysis rate per mode at 4K24 and
-  4K60. Gate: table in the log.
-- [DV1.4][device][owner] G-C, first half: `mkvdovi` files (8.1 from HDR10 and HDR10+, 8.4 bt2100 and
-  canary) played through Nuvio. Gate: the owner's TV readings in the log.
+- [DV1.1][desk] Read the Media3 1.8.0 renderer path and the patched AARs: the sample framing at
+  `onQueueInputBuffer` per container, the reconfiguration prefix, the real input-buffer capacity for 4K
+  HEVC (`KEY_MAX_INPUT_SIZE` is only the request), and how flushes and releases reach the renderer.
+  Gate: findings with file:line in the log.
+- [DV1.2][device] G-A probe for PQ and HLG. Gate: the report in the log and the G-A rows of the
+  qualification matrix set to pass or fail.
+- [DV1.3][device] G-B probe per mode at 4K24 and 4K60. Gate: the report in the log and the G-B rows of
+  the qualification matrix set to pass or fail.
+- [DV1.4][device][owner] G-C, first half: `mkvdovi` files and L1 variants played through Nuvio. Gate:
+  the owner's TV readings and the `dovi_tool info` checks in the log.
 - [DV1.5][desk] In hdr-analyze, measure what decimation costs: per-shot L1 at sample rates 2 and 3,
-  downscale 2 and 4, reference pictures only and IRAP only, and the streaming scene detector against the
-  global one, all against full analysis on the validation corpus. Gate: error table in hdr-analyze
-  `docs/VALIDATION.md`.
+  downscale 2 and 4, without top-layer `_N` pictures and IRAP only, against full analysis on the
+  validation corpus. Gate: error table in hdr-analyze `docs/VALIDATION.md`.
+- [DV1.6][device] G-F thermal steady-state runs: the idle run with the DV1.2 probe's decode and import
+  loop as the load, the playback run once DV5.4 code exists. Gate: the report in the log and the G-F rows
+  of the qualification matrix. Needs: DV1.2.
 
-#### DV2: shared core and injector
+#### DV2: shared code, signalling and injector
 
 - **Status:** Open.
-- [DV2.1][desk] In hdr-analyze, a lib crate with the RPU builders (8.1, 8.4, HDR10+), the per-frame
-  statistics on plain planes, the streaming scene detector and shot L1. `mkvdovi` uses it. Gate: `mkvdovi`
-  output is byte-identical on the test corpus.
-- [DV2.2][desk] A cargo-ndk staticlib on that crate, linked like libdovi, with JNI entry points: HDR10+
-  payload → RPU, static 8.1 and 8.4 RPUs, shot L1 → RPU. `scripts/verify_native_apk.py` checks it. Gate:
-  unit tests equal to `dovi_tool generate` output for the same inputs. Needs: DV2.1.
-- [DV2.3][desk] The signalling branch in the vendored Matroska extractor and in
-  `DolbyVisionExtractorsFactory`, behind a setting that is off by default. It respects the HDR10
-  base-layer mode and skips protected content. Gate: unit tests on the output Format.
-- [DV2.4][desk] HLG detection from the SPS VUI and the alternative-transfer SEI, and no HDR10 colour info
-  on an HLG base layer. Gate: unit tests with a VUI-only HLG sample.
+- [DV2.1][desk] In hdr-analyze, a lib crate with the RPU builders (8.1, 8.4, HDR10+, static). Gate:
+  `mkvdovi` output is byte-identical on the test corpus.
+- [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
+  crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
+  test corpus. Needs: DV2.1.
+- [DV2.6][desk] In hdr-analyze, a causal scene detector, versioned on its own, with a chosen delay and an
+  irreversible commit rule. Gate: its cut and per-shot L1 disagreement with the global detector on the
+  validation corpus, in hdr-analyze `docs/VALIDATION.md`. Needs: DV2.5.
+- [DV2.2][desk] A cargo-ndk staticlib on the RPU builders only, linked like libdovi, with JNI entry
+  points: HDR10+ payload → RPU, static 8.1 and 8.4 RPUs, shot L1 → RPU. `scripts/verify_native_apk.py`
+  checks it. Gate: unit tests equal to `dovi_tool generate` output for the same inputs. Needs: DV2.1.
+- [DV2.3][desk] The signalling decision table of `DESIGN.md` 2.5 for Matroska: a branch in the vendored
+  extractor, the Dolby Vision level from the stream, native fallback when the decoder fails, behind a
+  setting that is off by default, a `DeviceProfile` gate and a `debug.nuvio.*` revert switch. Gate: unit
+  tests over every row of the table.
+- [DV2.4][desk] The HLG contract: transfer from the SPS VUI at track init, refusal of contradicting
+  range, matrix or primaries, no HDR10 colour info on an HLG base layer, and the alternative-transfer
+  SEI logged but not acted on. Gate: unit tests with VUI-only, contradicting and untagged HLG samples.
+- [DV5.1][desk] Renderer replacement (moved here from DV5, ID kept): RPUs written off the renderer
+  thread, the swap at `onQueueInputBuffer` in the verified framings, shot commitment, AU identity,
+  analysis generations and the completeness watermark. Gate: the tests of `DESIGN.md` 2.3 and 2.4 pass.
+  Needs: DV1.1, DV2.2.
 
 #### DV3: T0, no pixels
 
 - **Status:** Open.
-- [DV3.1][device][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision; a debug
-  log shows an RPU in every AU and L1 equal to `dovi_tool` for the same frames. Needs: DV2.2, DV2.3,
-  DV1.4.
+- [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
+  on the owner's TV; the debug log shows an RPU in every AU and L1 equal to `dovi_tool` for the same
+  frames. Needs: DV2.2, DV2.3, DV1.4.
 - [DV3.2][device][owner][new-build] HLG → 8.4 static provider. Gate: G-C second half: the canary turns
   green through the app's conversion, bt2100 shows no tint. Needs: DV2.2, DV2.3, DV2.4, DV1.4.
 - [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. Gate: G-E A/B recorded; the
   default stays off unless the owner prefers it. Needs: DV2.2, DV2.3.
 
-#### DV4: T1, shot lists made elsewhere
+#### DV4: T1, shot lists made on a PC
 
 - **Status:** Open.
-- [DV4.1][desk] Shot-list provider: load an L1 sidecar or `RPU.bin` from a file or URL, with the key and
-  the alignment checks. Gate: unit tests; a different encode of the same title is rejected. Needs:
-  DV2.2, DV2.3.
-- [DV4.2][desk] In hdr-analyze, a server mode that analyses a URL from a given time and streams shots.
-  Gate: its shots equal an offline run over the same range.
-- [DV4.3][device][owner][new-build] End to end with the LAN server. Gate: measured L1 within 10 s of the
-  start and of a seek, no added dropped frames. Needs: DV4.1, DV4.2, DV1.1.
-- Deferred: idle-time pre-analysis of the next episode on the server (after DV4.3).
+- [DV4.4][desk] In hdr-analyze, the playback manifest of `DESIGN.md` 2.8 around the L1 payload, written
+  by `mkvdovi` and accepted for imported `RPU.bin` files. Gate: tests with variable frame rate, a
+  non-zero start, an open-GOP start, a different encode and a mismatched composer. Needs: DV2.1.
+- [DV4.1][desk] Shot-list provider in the fork: load a manifest from a file or URL, check identity
+  incrementally as AUs are read, inject in the extractor. Gate: unit tests; a different encode of the
+  same title is rejected. Needs: DV4.4, DV2.2, DV2.3; for HLG also DV2.4.
+- [DV4.5][device][owner][new-build] A local sidecar end to end. Gate: every AU of the title carries the
+  sidecar's L1 (debug log), no added dropped frames, the owner's G-E reading. Needs: DV4.1, DV1.4.
+- [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
+  time, with a warm-up for scene context and crop, and stream finished shots; the first shot after a
+  start inside a long shot is marked incomplete. Gate: its shots equal an offline run with the same
+  start point and policy. Needs: DV4.4.
+- [DV4.3][device][owner][new-build] End to end with the LAN server. Gate: on fixtures whose declared
+  analysis context lets a complete following shot be finished and delivered within 10 s, its metadata
+  reaches the injector before that shot's commitment deadline; other fixtures, including a seek inside
+  a long uncut shot, keep the fallback until an eligible shot is ready, and the time to the first usable
+  finished shot is recorded; no added dropped frames. Needs: DV4.1, DV4.2, DV4.5, DV5.1.
 
-#### DV5: T2, measured on the Shield
+#### DV5: T2 and T3, analysed on the Shield
 
-- **Status:** Open. Depends on G-A and G-B.
-- [DV5.1][desk] Replacement at renderer input: a presentation-time table, the watermark, the seek reset.
-  Gate: unit tests with B-frames and seeks; the RPU always matches its AU. Needs: DV1.1.
-- [DV5.2][desk] Analysis decoder: best-effort priority, the three decode modes, memory from the
-  `BufferSizing` budget, throttled under load. Gate: unit tests for the three modes; a stress test
-  shows the playback decoder's input is never starved. Needs: DV1.3.
-- [DV5.3][desk] Vulkan statistics kernels for PQ and HLG (`ash` or C++), with NoContraction (`precise`)
-  and lookup tables for the divisions. Gate: on the same decoded frames, L1 within the parity tolerance
-  of the desktop CPU path. Needs: DV1.2.
-- [DV5.4][device][new-build] End to end at 4K24. Gate: no added dropped frames against the M1 baseline;
-  the analysis leads the playhead by at least 10 s after the first minute; per-shot L1 within the
-  tolerance of the desktop. Needs: DV5.1, DV5.2, DV5.3.
-- [DV5.5][desk] Write finished shots into the cache. Gate: the second play of a file uses the cache from
-  the first frame. Needs: DV5.4, DV4.1.
+- **Status:** Open. T2 depends on G-A and G-F; T3 also on G-B.
+- [DV5.11][device] Vulkan frame import and synchronization (`ash` or C++): fences, image lifetime,
+  buffer reuse. Gate: the G-A lifetime, fence and reuse tests pass on the Shield. Needs: DV1.2.
+- [DV5.3][desk] PQ statistics and reductions in Vulkan: workgroup-local histograms and partial sums, a
+  small final reduction, no global 64-bit atomics. Gate: on the same decoded frames, per-frame statistics
+  within the parity tolerance of the desktop CPU path. Needs: DV5.11, DV2.5.
+- [DV5.8][desk] Vulkan HLG composition (composer reconstruction, chroma siting). Gate: on the same
+  decoded frames, within the parity tolerance of the desktop two-pass path. Needs: DV5.3.
+- [DV5.6][device][new-build] T2: idle-time analysis of the next episode on one decoder, results cached
+  as manifests with their quality class; PQ titles first, HLG titles once DV5.8 passes. Gate:
+  identical-frame parity and the declared sampling and scene-policy error are evaluated separately; the
+  next play uses the validated covered ranges at their recorded class and the fallback elsewhere;
+  first-frame reuse is required only when the coverage includes that frame; offline parity is claimed
+  only for a complete validated analysis. Needs: DV5.3, DV4.1, DV1.6.
+- [DV5.2][desk] Analysis decoder feeding: the tee of loaded AUs and best-effort priority. Gate: feeding
+  and lifecycle unit tests. Needs: DV1.3.
+- [DV5.10][desk] Dependency-safe skipping modes (without top-layer `_N` pictures, IRAP only). Gate:
+  reference-dependency and output-coverage tests for each mode. Needs: DV5.2.
+- [DV5.7][desk] One memory budget for compressed playback data, the tee queue, decoder surfaces,
+  imported images and scratch; analysis is turned off when it would cut the playback reserve. Gate:
+  unit tests of the budget model; the time to reach the lead after start and seek is logged. Needs:
+  DV5.2.
+- [DV5.12][device][new-build] Stress run of decoder feeding, skipping and the memory budget. Gate:
+  playback stays within the G-B criteria under pressure and reclaim. Needs: DV5.10, DV5.7.
+- [DV5.4][device][new-build] T3 for PQ at 4K24, on qualified configurations only. Gate: no added dropped
+  frames or rebuffers against the same title without analysis; the share of AUs at each quality class
+  and the lead distribution recorded; per-shot L1 within the agreed tolerance for the declared
+  approximation policy. Needs: DV5.1, DV5.2, DV5.3, DV5.7, DV5.12, DV2.6, DV1.5.
+- [DV5.9][device][new-build] T3 for HLG at 4K24. Gate: as DV5.4, plus the HLG patterns of G-A. Needs:
+  DV5.4, DV5.8, DV3.2.
+- [DV5.5][desk] Cache finished ranges with provenance and quality class; uncovered ranges keep the
+  fallback; cache filling does not depend on meeting playback deadlines. Gate: a partly watched title
+  replays with its covered ranges at their recorded class. Needs: DV5.4, DV4.1.
 
-#### DV6: T3, full parity
+#### DV6: T4, full parity
 
 - **Status:** Deferred until DV5.4 passes.
 
 #### Owner decisions
 
-- Parity tolerance for measured L1. Proposal: median within 4 codes and maximum within 16 codes of the
-  desktop, per shot.
+- Parity tolerances. Proposal: for identical frames, per-shot L1 median within 4 codes and maximum
+  within 16 codes of the desktop; for approximation policies, the error table of DV1.5 decides.
 - Whether static HDR10 → 8.1 is ever on by default (after G-E).
 - Whether a LAN PC running hdr-analyze is an acceptable dependency.
