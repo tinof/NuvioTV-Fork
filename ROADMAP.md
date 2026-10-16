@@ -597,9 +597,10 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
 - [DV1.5][desk] In hdr-analyze, measure what decimation costs: per-shot L1 at sample rates 2 and 3,
   downscale 2 and 4, without top-layer `_N` pictures and IRAP only, against full analysis on the
   validation corpus. Gate: error table in hdr-analyze `docs/VALIDATION.md`.
-- [DV1.6][device] G-F thermal steady-state runs: the idle run with the DV1.2 probe's decode and import
-  loop as the load, the playback run once DV5.4 code exists. Gate: the report in the log and the G-F rows
-  of the qualification matrix. Needs: DV1.2.
+- [DV1.6][device] G-F idle thermal run (T2): two hours with the DV1.2 probe's decode and import loop as
+  the load. Gate: the report in the log and the idle G-F row of the qualification matrix. Needs: DV1.2.
+- [DV1.7][device][new-build] G-F playback thermal run (T3): two hours of playback with analysis. Gate:
+  the report in the log and the playback G-F row of the qualification matrix. Needs: DV5.4.
 
 #### DV2: shared code, signalling and injector
 
