@@ -7,6 +7,9 @@ the detail is here, newest first.
 Finding IDs: `A-M*`, `A-C*`, `B*`, `C*`, `D*` come from the first assessment; `W*`, `A1`–`A7`, `P-*`, `H*`
 from the second. Line numbers are as of commit 8db45982c.
 
+From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
+on name the step ID and the PR.
+
 ## 2026-10-16: upstream plan and toolchain
 
 The Shield work is meant to reach `ysosrs123/NuvioTV-Fork` as pull requests later. Three principles were
