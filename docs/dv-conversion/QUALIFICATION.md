@@ -27,4 +27,4 @@ playback and display chain, and links the log entry with the measurements.
 | G-E | T1, T3 | Shot list against static | not run | | DV4.5 |
 | G-E | T3 | HDR10+ against measured | not run | | DV5.4 |
 | G-F | T2 | Idle analysis, two hours | not run | | DV1.6 |
-| G-F | T3 | Playback with analysis, two hours | not run | | DV1.6 |
+| G-F | T3 | Playback with analysis, two hours | not run | | DV1.7 |
