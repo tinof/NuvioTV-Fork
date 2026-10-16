@@ -1,0 +1,26 @@
+You are a co-designer. Think creatively but stay grounded in what the code and hardware allow. Work independently: no draft exists yet; I want your own architecture.
+
+GOAL. On an NVIDIA Shield TV Pro 2019 (Tegra X1+, 4x Cortex-A57, Maxwell GPU with 256 CUDA cores, 3 GB RAM shared LPDDR4, Android 11 / API 30, SHIELD Experience 9.2.4), convert HDR video to Dolby Vision during playback, inside the Android TV app at /Users/konstantinosfotiou/Documents/GitHub/NuvioTV-Fork (Media3 1.8.0, vendored MatroskaExtractor, native JNI bridge app/src/main/cpp/dovi_bridge.cpp linked to a prebuilt libdovi). Three pipelines:
+ 1. HDR10+ -> Dolby Vision Profile 8.1
+ 2. HDR10 (static metadata only) -> Dolby Vision Profile 8.1, with measured, content-adaptive L1 if possible
+ 3. HLG -> Dolby Vision Profile 8.4
+The picture is never re-encoded: only an RPU (unspec62 NAL) is added per access unit and the track is signalled as Dolby Vision.
+
+REUSE. Our desktop tool /Users/konstantinosfotiou/Documents/GitHub/hdr-analyze does this offline: mkvdovi (CLI orchestrator), hdr_analyzer_mvp (per-frame analysis: PQ histogram, max-RGB peak, scene detection, crop detection, optimizer; CPU and CUDA paths in hdr_analyzer_mvp/src/analysis/{frame,gpu,histogram,hlg,scene}.rs, kernels.cu, optimizer.rs, crop.rs), dovi84_composer (lib crate, HLG 8.4 composer). Docs: docs/CUDA_PIPELINE.md, docs/HLG_COMPOSER.md, docs/TECHNICAL_REFERENCE.md, docs/CM_ANALYZE_PARITY.md, docs/PERFORMANCE.md.
+
+WHAT WE ALREADY ESTABLISHED (verified):
+- The fork already converts DV Profile 7 to 8.1 per sample in the extractor (DolbyVisionMatroskaTransformer.kt, DolbyVisionExtractorsFactory.kt) and the Shield plays the result. It can strip HDR10+ SEI (HevcHdr10PlusStripper.kt). The Format (mime/codecs) is rewritten in the extractor before decoder selection; HEVC initializationData is only hvcC, so dvcC never reaches the decoder.
+- HDR10+ -> 8.1 is metadata arithmetic (dovi_tool generator.rs parse_hdr10plus_for_l1), CPU-only, microseconds per frame; needs a cargo-ndk Rust staticlib on dolby_vision 3.4 + hdr10plus 2.1.5 (libdovi C API has no per-frame generation).
+- CUDA is not usable by apps on Shield Android (CodeWorks for Android ended at CUDA 7.0; cudaErrorInsufficientDriver since Android 8; no NVRTC). The Shield has Vulkan 1.1 drivers. The user proposes a Rust wgpu or raw Vulkan (SPIR-V compute) port of the analysis kernels.
+- The RPU must be in the access unit before the decoder receives it, and hdr-analyze's L1 is per scene, so live measured L1 needs lookahead.
+- ROADMAP.md puts conversions out of scope of the Shield roadmap; this is a separate track.
+
+QUESTIONS. Read the code you need, then answer:
+ A. Your end-to-end architecture for pipelines 2 and 3 on the Shield. How do decoded 10-bit frames reach a Vulkan compute shader (MediaCodec -> ImageReader/AHardwareBuffer -> VK_ANDROID_external_memory_android_hardware_buffer + VkSamplerYcbcrConversion? second decoder instance? software decode of a proxy?). Can wgpu do it, or must it be ash / C++ Vulkan? Where does lookahead come from (ExoPlayer load-ahead buffer; inject the RPU at renderer input instead of extractor output; see app/src/main/java/com/nuvio/tv/core/player/BitrateAwareLoadControl.kt, ReadAheadReserve.kt, app/src/main/java/com/nuvio/tv/ui/screens/player/DecodeOrderPtsVideoRenderer.kt)?
+ B. Which parts of hdr_analyzer_mvp are per-frame and causal, which need a whole scene, which need the whole file (optimizer?). What accuracy do we lose with decimated analysis (1-in-N frames, keyframes only, downscaled planes, dropping the highest temporal layer)?
+ C. Creative options we may be missing: tiers of quality (static RPU first, measured later), sidecar RPU cache keyed by content hash, a LAN PC running hdr-analyze CUDA as an analysis server, idle-time pre-analysis of a watchlist, community or self-hosted RPU sharing, anything else. Rank by value/effort.
+ D. HLG -> 8.4: what can run without pixels (static composer from dovi84_composer), and what measured L1 through the 8.4 decode would need on the GPU. Is Profile 8.4 decode likely supported by the Shield's DV decoder?
+ E. The top risks and the cheapest experiment that retires each one (device probes we should run first).
+ F. Budget: GPU, memory bandwidth, CPU, RAM and thermal costs on this box during 4K24 / 4K60 playback.
+
+You are advising only: do not modify any file. Answer concisely in Markdown with headings A-F; cite file:line for claims about code; mark guesses as guesses.
