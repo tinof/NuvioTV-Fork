@@ -7,8 +7,8 @@ disable-model-invocation: true
 
 # roadmap-next
 
-The user typed `/roadmap-next $ARGUMENTS`. Recommend the next roadmap **step** (item ID plus step, e.g.
-"R2: Skip when the activity is gone"), not just an item. This skill only reads: it never edits repo
+The user typed `/roadmap-next $ARGUMENTS`. Recommend the next roadmap **step** by its step ID (e.g.
+"R2.1: Skip when the activity is gone"), not just an item. This skill only reads: it never edits repo
 files, creates branches, opens PRs, installs APKs or sets device properties. It writes only to the
 scratchpad (the draft, the Codex answer, a downloaded APK for hashing).
 
@@ -19,21 +19,27 @@ measurement, engine, upstream, docs), rank only steps under it, but still report
 
 - `ROADMAP.md`: the **Priorities** list, the **Waiting for the owner** list, and the item sections the
   priorities name. Read the item sections, not only the priority lines: the steps, their tags, gates and
-  `Needs:` lines live there. A step is one line `- [tags] <step>. Gate: <evidence>.`; tags are `desk`,
-  `device`, `owner`, `new-build`.
+  `Needs:` lines live there. A step is `- [<ID>][tags] <step>. Gate: <evidence>.`, with an optional
+  `Needs: <ID>[, <ID>]`; IDs are `<item>.<n>` (R2.1), and tags are `desk`, `device`, `owner`,
+  `new-build`. A step may wrap over several lines.
+- `docs/ROADMAP_LOG.md`, to tell which step IDs have shipped: `/ship` heads each closing entry
+  `## <date>: <ID> <title> (PR #<n>)`; search the whole log with `rg -wF <ID>`.
 - `git log --oneline -15`, `git status --short`, current branch, `git rev-parse HEAD`.
 - The fork's repo: `R=$(git remote get-url origin | sed -E 's#.*github.com[:/]##; s#\.git$##')`. Pass
   `-R "$R"` to every `gh` call except `gh api`, which takes the repo in its path: with no default repo
   set, `gh` resolves to the upstream remote.
-- `gh pr list -R "$R" --state open --json number,title,headRefName`.
+- `gh pr list -R "$R" --state open --json number,title,headRefName,labels`, and `git branch -a`.
 - **Shield.** The address is in the gitignored `docs/nvidia-shield.md`; never print it in the answer.
   Every adb call names the serial with `-s` and runs under `gtimeout 15`:
   `adb connect <addr>:5555`, then `adb -s <serial> shell getprop ro.product.device` must print `mdarcy`.
   A timeout or another device means "Shield unreachable".
 - **Debug APK of HEAD.** Two checks, both required:
-  1. `gh run list -R "$R" --workflow "PR Full Debug Build" --branch <branch> --json databaseId,headSha,event,conclusion,createdAt`:
-     the newest run with `conclusion == "success"`, `event == "workflow_dispatch"` and
-     `headSha == HEAD`. A `pull_request` run builds the merge commit, not HEAD, so it does not count.
+  1. `gh run list -R "$R" --workflow "PR Full Debug Build" --event workflow_dispatch --limit 20 --json databaseId,headSha,headBranch,conclusion,createdAt`
+     (no `--branch` filter): the newest run with `conclusion == "success"` whose commit has the same
+     tree as HEAD, `gh api repos/$R/git/commits/<headSha> -q .tree.sha` equal to
+     `git rev-parse HEAD^{tree}`. Compare trees, not SHAs: `/ship` dispatches the build on the step
+     branch and then rebase-merges, which gives every commit a new SHA but keeps the tree. A
+     `pull_request` run builds the merge commit, not HEAD, so it does not count.
      The run's `full-debug-apks` artifact must not be expired
      (`gh api repos/$R/actions/runs/<id>/artifacts -q '.artifacts[] | .name+" "+(.expired|tostring)'`).
   2. The installed APK is that build. Read the path on the device first, then hash it there:
@@ -64,26 +70,30 @@ startable only when none applies:
 
 - **Blocked on the owner:** tagged `owner`, or its item is on the "Waiting for the owner" list for this
   step. Other steps of the same item stay candidates.
-- **Blocked on a prerequisite:** its `Needs:` line names a step that is not done (still listed as open).
+- **Blocked on a prerequisite:** its `Needs:` line names a step ID that is not done. A step is done when
+  its line has left `ROADMAP.md` and its ID appears in `docs/ROADMAP_LOG.md`. A line that ends with
+  `Landed: PR #<n>; gate pending.` has its code merged; only its device or owner gate is open, so it
+  counts as done for a `Needs:` that wants the code, and as open for one that wants the gate evidence.
 - **Needs the device:** tagged `device` and the Shield is unreachable.
 - **Needs a new build:** tagged `new-build` and the debug-APK checks did not both pass, or the step's
   prerequisite is a desk change not yet in a built APK.
 - **Needs a debuggable build:** the step says so (heap dump, `run-as` backup) and the installed APK is
   not debuggable.
-- **Already in progress:** an open PR or a local branch covers it.
+- **Already in progress:** an open PR whose title ends with `(<ID>)`, or a branch named
+  `<type>/<id>-…` (R2.1 → `r2-1`), covers it. Report the PR's `review:*` label.
 
 Do not spawn agents for this; it is a handful of reads.
 
 ## 3. Draft ranking
 
 Up to three startable steps. For each:
-- item ID + step, and the priority number it belongs to;
+- step ID + step, and the priority number it belongs to;
 - the **gate** quoted from the step;
 - files likely touched, from the item's anchors, and the tests that cover them
   (`./gradlew :app:testFullDebugUnitTest --tests '<pattern>'`);
 - whether a device session follows, and that it must follow M2;
-- branch name in the repo style (`fix/…`, `feat/…`, `perf/…`, `docs/…`; check
-  `gh pr list -R "$R" --state merged --limit 10` and `git branch -a`);
+- branch name `<type>/<id>-<slug>` off `perf/shield-pass` (`fix/r2-1-skip-restore-when-finishing`;
+  types `fix`, `feat`, `perf`, `docs`, `fork`), as `docs/REVIEW.md` sets for `/ship`;
 - whether it can share a branch with another candidate. Rules from ROADMAP: AFR changes are one commit
   per finding; a step that changes a default gets its own branch; desk steps of one item may share a
   branch.
@@ -92,14 +102,15 @@ Write the draft to `<scratchpad>/roadmap-next-draft.md`.
 
 ## 4. Codex second advisor
 
-Run in the background (`run_in_background: true`) and wait for the completion notification. Follow
-`~/.claude/rules/codex-routing.md`: `command codex`, never the bare alias.
+Run in the background (`run_in_background: true`) through the stall watchdog and wait for the completion
+notification. Follow `~/.claude/rules/codex-routing.md`.
 
 ```
-command codex exec --sandbox read-only "Read ROADMAP.md and <scratchpad>/roadmap-next-draft.md in this repo. Rank the startable roadmap steps yourself, independently of the draft. Then: name risks the draft misses, prerequisites it assumed but did not check, and any step that should come first and why. Be specific: item ID, step, file paths." > <scratchpad>/roadmap-next-codex.md 2>&1
+~/.claude/skills/ship/scripts/codex-watch.sh <scratchpad>/roadmap-next-codex exec --sandbox read-only "Read ROADMAP.md and <scratchpad>/roadmap-next-draft.md in this repo. Rank the startable roadmap steps yourself, independently of the draft. Then: name risks the draft misses, prerequisites it assumed but did not check, and any step that should come first and why. Be specific: step ID, step, file paths."
 ```
 
-Report the `model:` and `reasoning effort:` header lines. If the run fails (usage limit, unsupported
+Codex's answer is in `<scratchpad>/roadmap-next-codex.md`. Report the `model` and `effort` from
+`<scratchpad>/roadmap-next-codex.result.json`. If the run fails (usage limit, unsupported
 model, sandbox error), say so and continue without it. Never replace it with a Claude subagent and call
 that the Codex opinion.
 
@@ -113,8 +124,8 @@ in context, before you settle on the recommendation.
 
 Keep it short:
 
-1. **Recommended:** item + step, why now, its gate, the branch name, and the first action (usually
-   "enter plan mode for <ID> <step>").
+1. **Recommended:** step ID + step, why now, its gate, the branch name, and the first action (usually
+   "enter plan mode for <ID>, then `/ship --step <ID>` when it is built").
 2. **Alternates:** two, one line each.
 3. **Where Codex disagreed** and what decided it (one or two lines; omit if they agreed).
 4. **Waiting for the owner:** the list, one line each, so the owner sees what only they can unblock.
