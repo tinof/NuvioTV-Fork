@@ -77,6 +77,8 @@ Steps that need a decision or a reading from the owner. Other steps of the same 
 - **Defaults after measuring (Q2, R2).** The AFR settle hold (600 or 1200 ms) and whether "keep the
   content frame rate after playback" becomes the Nvidia default.
 - **Merge into `main`.** Criteria: R1 done, the R2 mitigation shipped, Q2 done, CI green.
+- **Ask the upstream maintainer (U1).** Whether Shield work is wanted upstream and in what form; the
+  owner decides how and when to ask.
 
 ## Progress log
 
@@ -84,6 +86,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-16 | Upstream plan: principles for upstreamable work and the toolchain, U1 added, UI baselines on the `benchmark` build. | U1, M1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-15 | Roadmap created from the two assessments and the device report. | all | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-15 | Second assessment: incident 02 traced to be0ce8ec9; switch-back delay unproven; start, Stop and thumbnail findings. | R1, R2, Q1, S1–S3 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-15 | First assessment: every Nvidia gate and switch matches the doc; AFR, defaults and backport findings. | Q1, Q2, E1, D1 | [log](docs/ROADMAP_LOG.md) |
@@ -105,6 +108,18 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
   problem it fixes.
 - **Device safety.** Every device session follows [M2](#m2-device-safety-protocol). The Shield is in
   daily use.
+- **Upstreamable by default.** The Shield work is meant to reach the upstream fork
+  (`ysosrs123/NuvioTV-Fork`) as pull requests later. A change is Nvidia-gated, revertible and tested, or
+  it states why it applies to every device. Commits that only make sense in this fork (README,
+  CONTRIBUTING, CI tweaks, this roadmap, the Claude skill, the Shield docs) start their subject with
+  `fork:` so they are easy to leave out. See [U1](#u1-upstream-pull-requests).
+- **Stay on upstream's toolchain.** JDK 17 (as in CI), Gradle 8.13, AGP 8.13.2, Kotlin 2.3.0, JVM target
+  11. A newer build toolchain gives the Shield nothing at runtime and makes every upstream pull request
+  conflict in the build files. Runtime libraries (Media3, Compose, TV Material) change only as a
+  measured experiment in their own pull request.
+- **Measure the UI on a release-like build.** The CI debug APK is not minified and runs without the
+  baseline profile, so it is slower than what users get. UI numbers come from the `benchmark` build type
+  (release settings, debug key); debug builds serve playback and log checks.
 
 ## Priorities
 
@@ -127,6 +142,8 @@ because a wrong passthrough path is invisible until measured.
 9. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4).
 10. **Media3 backports** (E1), only on a symptom; the ready grace is startable.
 11. **Diagnostics and docs** (M3, D1).
+12. **Upstream pull requests** (U1). The commit sorting and the question to the maintainer can start any
+    time; the pull requests follow the items they carry.
 
 ## Reliability
 
@@ -335,9 +352,14 @@ because a wrong passthrough path is invisible until measured.
   running. No `dumpsys meminfo` during audio (it caused an underrun restart in the report). The details
   journey reads the `DetailEntryTrace` stages the app already logs (`viewmodel_setup` to
   `controls_focus`, tag `NuvioDetails`). Gate: dry run against the Shield. Needs: M2 scripts.
-- [device][new-build] Baselines for `com.nuvio.tv.test.shield` and the upstream `com.nuvio.tv.test` on the
-  same journeys, with the build type of each recorded (the CI APK is a debug build). Gate: both tables in
-  the log. Needs: M1 script, M1 playback stage.
+- [desk] Build the `benchmark` variant of this branch for the UI journeys (`:app:assembleFullBenchmark`;
+  minified, shrunk, with the baseline profile, signed with the debug key). It installs as its own app with
+  the `.debug` suffix and needs one login. Gate: the APK installs on the Shield and passes the M1 dry run.
+  Needs: M1 script.
+- [device][new-build] Baselines on the same journeys: UI for this branch's `benchmark` build and the
+  upstream `com.nuvio.tv.test` release build; playback for the CI debug build of this branch and the
+  upstream app. Record the build type of each. Gate: both tables in the log. Needs: M1 script, M1
+  playback stage, M1 benchmark build.
 
 ### M2: device-safety protocol
 
@@ -395,6 +417,28 @@ because a wrong passthrough path is invisible until measured.
   - MPEG-TS fixes, blocked: the extractor AAR has no recorded source (C10);
   - tunneling audio-session race and prewarming fix; tunneling is inert on this firmware (C11).
 - The 1.11.0 Choreographer change is mostly covered by the fork's vsync re-sample (C3).
+
+## Upstream
+
+### U1: upstream pull requests
+
+- **Status:** Open. The branch is 80 commits ahead of `upstream/main` and 0 behind (2026-10-16).
+  Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
+  unlikely to land.
+- [owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
+  theme. Gate: the answer recorded in the log.
+- [desk] Sort the commits in `git log upstream/main..perf/shield-pass` into fork-only and upstreamable,
+  and list the every-device changes with the reason each applies everywhere (audio route under a
+  Bluetooth pin, lossless track default, controller buttons, native libraries loaded from the APK).
+  Gate: the table in the log; fork-only commits named.
+- [desk] For each theme, one branch from `upstream/main` with the upstreamable commits cherry-picked
+  (themes: AFR and display, audio passthrough, UI and performance, engine AARs with their rebuild
+  recipes). Gate: each branch builds and passes the unit tests in CI. Needs: U1 commit sort, U1 maintainer
+  answer.
+- [desk] Pull request text per theme with the M1 numbers it rests on and the revert switches. Gate: the
+  numbers come from the log. Needs: U1 theme branches, M1 baseline.
+- [desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits behind
+  at each pull request.
 
 ## Docs
 
