@@ -1,0 +1,14 @@
+You are the co-designer of a plan. Earlier you wrote an independent design (docs/dv-conversion/codex-r0-ideation.md in /Users/konstantinosfotiou/Documents/GitHub/NuvioTV-Fork-appendix). Claude has now merged it with its own research into a plan in two parts: ROADMAP.md from the line "## Appendix A: on-device Dolby Vision conversion" to the end (about line 463 onward: goal, design summary, tiers, gates, steps), and docs/dv-conversion/DESIGN.md (evidence, architecture, budget, risks). A Claude citation check already corrected draft 1 (docs/dv-conversion/claude-factcheck-r1.md); do not repeat it, but flag anything it missed. The rest of ROADMAP.md is the Shield roadmap; read its "Step format" and "Development principles" sections for the conventions.
+
+Context repos: NuvioTV-Fork (this directory, a worktree of branch fork/roadmap-appendix-a; Media3 1.8.0, vendored extractor app/src/main/java/com/nuvio/tv/core/player/dvmkv/MatroskaExtractor.java, native bridge app/src/main/cpp/dovi_bridge.cpp) and /Users/konstantinosfotiou/Documents/GitHub/hdr-analyze (Rust; hdr_analyzer_mvp, mkvdovi, dovi84_composer). Media3 1.8.0 sources are cloned at /private/tmp/claude-501/-Users-konstantinosfotiou-Documents-GitHub-NuvioTV-Fork/232292bd-f25c-4587-b033-1c1b96d1e24b/scratchpad/upstream/m and dovi_tool / hdr10plus_tool at .../scratchpad/upstream/{dovi_tool,hdr10plus_tool}.
+
+Critique the appendix as a co-author, hard and specific:
+1. Wrong or unsupported claims in DESIGN.md section 1 (check the cited file:line yourself).
+2. Design flaws in DESIGN.md section 2: the placeholder-then-replace scheme at renderer input (is it sound with emulation prevention, CRC, Annex B vs length-prefixed framing, codec input buffer ownership, decode order vs presentation order, B-frames, seeks, codec flush and reuse?); signalling at track init; provider precedence; the rejection of displayed-frame analysis.
+3. Tier and gate gaps (Appendix A.3, A.4): anything that should be measured earlier or cheaper; any gate that does not actually decide what it claims to decide.
+4. Budget (DESIGN.md section 3) errors.
+5. Step list (Appendix A.5): wrong order, missing prerequisites (Needs:), gates that are not checkable, steps that are too large to be one pull request, misplaced repo (fork vs hdr-analyze).
+6. Creative improvements we still miss, especially ones that make the Vulkan / Tegra GPU path cheaper or that deliver measured L1 sooner. Be concrete.
+7. Anything from your own design (codex-r0-ideation.md) that the plan dropped and should not have.
+
+Answer in Markdown. For each point: severity (blocker / major / minor), the section, the problem, the evidence (file:line or URL), and the exact change you propose (replacement text where useful). End with a short list of what you agree with, so we know what not to change. You are advising only: do not modify any file. Mark guesses as guesses.

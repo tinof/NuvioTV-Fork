@@ -1,0 +1,14 @@
+You are the co-designer of a plan and this is a focused re-check, not a new review. Working directory: /Users/konstantinosfotiou/Documents/GitHub/NuvioTV-Fork-appendix (a worktree of branch fork/roadmap-appendix-a).
+
+In your previous pass you critiqued draft 2 with 21 points. Your critique and Claude's disposition table are in docs/dv-conversion/codex-r1-review.md (the table is at the end, under "## Disposition"). Claude has since revised:
+- ROADMAP.md from "## Appendix A: on-device Dolby Vision conversion" to the end (see `git diff HEAD -- ROADMAP.md`);
+- docs/dv-conversion/DESIGN.md (new; sections 1 to 4);
+- docs/dv-conversion/QUALIFICATION.md (new);
+- docs/ROADMAP_LOG.md, the "2026-10-16: Appendix A" entry (`git diff HEAD -- docs/ROADMAP_LOG.md`).
+
+Check only these changes:
+1. For each of your 21 points: is the disposition actually implemented in the text, and does the change fix the problem? Answer per point: "resolved", "partly" (say what is missing, with exact replacement text), or "not resolved".
+2. Point 20, where Claude kept the HDR10+ provider in T0 instead of following your order: is the stated reason sound? Say if you still disagree and why.
+3. Any new error, contradiction or broken cross-reference the revision introduced (for example between ROADMAP.md Appendix A, DESIGN.md section numbers, step IDs and their Needs: lines, and QUALIFICATION.md). Step-ID rule: IDs are never reused or renumbered; a new step takes 1 + the highest number used for that item.
+
+Do not re-review text the revision did not touch. You are advising only: do not modify any file. Answer concisely in Markdown; cite file:line.
