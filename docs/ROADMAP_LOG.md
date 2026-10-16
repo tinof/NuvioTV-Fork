@@ -7,6 +7,25 @@ the detail is here, newest first.
 Finding IDs: `A-M*`, `A-C*`, `B*`, `C*`, `D*` come from the first assessment; `W*`, `A1`–`A7`, `P-*`, `H*`
 from the second. Line numbers are as of commit 8db45982c.
 
+## 2026-10-16: upstream plan and toolchain
+
+The Shield work is meant to reach `ysosrs123/NuvioTV-Fork` as pull requests later. Three principles were
+added: upstreamable by default (Nvidia-gated, revertible, tested; fork-only commits marked `fork:`), stay
+on upstream's toolchain (JDK 17, Gradle 8.13, AGP 8.13.2, Kotlin 2.3.0, JVM target 11), and measure the UI
+on a release-like build.
+
+- The build toolchain runs only on the development machine. The app targets Java 11 bytecode and runs on
+  the Shield's Android 11 runtime, so a newer JDK, Gradle or AGP gives the Shield nothing and makes every
+  upstream pull request conflict in the build files.
+- Runtime libraries are different: Media3 (1.8.0, patched AARs) and Compose (BOM 2026.05.01, TV Material
+  1.1.0-rc01) can change playback and UI behaviour. They change only as measured experiments, each in its
+  own pull request, because they affect every device.
+- The CI debug APK is not minified and has no baseline profile, so UI baselines use the `benchmark` build
+  type (release settings, debug key, `.debug` suffix).
+- Branch state on 2026-10-16: 80 commits ahead of `upstream/main`, 0 behind; upstream's last commit was on
+  2026-10-12, and it has merged one outside pull request. New item U1 plans one pull request per theme
+  from `upstream/main`, after asking the maintainer.
+
 ## 2026-10-15: roadmap created
 
 `docs/shield-todo.md` mixed the Nvidia defaults reference with open work. The open work moved into
