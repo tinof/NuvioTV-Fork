@@ -23,7 +23,7 @@ Status meanings: **Open** has not shipped; **Partial** has useful pieces in plac
 gate; **Core complete** meets the gate but keeps named follow-up work; **Deferred** is intentionally not
 scheduled. Items with no follow-up left move to the log.
 
-**Step format.** Every open step is one line that `/roadmap-next` reads:
+**Step format.** Every open step is one line that `/ship:roadmap-next` reads:
 `- [<ID>][tags] <step>. Gate: <evidence>.` with an optional `Needs: <ID>[, <ID>]` for a prerequisite.
 IDs are `<item>.<n>` (for example `R2.1`), assigned once and never reused or renumbered. A new step
 takes 1 + the highest number ever used for that item in `ROADMAP.md`, `docs/ROADMAP_LOG.md` and
@@ -78,7 +78,7 @@ the UI mode.
 ### Waiting for the owner
 
 Steps that need a decision or a reading from the owner. Other steps of the same item stay startable.
-`/roadmap-next` reads this list; remove an entry when it is settled.
+`/ship:roadmap-next` reads this list; remove an entry when it is settled.
 
 - **UI refresh rate (S4.1).** 24/25 Hz against 50/60 Hz for the UI, decided from the M1 A/B on the Home
   journeys. It trades UI fluidity against mode switches at every start.
@@ -469,7 +469,7 @@ because a wrong passthrough path is invisible until measured.
 
 ## Appendix A: on-device Dolby Vision conversion
 
-A separate track, outside the north star and the Priorities list. `/roadmap-next` does not rank these
+A separate track, outside the north star and the Priorities list. `/ship:roadmap-next` does not rank these
 steps; they are picked by hand. Steps use the format above, with item IDs DV1 to DV6. Work in
 `hdr-analyze` (`tinof/hdr-analyze`) is named as such. Conversion steps follow the development
 principles: each conversion is gated by `DeviceProfile`, yields to a saved setting, has a

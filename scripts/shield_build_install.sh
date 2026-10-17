@@ -83,7 +83,7 @@ echo "== $apk"
 echo "   package $pkg"
 echo "   cert    $cert"
 echo "   sha256  $local_sha"
-# Outside build/, so `./gradlew clean` keeps it; /roadmap-next reads it.
+# Outside build/, so `./gradlew clean` keeps it; /ship:roadmap-next's new-build probe reads it.
 mkdir -p .local
 printf '%s\t%s%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$head_sha" "$dirty" "$pkg" "$local_sha" "$cert" >> .local/shield-builds.tsv
 
