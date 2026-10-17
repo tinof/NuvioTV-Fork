@@ -97,7 +97,8 @@ device="$(adb shell getprop ro.product.device | tr -d '\r')"
 [ "$device" = "mdarcy" ] || { echo "device is '$device', not mdarcy; not installing" >&2; exit 1; }
 
 # A key mismatch would fail the install anyway; check first so the error is clear.
-installed_path="$(adb shell pm path "$pkg" 2>/dev/null | head -1 | sed 's/^package://' | tr -d '\r')"
+# pm path exits 1 when the package is not installed.
+installed_path="$( (adb shell pm path "$pkg" 2>/dev/null || true) | head -1 | sed 's/^package://' | tr -d '\r')"
 if [ -n "$installed_path" ]; then
   tmp="$(mktemp -d)"
   adb_long pull "$installed_path" "$tmp/installed.apk" >/dev/null
