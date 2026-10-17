@@ -54,7 +54,6 @@ lists). Restart playback, or the app for the rows marked *app*.
 | Seek thumbnails start on (`mdarcy` only, when no mode was chosen) | `thumb_default_on` (`0`) | Logcat `ThumbMem … strongBox=`, the HUD dropped-frame row with thumbnails on vs off |
 | Low-RAM tier comes from device RAM when buffers are off-heap | `lowram_from_ram` (`0`) *app* | Logcat `BACK_BUFFER_RESOLVED: … lowRam=` |
 | libass renders with the canvas overlay (when no type is saved). The settings page still labels Overlay OpenGL "recommended". | `libass_overlay_canvas` (`0`) | `dumpsys SurfaceFlinger` with subtitles and the HUD: no CLIENT composition, no UI stutter |
-| Opaque black window background outside playback. **Causes incident 02** (letterbox bars show the previous screen with True black bars on) and never makes the app layer opaque; to be reverted ([ROADMAP](../ROADMAP.md) R1) | `opaque_window` (`0`) *app* | Letterbox bars of a 2.40:1 title with True black bars on |
 | Video codec queueing is async (from the first pass) | `async_codec` (`0`) | HUD dropped-frame row on 4K60 HEVC and an 80+ Mbit/s DV remux |
 | Auto frame-rate matching starts in Start/Stop mode (from the first pass) | Setting "Frame Rate Matching" | Turn off the Shield's own "Match frame rate" while Nuvio AFR is on |
 | The switch back after Stop waits 750 ms, until the player surface is gone (round 3) | `afr_restore_delay_ms` (`0` = at once; up to 5000); `afr_restore_skip` (`1` = stay on the content rate) | Logcat `Restoring display mode after 750ms`; no black screen or ANR after Stop |
