@@ -10,6 +10,16 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-18: R1.2 Confirm the mechanism on the current APK (closed unrun)
+
+Step: [R1.2][device] On the current APK, confirm the mechanism: `setprop debug.nuvio.opaque_window 0`,
+restart the app, play a 2.40:1 title with True black bars on. Gate: bars black with `0`, stale with the
+default.
+
+- Resolution: closed without meeting its gate. The default arm did not reproduce incident 02 (session in
+  the R1.1 entry below), so the `0` arm was not run; R1.1 then reverted the default this step tested, so
+  it cannot run again. R1.3 checks the bars, with ASS subtitles, on the new build.
+
 ## 2026-10-18: R1.1 Revert be0ce8ec9 and remove the `opaque_window` row (PR #4)
 
 Step: [R1.1][desk] Revert be0ce8ec9 (it applies cleanly) and remove the `opaque_window` row from the
