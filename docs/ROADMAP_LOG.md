@@ -10,6 +10,26 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-18: R1.1 Revert be0ce8ec9 and remove the `opaque_window` row (PR #4)
+
+Step: [R1.1][desk] Revert be0ce8ec9 (it applies cleanly) and remove the `opaque_window` row from the
+defaults table. Gate: unit tests green.
+
+- Evidence: `:app:testFullDebugUnitTest` green on the PR head (5658 tests, 0 failures, JDK 17); CI
+  `PR Full Debug Build` on PR #4. Cross-review Tier 2, Codex and Gemini: LGTM.
+- Resolution: MainActivity sets a transparent window background in `onCreate` again, and
+  `LetterboxRenderPolicy` loses `opaqueWindowOutsidePlayback` and `opaqueWindowNow`. The True black bars
+  code (`LetterboxRenderPolicy`, the `transparent_letterbox` preference, the player) matches
+  `upstream/main`.
+- R1.2 device session before the revert was installed (installed APK sha256 `c7c3b0a99f58bc30…`, True
+  black bars on, `opaque_window` unset): Blade Runner 2049 (2.39:1, DV remux, 2160p25 → 2160p23.976),
+  started by deep link and through Home → Continue watching, with Finnish PGS subtitles selected and the
+  player controls shown and hidden. Bars pure black in every screenshot (max pixel 0–1), window format
+  TRANSPARENT, app layer `isOpaque=0`, no HDCP read failures. Incident 02 did not reproduce, so the
+  `opaque_window 0` arm was not run and W1 stays unconfirmed. Not covered: ASS subtitles, which R1.3 tests.
+  The owner closed R1.1 on the grounds that the revert restores upstream's behaviour; it does not claim
+  to fix incident 02.
+
 ## 2026-10-16: Appendix A, on-device Dolby Vision conversion
 
 The owner asked whether the fork can convert HDR10+, HDR10 and HLG to Dolby Vision during playback,
