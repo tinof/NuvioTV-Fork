@@ -88,7 +88,8 @@ Steps that need a decision or a reading from the owner. Other steps of the same 
 - **Hot-Stop session (R2.4).** The owner must be able to power-cycle the Shield during the session.
 - **Defaults after measuring (Q2.5, R2.4).** The AFR settle hold (600 or 1200 ms) and whether "keep the
   content frame rate after playback" becomes the Nvidia default.
-- **Merge into `main`.** Criteria: R1 done, the R2 mitigation shipped, Q2 done, CI green.
+- **Merge into `main`.** Criteria: the R2 mitigation shipped, Q2 done, CI green. R1 counts as
+  done: R1.1 shipped and R1.3 was deferred (2026-10-18).
 - **Ask the upstream maintainer (U1.1).** Whether Shield work is wanted upstream and in what form; the
   owner decides how and when to ask.
 
@@ -98,6 +99,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-18 | R1.3 and D1.2 deferred by the owner: ASS subtitles are not in use. | R1, D1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.2 closed unrun: the default it tested was reverted in R1.1; its session did not reproduce incident 02. | R1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.1: the Nvidia `opaque_window` default reverted; R1.2 did not reproduce incident 02 with it. | R1 | [log](docs/ROADMAP_LOG.md), PR #4 |
 | 2026-10-16 | Appendix A: plan for on-device Dolby Vision conversion (HDR10+, HDR10, HLG), a separate track. | DV1–DV6 | [log](docs/ROADMAP_LOG.md) |
@@ -142,7 +144,8 @@ Order (2026-10-15): the regression this branch introduced; then the safety proto
 every later claim needs; then what runs at every start and Stop; then the owner's two goals, sound first
 because a wrong passthrough path is invisible until measured.
 
-1. **Incident 02, letterbox bleed** (R1). Gate: clean bars and a single subtitle line on a new build.
+1. **Incident 02, letterbox bleed** (R1). Deferred on 2026-10-18: R1.1 shipped; the ASS subtitle check
+   (R1.3) waits until ASS subtitles are in use.
 2. **Device safety and baselines** (M2, M1). Gate: the protocol tested once; baseline tables for this
    app and the upstream app in the log. The playback start stage is logged before the playback baseline.
 3. **Switch-back safety and AFR plan** (R2, Q2). Gate: the mitigation ships; the re-entry test passes.
@@ -164,7 +167,7 @@ because a wrong passthrough path is invisible until measured.
 
 ### R1: incident 02, letterbox bars show the previous screen
 
-- **Status:** Partial. The `opaque_window` default is reverted (R1.1, PR #4), so the window background
+- **Status:** Deferred (owner, 2026-10-18). The `opaque_window` default is reverted (R1.1, PR #4), so the window background
   and True black bars match upstream. The device check of 2026-10-18 did not reproduce incident 02 with that
   default (black bars, no stale pixels; see the log), so the cause below is not confirmed. Findings W1–W5.
 - be0ce8ec9 set a black window background in `MainActivity.onCreate` (`MainActivity.kt:407`), before
@@ -172,9 +175,10 @@ because a wrong passthrough path is invisible until measured.
   the window to transparent for true black bars, the bar areas keep old pixels. The default never made
   the app layer opaque to the compositor either: once a SurfaceView has attached, the window format is
   forced to TRANSLUCENT (Home showed `isOpaque=0`). Nothing outside the commit reads `opaque_window`.
-- [R1.3][device][new-build] Two 2.40:1 titles with True black bars on, started from the detail page, with ASS
-  subtitles on the canvas overlay and on Overlay OpenGL. Gate: black bars, one subtitle line, no CLIENT
-  composition in `dumpsys SurfaceFlinger`. Needs: R1.1.
+- Deferred (owner, 2026-10-18: ASS subtitles are not in use): R1.3, two 2.40:1 titles with True black
+  bars on, started from the detail page, with ASS subtitles on the canvas overlay and on Overlay OpenGL.
+  Gate: black bars, one subtitle line, no CLIENT composition in `dumpsys SurfaceFlinger`. Runs on a build
+  with R1.1. Restore it as a `[device][new-build]` step when ASS subtitles come into use.
 
 ### R2: switch-back after Stop (incident 01)
 
@@ -462,8 +466,9 @@ because a wrong passthrough path is invisible until measured.
 - **Status:** Partial. The corrections to [`docs/shield-todo.md`](docs/shield-todo.md) listed in the log
   (2026-10-15) were applied with this roadmap. Findings A-M1, A-M4 to A-M6, B6, C12, W5, H6, H7, P-09, P-10.
 - [D1.1][desk] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Gate: string present in every locale.
-- [D1.2][desk] Settings label for libass: Overlay OpenGL is still marked "recommended" although Nvidia starts
-  on canvas; change it after the R1 subtitle check. Gate: label matches the default. Needs: R1.3.
+- Deferred with R1.3 (2026-10-18): D1.2, the settings label for libass. Overlay OpenGL is still marked
+  "recommended" although Nvidia starts on canvas; change it after the R1.3 subtitle check. Gate: label
+  matches the default.
 - Closed: the Shield thermal threshold is not readable without root on SE 9.2.4; it stays unset.
 
 ## Appendix A: on-device Dolby Vision conversion
