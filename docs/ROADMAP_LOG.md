@@ -10,6 +10,13 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-18: R1.3 and D1.2 deferred
+
+The owner deferred R1.3 (True black bars with ASS subtitles on the canvas overlay and Overlay OpenGL, on a
+build with R1.1): ASS subtitles are not in use, so the check is not a priority. D1.2 (the libass
+"recommended" label) waited on R1.3 and is deferred with it. R1 counts as done for the merge into `main`.
+Both stay in `ROADMAP.md` as Deferred bullets, to be restored as steps when ASS subtitles come into use.
+
 ## 2026-10-18: R1.2 Confirm the mechanism on the current APK (closed unrun)
 
 Step: [R1.2][device] On the current APK, confirm the mechanism: `setprop debug.nuvio.opaque_window 0`,
