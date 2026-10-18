@@ -98,6 +98,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-18 | R1.1: the Nvidia `opaque_window` default reverted; R1.2 did not reproduce incident 02 with it. | R1 | [log](docs/ROADMAP_LOG.md), PR #4 |
 | 2026-10-16 | Appendix A: plan for on-device Dolby Vision conversion (HDR10+, HDR10, HLG), a separate track. | DV1–DV6 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-16 | Upstream plan: principles for upstreamable work and the toolchain, U1 added, UI baselines on the `benchmark` build. | U1, M1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-15 | Roadmap created from the two assessments and the device report. | all | [log](docs/ROADMAP_LOG.md) |
@@ -162,14 +163,14 @@ because a wrong passthrough path is invisible until measured.
 
 ### R1: incident 02, letterbox bars show the previous screen
 
-- **Status:** Open. Findings W1–W5.
-- be0ce8ec9 sets a black window background in `MainActivity.onCreate` (`MainActivity.kt:407`), before
+- **Status:** Partial. The `opaque_window` default is reverted (R1.1, PR #4), so the window background
+  and True black bars match upstream. The device check of 2026-10-18 did not reproduce incident 02 with that
+  default (black bars, no stale pixels; see the log), so the cause below is not confirmed. Findings W1–W5.
+- be0ce8ec9 set a black window background in `MainActivity.onCreate` (`MainActivity.kt:407`), before
   the window is attached, so the renderer is created opaque and never clears. When the player switches
   the window to transparent for true black bars, the bar areas keep old pixels. The default never made
   the app layer opaque to the compositor either: once a SurfaceView has attached, the window format is
   forced to TRANSLUCENT (Home showed `isOpaque=0`). Nothing outside the commit reads `opaque_window`.
-- [R1.1][desk] Revert be0ce8ec9 (it applies cleanly) and remove the `opaque_window` row from the defaults
-  table. Gate: unit tests green.
 - [R1.2][device] On the current APK, confirm the mechanism: `setprop debug.nuvio.opaque_window 0`, restart the
   app, play a 2.40:1 title with True black bars on. Gate: bars black with `0`, stale with the default.
 - [R1.3][device][new-build] Two 2.40:1 titles with True black bars on, started from the detail page, with ASS
