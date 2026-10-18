@@ -98,6 +98,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-18 | R1.2 closed unrun: the default it tested was reverted in R1.1; its session did not reproduce incident 02. | R1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.1: the Nvidia `opaque_window` default reverted; R1.2 did not reproduce incident 02 with it. | R1 | [log](docs/ROADMAP_LOG.md), PR #4 |
 | 2026-10-16 | Appendix A: plan for on-device Dolby Vision conversion (HDR10+, HDR10, HLG), a separate track. | DV1–DV6 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-16 | Upstream plan: principles for upstreamable work and the toolchain, U1 added, UI baselines on the `benchmark` build. | U1, M1 | [log](docs/ROADMAP_LOG.md) |
@@ -171,8 +172,6 @@ because a wrong passthrough path is invisible until measured.
   the window to transparent for true black bars, the bar areas keep old pixels. The default never made
   the app layer opaque to the compositor either: once a SurfaceView has attached, the window format is
   forced to TRANSLUCENT (Home showed `isOpaque=0`). Nothing outside the commit reads `opaque_window`.
-- [R1.2][device] On the current APK, confirm the mechanism: `setprop debug.nuvio.opaque_window 0`, restart the
-  app, play a 2.40:1 title with True black bars on. Gate: bars black with `0`, stale with the default.
 - [R1.3][device][new-build] Two 2.40:1 titles with True black bars on, started from the detail page, with ASS
   subtitles on the canvas overlay and on Overlay OpenGL. Gate: black bars, one subtitle line, no CLIENT
   composition in `dumpsys SurfaceFlinger`. Needs: R1.1.
