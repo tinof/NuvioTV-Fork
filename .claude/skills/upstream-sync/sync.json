@@ -1,0 +1,178 @@
+{
+  "repo": "tinof/NuvioTV-Fork",
+  "upstream_repo": "ysosrs123/NuvioTV-Fork",
+  "remotes": {
+    "fork": "origin",
+    "upstream": "upstream"
+  },
+  "layers": {
+    "main": "main",
+    "perf": "perf/shield-pass"
+  },
+  "ignored_branch_prefixes": [
+    "backup/",
+    "sync/"
+  ],
+  "issue_workflows": [
+    "Issue triage",
+    "Issue labels",
+    "Issue and PR housekeeping",
+    "Close issues fixed in a release"
+  ],
+  "pinned_binaries": {
+    "app/libs/lib-datasource-release.aar": "692cae00f2eadf35dc53e25107c464c5648ef39d2bf74adcb2756b8c51a7e502"
+  },
+  "baseline_known_failures": [
+    "androidx.media3.datasource.LocalhostZeroCopyDataSourceTest.testHttpError404"
+  ],
+  "owner_rule": "Where upstream changes a setting that the Shield plan (docs/shield-todo.md, ROADMAP.md) also sets, keep the fork's value, Nvidia-gated with a debug.nuvio.* revert switch, and add a row to docs/shield-todo.md. Otherwise take upstream's value and list it under '### Upstream defaults taken with the sync of <date>' in docs/shield-todo.md.",
+  "traps": [
+    "app/libs/lib-datasource-release.aar: always keep the fork's binary (sha256 692cae00...). Upstream's ba710a269 rebuild (44c07852...) still reports localhost 404/410 as 400; upstream's own testHttpError404 fails with it.",
+    "MemoryBudget: the fork's RAM-based isLowRamTier must not feed tierMaxChunkMbFor or the trailer pool; those take the heap-only lowHeap.",
+    "A fork commit and its own revert (a net-zero pair) may be dropped together, never one alone; check with git diff A^ B -- <their paths>.",
+    "The build toolchain (JDK, Gradle, AGP, Kotlin, JVM target) always follows upstream.",
+    "Locale files: upstream moves existing strings; a fork hunk that carries one as context re-adds it and aapt fails on the duplicate."
+  ],
+  "scale": {
+    "single_max_commits": 8,
+    "single_max_conflicts": 3,
+    "max_analysts": 9,
+    "upstream_per_theme_cap": 40
+  },
+  "themes": [
+    {
+      "key": "datasource-aar",
+      "subjects": "^\\w+\\(datasource\\)",
+      "paths": [
+        "^app/libs/lib-datasource",
+        "LocalhostZeroCopy",
+        "patch-datasource-aar\\.yml$",
+        "^app/libs/datasource-aar-src/"
+      ],
+      "focus": "Extract the AAR at the merge base, the old fork tip and upstream/main into the scratch directory and compare the changed classes with javap -c -p. Keep the fork binary unless upstream's class does everything the fork's does; check the pinned sha256 and that patch-datasource-aar.yml still targets a class that exists."
+    },
+    {
+      "key": "audio",
+      "subjects": "^\\w+\\(audio\\)",
+      "paths": [
+        "AudioPassthroughPolicy",
+        "PassthroughBufferCaps",
+        "SurroundFormatResolver",
+        "LosslessAudio",
+        "/screens/player/iec/",
+        "Passthrough",
+        "SurroundResolve",
+        "TrackSelection",
+        "AudioChainProbe",
+        "AudioDelay"
+      ],
+      "focus": "Upstream changes to passthrough, the IEC packer, track selection or the lossless default against the fork's Nvidia audio defaults (System passthrough on, hbr buffer caps, hbr tunnel, probe union, HDMI pin under Bluetooth)."
+    },
+    {
+      "key": "afr-display",
+      "subjects": "^\\w+\\((afr|display)\\)",
+      "paths": [
+        "FrameRateUtils",
+        "DisplayCapabilities",
+        "AfrProbe",
+        "ControllerAfr",
+        "AfrPreflightGate",
+        "DeviceAssessmentEngine",
+        "LetterboxRenderPolicy",
+        "PlayerLateVideoWatch",
+        "PlayerAspectScale"
+      ],
+      "focus": "Tier 2: display-mode switching. Check upstream frame-rate selection (seamless/QMS, multiples, pulldown) against the fork's settle hold, A/V quiesce and the delayed switch back after Stop (incident 01). Any upstream path that re-adds what the fork removed."
+    },
+    {
+      "key": "thumbs-memory",
+      "subjects": "^\\w+\\((thumbs|memory)\\)",
+      "paths": [
+        "SeekThumbnail",
+        "Thumb",
+        "MemoryBudget",
+        "MemoryGovernor",
+        "BufferSizing",
+        "CMakeLists",
+        "nuviothumb"
+      ],
+      "focus": "Memory tiers and thumbnail admission on the Shield TV Pro 2019 (3 GB, 384 MB heap, swap often full): upstream relaxations of swap or floor rules, chunk ceilings and connection counts against the fork's swap rule, thumb_swap_room and lowHeap."
+    },
+    {
+      "key": "video-dv",
+      "subjects": "^\\w+\\((dv|codecs|video|mpv)\\)",
+      "paths": [
+        "MatroskaExtractor",
+        "/dvmkv/",
+        "Dovi",
+        "DolbyVision",
+        "MediaBrowserProvider",
+        "/mediaserver/",
+        "Silo",
+        "Decoder",
+        "Codec",
+        "Hdr"
+      ],
+      "focus": "Decoder routing (Hi10P, AV1, VC-1, MPEG-2), Dolby Vision decoder choice and conversion, media-server device profiles: does upstream now do any of it itself, and do the fork's Nvidia DV defaults still hook in?"
+    },
+    {
+      "key": "player-runtime",
+      "subjects": "^\\w+\\((player|playback|tunnel|hud|subtitles|device)\\)",
+      "paths": [
+        "/screens/player/",
+        "/core/player/",
+        "Mpv",
+        "RemoteButton",
+        "DeviceProfile",
+        "DebugSwitches"
+      ],
+      "focus": "PlayerUiState / PlayerViewModel / PlayerRuntimeController* data classes and Stats rows (keep both sides' fields), mpv defaults, tunnelling start, remote and game-controller button maps (key codes and job ids)."
+    },
+    {
+      "key": "ui",
+      "subjects": "^\\w+\\(ui\\)",
+      "paths": [
+        "/ui/",
+        "MainActivity",
+        "Trailer",
+        "NuvioApplication"
+      ],
+      "focus": "Visual tier, pre-blurred glass, hero and row focus timing, trailer caps: do the fork hooks still sit in the code that upstream now runs (upstream rewrites UI files often)?"
+    },
+    {
+      "key": "build-infra",
+      "subjects": "^(ci|build)(\\(|:)",
+      "paths": [
+        "\\.gradle\\.kts$",
+        "^gradle/",
+        "^\\.github/",
+        "AndroidManifest",
+        "[Uu]pdater",
+        "DataStore\\.kt$",
+        "^scripts/",
+        "^app/libs/"
+      ],
+      "focus": "Toolchain and dependency versions (always upstream's), fork build changes (debug signing, backend values, native libs loaded from the APK, debug applicationIdSuffix), new upstream workflows with issue or cron triggers, settings-store keys and defaults on both sides (name or default collisions)."
+    },
+    {
+      "key": "i18n-docs",
+      "subjects": "^(docs|fork|chore\\(claude\\))(\\(|:)|^\\w+\\(i18n\\)",
+      "paths": [
+        "/res/values[^/]*/",
+        "\\.md$",
+        "^docs/",
+        "^\\.claude/",
+        "^\\.agents/"
+      ],
+      "focus": "Locale conflicts (keep both sides; drop a fork-side line that upstream moved, or aapt fails on the duplicate), string name collisions, README and fork docs that describe behaviour upstream changed."
+    },
+    {
+      "key": "app-other",
+      "subjects": "",
+      "paths": [
+        "."
+      ],
+      "focus": "Everything no other theme claims: repositories, sync, services, data models. Check that fork fixes still apply to the code upstream now runs, and whether upstream fixed the same problem itself."
+    }
+  ]
+}
