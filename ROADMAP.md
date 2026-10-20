@@ -75,6 +75,13 @@ The owner reported moving the UI from 2160p 25 Hz to 24 Hz; on 2026-10-15 the Sh
 and every UI animation runs at it. Device steps that test switching use titles whose rate differs from
 the UI mode.
 
+**Upstream sync (2026-10-20).** The branch was rebased onto upstream 1.1.0-nt.7.3. Where upstream changed a
+setting this pass also sets, the fork's value stays: AV1 trailers need hardware on Nvidia, full swap still
+refuses thumbnail decodes on `mdarcy`, TrueHD stays on the platform sink (Q1.2 now covers upstream's
+keep-alive) and the fork's datasource AAR stays. Elsewhere upstream's new defaults apply on the Shield too,
+listed in [`docs/shield-todo.md`](docs/shield-todo.md). Device numbers above predate them, and the installed
+build predates the sync.
+
 ### Waiting for the owner
 
 Steps that need a decision or a reading from the owner. Other steps of the same item stay startable.
@@ -99,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-20 | U1.5: rebased onto upstream 1.1.0-nt.7.3; the fork keeps its Shield settings where upstream changed them. | U1, Q1 | [log](docs/ROADMAP_LOG.md), PR #6 |
 | 2026-10-18 | R1.3 and D1.2 deferred by the owner: ASS subtitles are not in use. | R1, D1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.2 closed unrun: the default it tested was reverted in R1.1; its session did not reproduce incident 02. | R1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.1: the Nvidia `opaque_window` default reverted; R1.2 did not reproduce incident 02 with it. | R1 | [log](docs/ROADMAP_LOG.md), PR #4 |
@@ -223,8 +231,9 @@ because a wrong passthrough path is invisible until measured.
   skipped and the first cluster time in `MKV_RESYNC` (A2); the delta and time since the last seek on
   `UnexpectedDiscontinuityException` (A3). Gate: tests on the log helpers.
 - [Q1.2][device][owner][new-build] `hbr_iec` 0 against 1 on a TrueHD Atmos title and a DTS-HD MA title
-  (tunneling off). Record the AVR indicator, `HBR active payload=` against `HBR DIRECT`, and
-  `restartIfDisabled`. Gate: readings in the log; default decided. Needs: Q1.1.
+  (tunneling off), each with a seek and a pause: upstream 1.1.0-nt.7 keeps the TrueHD stream alive through
+  them on the packer path only (3aeb1e180). Record the AVR indicator and whether it relocks, `HBR active
+  payload=` against `HBR DIRECT`, `iec_keepalive_armed`, and `restartIfDisabled`. Gate: readings in the log; default decided. Needs: Q1.1.
 - [Q1.3][device][owner] E-AC3 Atmos: play an E-AC3 JOC stream and record the AVR indicator. Gate: reading in
   the log.
 - [Q1.4][device] `hbr_buffer_scale` 1 against 2 over 10 seeks: time from `SEEK_READY` to the first advance of
@@ -442,7 +451,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### U1: upstream pull requests
 
-- **Status:** Open. The branch is 80 commits ahead of `upstream/main` and 0 behind (2026-10-16).
+- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-20 (onto
+  1.1.0-nt.7.3, official NuvioTV 1.1.0-beta.7).
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
 - [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per

@@ -37,7 +37,7 @@ lists). Restart playback, or the app for the rows marked *app*.
 
 | What changed on Nvidia | Switch (revert value) | What to look at |
 |---|---|---|
-| TrueHD/DTS-HD go to the platform sink, not through the fork's IEC61937 packer. The HAL refuses raw TrueHD, so AudioFlinger's SPDIF encoder wraps it as IEC61937 at 192 kHz. The "System Passthrough" setting now defaults to on (a saved value wins). | `hbr_iec` (`1` = packer) | The AVR's Atmos / DTS:X indicator, A/V sync, the HUD underrun row |
+| TrueHD/DTS-HD go to the platform sink, not through the fork's IEC61937 packer. The HAL refuses raw TrueHD, so AudioFlinger's SPDIF encoder wraps it as IEC61937 at 192 kHz. The "System Passthrough" setting now defaults to on (a saved value wins). Upstream 1.1.0-nt.7's TrueHD keep-alive through seek, pause and resume (3aeb1e180) runs only on the packer path, so this default does not get it (ROADMAP Q1.2). | `hbr_iec` (`1` = packer) | The AVR's Atmos / DTS:X indicator, A/V sync, the HUD underrun row, the AVR relocking after a seek or pause |
 | TrueHD/DTS-HD passthrough buffer caps ×2 | `hbr_buffer_scale` (`1`) | Underruns, `dumpsys media.audio_flinger` |
 | A TrueHD/DTS-HD track that the platform sink plays keeps tunneling. Inert on mdarcy SE 9.2.4 (no decoder tunnels) | `hbr_tunnel` (`0`) | `PLAYBACK_TUNNELING: requested=… applied=`, stalls |
 | The surround decision uses the stereo / 5.1 / 7.1 probe union and the HDMI channel count | `audio_probe_union` (`0`) | Settings > Advanced > Source & hardware |
@@ -52,6 +52,8 @@ lists). Restart playback, or the app for the rows marked *app*.
 | mpv decodes with direct MediaCodec (`mediacodec,mediacodec-copy`; a saved mode wins) | Setting "Hardware decoding (MPV-only)" | HUD `hwdec` row shows `mediacodec` |
 | mpv tone mapping `bt.2446a` with no peak detection | `mpv_tonemap` (`0`) | HDR on an SDR TV through mpv |
 | Seek thumbnails start on (`mdarcy` only, when no mode was chosen) | `thumb_default_on` (`0`) | Logcat `ThumbMem … strongBox=`, the HUD dropped-frame row with thumbnails on vs off |
+| Full swap refuses a single thumbnail decode even with MemAvailable 200 MB above the decode floor (`mdarcy` only). NuvioTV 1.1.0-nt.7.1 (4f7c16200) allows that on 3 GB boxes; the fork's device data from round 3 says no on this box. | `thumb_swap_room` (`1` = allow; `0` turns it off on every box) *app* | Logcat `ThumbMem init … swapRoom=false`, refusals `SwapFree … MB < 64` |
+| AV1 trailers need a hardware decoder, so the Shield takes H.264 or VP9, or the HLS or progressive source when YouTube offers only AV1. NuvioTV 1.1.0-beta.7 accepts any decoder that claims the format, Android's software AV1 one included. | `trailer_av1_hw` (`0`) *app* | Logcat `Trailer adaptive: …/<height>p/<codec>` never shows AV1 |
 | Low-RAM tier comes from device RAM when buffers are off-heap | `lowram_from_ram` (`0`) *app* | Logcat `BACK_BUFFER_RESOLVED: … lowRam=` |
 | libass renders with the canvas overlay (when no type is saved). The settings page still labels Overlay OpenGL "recommended". | `libass_overlay_canvas` (`0`) | `dumpsys SurfaceFlinger` with subtitles and the HUD: no CLIENT composition, no UI stutter |
 | Video codec queueing is async (from the first pass) | `async_codec` (`0`) | HUD dropped-frame row on 4K60 HEVC and an 80+ Mbit/s DV remux |
@@ -78,7 +80,8 @@ Changes for every device in this round:
   download is larger. Device check: mpv playback and seek thumbnails still work.
 - `libnuviothumb` is tuned for Cortex-A57 on arm64.
 - Localhost streams report the real HTTP status, so expired links (404/410) and 416 retries are handled (fix on fork
-  main).
+  main). NuvioTV 1.1.0-beta.7 ships its own rebuild of the class that still reports 404/410 as 400; the fork's
+  AAR replaces it (`app/libs/README.md`).
 - When the decoder list cannot be read, a DV5 MKV takes the HEVC remap.
 - The HUD queue row says `default (async)` on Fire TV API 28+.
 - The episode-options dialog no longer draws the page's pre-blurred glass.
@@ -89,6 +92,21 @@ Changes for every device in this round:
   headset, TrueHD still bitstreams (logcat `PASSTHROUGH_RETURN hdmi-under-bluetooth-pin`).
 - Two races found by flaky tests are fixed: a failed meta lookup could stick for the whole session, and a
   profile switch right after start could keep the old profile's watched list.
+
+### Upstream defaults taken with the sync of 2026-10-20
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.1.0-nt.7.3 (official NuvioTV 1.1.0-beta.7). Where upstream
+changed a setting this pass also sets, the fork's value stays (the rows above that name upstream). Where this
+pass has no setting, upstream's new default applies on the Shield too, with no fork switch:
+- Automatic speed-up is on: it adds and hands back parallel downloads as a film needs them.
+- The parallel-download limits rise to 8 connections (16 with native memory) and 128 MB chunks. The chunk
+  ceiling on the Java heap still follows the heap rule (`MemoryBudget.lowHeap`), not the fork's RAM tier.
+- The Android TV home screen gets a Continue Watching channel and Watch Next entries, synced at boot by a boot
+  receiver.
+- The Stats panel shows the Dolby Vision detail rows (DV HDR, CM, levels, L1, L5) only for native DV7 FEL, so
+  never on the Shield. The fork's "DV decoder" row still shows on every DV stream.
+
+Measurements taken before 2026-10-20 predate these defaults.
 
 ## History
 
