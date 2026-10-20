@@ -3,8 +3,10 @@ package com.nuvio.tv.core.player.thumbnail
 import android.app.ActivityManager
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.os.Build
 import android.os.Process
 import android.util.Log
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.MemoryPressure
 import com.nuvio.tv.core.util.DebugSwitches
 import java.io.File
@@ -124,6 +126,8 @@ internal object MemoryGovernor {
      */
     val isStrongHardware: Boolean get() = strongHardware
     @Volatile private var strongHardware = false
+    /** [strongHardware] with the swap room allowed: whether a strong box's free memory may outweigh full swap. */
+    @Volatile private var swapRoomHardware = false
     @Volatile private var registered = false
 
     /** A 2 GB class box (or a 32-bit app or a small Java heap): 4K films load after the generating screen. */
@@ -146,6 +150,7 @@ internal object MemoryGovernor {
         totalMemBytes = info.totalMem
         activityManager = am
         strongHardware = strongHardware(is64Bit, totalMemBytes, Runtime.getRuntime().maxMemory())
+        swapRoomHardware = strongHardware && swapRoomOn(DebugSwitches.flag("debug.nuvio.thumb_swap_room"))
         strongBox = decideStrongBox(info).allowed
         MemoryPressure.register(app)
         // RUNNING_LOW and above while visible, or anything once in the background.
@@ -154,7 +159,7 @@ internal object MemoryGovernor {
             trimListeners.forEach { runCatching { it(level) } }
         }
         registered = true
-        Log.i(TAG, "init lowRam=$lowRam process64=$is64Bit strongBox=$isStrongBox strongHardware=$strongHardware totalMb=${totalMemBytes / (1024 * 1024)}")
+        Log.i(TAG, "init lowRam=$lowRam process64=$is64Bit strongBox=$isStrongBox strongHardware=$strongHardware swapRoom=$swapRoomHardware totalMb=${totalMemBytes / (1024 * 1024)}")
     }
 
     /**
@@ -194,6 +199,17 @@ internal object MemoryGovernor {
      * [switch] (debug.nuvio.thumb_swap_rule): false relaxes it, full swap then refuses only below 900 MB available.
      */
     internal fun swapRuleOn(switch: Boolean?): Boolean = switch ?: true
+
+    /**
+     * Whether a strong box's MemAvailable may outweigh full swap for a single decode ([roomBesideSwap]). Off on the
+     * Shield TV Pro 2019, for the same device data as [swapRuleOn]. [switch] (debug.nuvio.thumb_swap_room): true
+     * allows it there, false turns it off on every box.
+     */
+    internal fun swapRoomOn(
+        switch: Boolean?,
+        manufacturer: String? = Build.MANUFACTURER,
+        device: String? = Build.DEVICE,
+    ): Boolean = switch ?: !DeviceProfile.isShieldPro2019(manufacturer, device)
 
     /**
      * The heap in use counts garbage not collected yet: when the free-heap rule is the only one that fails, [collect]
@@ -244,7 +260,7 @@ internal object MemoryGovernor {
         am?.getMemoryInfo(info)
         val mem = readMeminfo()
         return pressureReason(am != null && info.lowMemory, mem?.availableMb ?: -1L, mem?.swapTotalMb ?: 0L,
-            mem?.swapFreeMb ?: 0L, if (lowRam) FLOOR_LOW_RAM_MB else FLOOR_DEFAULT_MB, strongHardware)
+            mem?.swapFreeMb ?: 0L, if (lowRam) FLOOR_LOW_RAM_MB else FLOOR_DEFAULT_MB, swapRoomHardware)
     }
 
     internal fun pressureReason(
@@ -313,7 +329,7 @@ internal object MemoryGovernor {
             }
         }
         val mem = readMeminfo() ?: return GovernorVerdict(true, "meminfo unavailable")
-        return decodeVerdict(mem, if (decoderWarm) 0L else tier.rssMb.toLong(), funded, lowRam, strongHardware)
+        return decodeVerdict(mem, if (decoderWarm) 0L else tier.rssMb.toLong(), funded, lowRam, swapRoomHardware)
     }
 
     /**
@@ -373,7 +389,7 @@ internal object MemoryGovernor {
     /** SwapFree read again just before a decode starts, after its keyframe was fetched. */
     fun swapAllows(funded: Boolean): GovernorVerdict {
         val mem = readMeminfo() ?: return GovernorVerdict(true, "meminfo unavailable")
-        return swapVerdict(mem, funded, lowRam, strongHardware) ?: GovernorVerdict(true, "ok swapFree=${mem.swapFreeMb}")
+        return swapVerdict(mem, funded, lowRam, swapRoomHardware) ?: GovernorVerdict(true, "ok swapFree=${mem.swapFreeMb}")
     }
 
     /** Below this SwapFree a smaller box closes its decoders rather than trimming them. */
