@@ -106,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-20 | U1.5 made repeatable: two-layer branches, the daily drift issue and the `/upstream-sync` skill. | U1 | [log](docs/ROADMAP_LOG.md), PR #9 |
 | 2026-10-20 | U1.5: rebased onto upstream 1.1.0-nt.7.3; the fork keeps its Shield settings where upstream changed them. | U1, Q1 | [log](docs/ROADMAP_LOG.md), PR #6 |
 | 2026-10-19 | Appendix A: DV7 added for Profile 7 input, from AetherEngine's FEL design and hdr-analyze's FEL plan. | DV7 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.3 and D1.2 deferred by the owner: ASS subtitles are not in use. | R1, D1 | [log](docs/ROADMAP_LOG.md) |
@@ -453,7 +454,8 @@ because a wrong passthrough path is invisible until measured.
 ### U1: upstream pull requests
 
 - **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-20 (onto
-  1.1.0-nt.7.3, official NuvioTV 1.1.0-beta.7).
+  1.1.0-nt.7.3, official NuvioTV 1.1.0-beta.7). The open "Upstream drift" issue (label `upstream-drift`)
+  shows how far behind it is; a daily workflow on `main` keeps it current.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
 - [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
@@ -467,8 +469,10 @@ because a wrong passthrough path is invisible until measured.
   Gate: each branch builds and passes the unit tests in CI. Needs: U1.2, U1.1.
 - [U1.4][desk] Pull request text per theme with the M1 numbers it rests on and the revert switches. Gate: the
   numbers come from the log. Needs: U1.3, M1.4.
-- [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits behind
-  at each pull request.
+- [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves: run `/upstream-sync`
+  when the drift issue is open. Two layers: `main` = `upstream/main` + the fork's base layer (CI, test and fix
+  commits, the drift watcher), `perf/shield-pass` = `main` + the Shield work; both are rebased, never merged.
+  Gate: 0 commits behind at each pull request.
 
 ## Docs
 
