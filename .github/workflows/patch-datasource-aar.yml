@@ -2,7 +2,9 @@ name: Patch datasource AAR
 
 # Rebuilds LocalhostZeroCopyDataSource in app/libs/lib-datasource-release.aar from
 # app/libs/datasource-aar-src. It first compiles the unpatched upstream source and stops
-# unless that matches the class in the shipped AAR, so the patch starts from the real source.
+# unless that matches the class in the original AAR (before any rebuild), so the patch starts
+# from the real source. The AAR in the tree is already rebuilt (by this workflow, or upstream's
+# ba710a269), so the original is read from git history.
 
 on:
   workflow_dispatch:
@@ -13,6 +15,10 @@ permissions:
 env:
   UPSTREAM_URL: https://raw.githubusercontent.com/halibiram/media/7da81855ee5e59b55e7ca1c5882501df4c91970e/libraries/datasource/src/main/java/androidx/media3/datasource/LocalhostZeroCopyDataSource.java
   CLASS_PATH_IN_JAR: androidx/media3/datasource/LocalhostZeroCopyDataSource.class
+  # A commit that still has the original AAR (the fork's merge base with upstream before the
+  # 2026-10-20 sync), and that AAR's SHA-256.
+  ORIGINAL_AAR_COMMIT: 5f98b38809535b4201e106d3ac8c36378d946e0f
+  ORIGINAL_AAR_SHA256: 5375c0ff43784d210a69e7bfc438b9da9b2f42d6fb3b967ddae9b55902c7bf3d
 
 jobs:
   patch:
@@ -39,12 +45,16 @@ jobs:
           platform="$(find "$ANDROID_HOME/platforms" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           echo "android.jar from $platform"
           cp "$platform/android.jar" "$w/deps/android.jar"
-          (cd "$w/orig" && unzip -q "$w/deps/datasource.jar" "$CLASS_PATH_IN_JAR")
+          git fetch --no-tags --depth=1 origin "$ORIGINAL_AAR_COMMIT"
+          git show "$ORIGINAL_AAR_COMMIT:app/libs/lib-datasource-release.aar" > "$w/original.aar"
+          echo "$ORIGINAL_AAR_SHA256  $w/original.aar" | sha256sum -c -
+          unzip -p "$w/original.aar" classes.jar > "$w/original.jar"
+          (cd "$w/orig" && unzip -q "$w/original.jar" "$CLASS_PATH_IN_JAR")
           curl -fsSL -o "$w/upstream/LocalhostZeroCopyDataSource.java" "$UPSTREAM_URL"
           echo "W=$w" >> "$GITHUB_ENV"
           echo "CP=$w/deps/datasource.jar:$w/deps/common.jar:$w/deps/annotation.jar:$w/deps/checker-qual.jar:$w/deps/android.jar" >> "$GITHUB_ENV"
 
-      - name: Upstream source matches the shipped class
+      - name: Upstream source matches the original class
         run: |
           set -euo pipefail
           javac --release 8 -g -proc:none -nowarn -cp "$CP" -d "$W/upstream" "$W/upstream/LocalhostZeroCopyDataSource.java"
@@ -53,7 +63,7 @@ jobs:
           strip "$W/orig/$CLASS_PATH_IN_JAR" > "$W/orig.txt"
           strip "$W/upstream/$CLASS_PATH_IN_JAR" > "$W/upstream.txt"
           diff -u "$W/orig.txt" "$W/upstream.txt"
-          echo "Upstream source compiles to the shipped class"
+          echo "Upstream source compiles to the original class"
 
       - name: Build the patched AAR
         run: |
