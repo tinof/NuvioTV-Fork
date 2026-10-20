@@ -2,6 +2,7 @@ package com.nuvio.tv.core.player.thumbnail
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -76,6 +77,40 @@ class ThumbMemoryStopTest {
         assertTrue("no switch: on, on every box", MemoryGovernor.swapRuleOn(null))
         assertTrue("1 keeps the rule", MemoryGovernor.swapRuleOn(true))
         assertFalse("0 relaxes it", MemoryGovernor.swapRuleOn(false))
+    }
+
+    @Test
+    fun swapRoomIsOffOnTheShieldPro2019AndTheSwitchWins() {
+        assertFalse("mdarcy", MemoryGovernor.swapRoomOn(null, manufacturer = "NVIDIA", device = "mdarcy"))
+        assertTrue("other Shields", MemoryGovernor.swapRoomOn(null, manufacturer = "NVIDIA", device = "sif"))
+        assertTrue("other boxes", MemoryGovernor.swapRoomOn(null, manufacturer = "Google", device = "mdarcy"))
+        assertTrue("1 allows it on mdarcy", MemoryGovernor.swapRoomOn(true, manufacturer = "NVIDIA", device = "mdarcy"))
+        assertFalse("0 turns it off anywhere", MemoryGovernor.swapRoomOn(false, manufacturer = "Google", device = "x"))
+    }
+
+    @Test
+    fun withoutSwapRoomFullSwapRefusesTheShieldDecodeItsDataCalledUnsafe() {
+        // mdarcy at stop: 667 MB available with swap full; a cold 4K software decode charges 80 MB.
+        assertNotNull(MemoryGovernor.pressureReason(false, 667, 1_024, 0, 300, strongHardware = true, swapRoom = false))
+        assertNull(MemoryGovernor.pressureReason(false, 667, 1_024, 0, 300, strongHardware = true))
+        assertFalse(MemoryGovernor.roomBesideSwap(667 - 80, 300, strongHardware = true, swapRoom = false))
+        assertTrue(MemoryGovernor.roomBesideSwap(667 - 80, 300, strongHardware = true))
+    }
+
+    @Test
+    fun withoutSwapRoomMdarcyAlsoRefusesUpstreamsSmallBoxRoom() {
+        // 900 MB available and 60 MB SwapFree pass the small-box room, so the strong flag alone cannot switch room off.
+        assertNull(MemoryGovernor.pressureReason(false, 900, 1_024, 60, 300, strongHardware = false))
+        assertNotNull(MemoryGovernor.pressureReason(false, 900, 1_024, 60, 300, strongHardware = true, swapRoom = false))
+        assertFalse(MemoryGovernor.roomBesideSwap(900 - 80, 300, strongHardware = true, swapFreeMb = 60, swapRoom = false))
+        val mem = MemoryGovernor.Meminfo(900, 1_024, 60)
+        assertNotNull(MemoryGovernor.swapVerdict(mem, funded = false, lowRam = false, strongHardware = true, swapRoom = false))
+    }
+
+    @Test
+    fun theSwapRoomSwitchTurnsRoomOffOnASmallBoxToo() {
+        assertNotNull(MemoryGovernor.pressureReason(false, 900, 1_024, 60, 300, strongHardware = false, swapRoom = false))
+        assertFalse(MemoryGovernor.roomBesideSwap(900 - 80, 300, strongHardware = false, swapFreeMb = 60, swapRoom = false))
     }
 
     @Test
