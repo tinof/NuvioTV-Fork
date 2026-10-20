@@ -10,6 +10,31 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-20: U1.5 made repeatable (PR #9)
+
+Upstream ships several times a week, so the sync of the same day became a procedure with its own checks.
+
+- Branches: `main` is now `upstream/main` + the fork's base layer (the 14 CI, test and fix commits and the
+  drift watcher); `perf/shield-pass` is `main` + the Shield work. Both moved in one atomic leased push. The old
+  `main` (the base layer on the pre-sync upstream) was 285 commits behind. The new `main` passes the unit gate
+  on its own (6361 tests, 0 failures) and CI `PR Full Debug Build`.
+- Drift watcher: `.github/workflows/upstream-drift.yml` on `main`, daily and on dispatch, keeps one issue
+  labelled `upstream-drift` current. The issue shows the commit counts for both layers, the Tier 2 paths
+  upstream changed (read from this contract), the trial-merge conflicts and upstream's first-parent log; it
+  closes when the fork is level. Upstream `#N` references are qualified with upstream's repo name and
+  `@names` defused so the issue neither links to this fork's issues nor pings anyone. Issues were enabled for
+  it; upstream's four issue workflows are disabled in the fork.
+- `/upstream-sync` (`.claude/skills/upstream-sync/`): preflight, map, classify, rebase, verify, CI on pushed
+  candidates, publish, follow-ups. `sync.py` and `both.py` carry the checks done by hand on 2026-10-20, with
+  28 unit tests in `scripts/tests/test_upstream_sync.py`. Replayed against that sync (local tags
+  `sync/2026-10-20/*`), verify gives, per layer, 13 identical and 1 changed for `main` and 67 identical, 14
+  changed and the 2 expected drops for `perf/shield-pass` (80, 15 and 2 for the whole stack); map gives the
+  same 52 overlapping commits and 18 trial conflicts. An independent review found 8 gaps that sync did not
+  hit (upstream renames and deletions, drops decided for the other layer, a failed analyst group, local
+  branches left behind after the push); all are fixed and tested. The named workflow
+  `upstream-sync-classify` reached the sync's verdict on the datasource AAR in a one-analyst run.
+- Cleanup: merged local branches and the 12 copies of ysosrs123 branches on origin were deleted.
+
 ## 2026-10-20: U1.5 upstream sync onto 1.1.0-nt.7.3 (follow-ups: PR #6)
 
 Step: [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits
