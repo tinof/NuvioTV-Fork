@@ -1,0 +1,194 @@
+name: Upstream drift
+
+# Compares the fork with ysosrs123/NuvioTV-Fork main once a day and keeps one open issue
+# (label upstream-drift) up to date while the fork is behind: the commit counts per layer,
+# the Tier 2 paths upstream changed, the files a trial merge conflicts on and upstream's
+# first-parent log. It closes the issue once the fork has caught up. /upstream-sync does
+# the sync itself.
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only write the run summary; leave the issue alone
+        type: boolean
+        default: false
+      fork_ref:
+        description: Fork branch to compare with upstream main
+        default: perf/shield-pass
+      policy_ref:
+        description: Branch whose .claude/workflow.md lists the Tier 2 paths
+        default: perf/shield-pass
+      test_issue:
+        description: Let a run with another fork_ref create, edit or close the issue (testing only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: upstream-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: Compare with upstream
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      UPSTREAM_REPO: ysosrs123/NuvioTV-Fork
+      LABEL: upstream-drift
+      # A scheduled run has no inputs, so every input falls back explicitly.
+      FORK_REF: ${{ inputs.fork_ref || 'perf/shield-pass' }}
+      POLICY_REF: ${{ inputs.policy_ref || 'perf/shield-pass' }}
+      # The issue tracks perf/shield-pass; a run on another branch only writes its summary unless
+      # test_issue is set, so it cannot close or rewrite the real issue.
+      DRY_RUN: ${{ (inputs.dry_run || ((inputs.fork_ref || 'perf/shield-pass') != 'perf/shield-pass' && !inputs.test_issue)) && 'true' || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          # The pack is about 560 MB; blobs load on demand.
+          filter: blob:none
+
+      - name: Fetch upstream and the compared branches
+        run: |
+          set -euo pipefail
+          git remote add upstream "https://github.com/$UPSTREAM_REPO.git"
+          # Upstream is a promisor remote too, so merge-tree can load its blobs on demand.
+          git config remote.upstream.promisor true
+          git config remote.upstream.partialclonefilter blob:none
+          git fetch --no-tags --filter=blob:none upstream +refs/heads/main:refs/remotes/upstream/main
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/$FORK_REF:refs/remotes/origin/$FORK_REF" \
+            "+refs/heads/$POLICY_REF:refs/remotes/origin/$POLICY_REF"
+
+      - name: Read the Tier 2 paths
+        run: |
+          set -euo pipefail
+          policy="origin/$POLICY_REF:.claude/workflow.md"
+          if ! git cat-file -e "$policy" 2>/dev/null; then
+            echo "::error::Policy unreadable: $POLICY_REF has no .claude/workflow.md. The drift issue was not touched."
+            exit 3
+          fi
+          git show "$policy" |
+            awk '/^## Tier 2 paths/{f=1; next} f && /^## /{f=0} f && /^```/{c++; next} f && c == 1 && NF' > "$RUNNER_TEMP/tier2.txt"
+          if [ ! -s "$RUNNER_TEMP/tier2.txt" ]; then
+            echo "::error::Policy unreadable: no paths under '## Tier 2 paths' in $POLICY_REF. The drift issue was not touched."
+            exit 3
+          fi
+          echo "$(wc -l < "$RUNNER_TEMP/tier2.txt") Tier 2 globs from $POLICY_REF"
+
+      - name: Compare
+        run: |
+          set -euo pipefail
+          F="origin/$FORK_REF"; M="origin/main"; U="upstream/main"
+          mb=$(git merge-base "$F" "$U")
+          behind=$(git rev-list --count "$F..$U"); ahead=$(git rev-list --count "$U..$F")
+          main_behind=$(git rev-list --count "$M..$U"); main_ahead=$(git rev-list --count "$U..$M")
+          if git merge-base --is-ancestor "$M" "$F"; then layers="yes"; else layers="**no**: main is not an ancestor of $FORK_REF"; fi
+          u_sha=$(git rev-parse "$U"); f_sha=$(git rev-parse "$F"); m_sha=$(git rev-parse "$M")
+
+          pathspecs=()
+          while IFS= read -r g; do pathspecs+=(":(glob)$g"); done < "$RUNNER_TEMP/tier2.txt"
+          # --no-renames lists both sides of a rename and needs no blobs.
+          tier2=$(git diff --no-renames --name-only "$mb" "$U" -- "${pathspecs[@]}")
+
+          set +e
+          tree=$(git merge-tree --write-tree --name-only --no-messages "$U" "$F")
+          rc=$?
+          set -e
+          case $rc in
+            0) conflicts="" ;;
+            1) conflicts=$(printf '%s\n' "$tree" | tail -n +2 | sed '/^$/d') ;;
+            *) echo "::error::git merge-tree failed with exit $rc"; exit 1 ;;
+          esac
+
+          fp_total=$(git rev-list --first-parent --count "$mb..$U")
+          # Upstream's #N would link to this fork's issues and @name would ping people: qualify and defuse them.
+          git log --first-parent -n 150 --format='- `%h` %s' "$mb..$U" > "$RUNNER_TEMP/log.md"
+          python3 - "$RUNNER_TEMP/log.md" <<'PY'
+          import os, re, sys
+          path, repo = sys.argv[1], os.environ["UPSTREAM_REPO"]
+          text = open(path, encoding="utf-8").read()
+          text = re.sub(r"(^|[^A-Za-z0-9_/])#([0-9]+)", lambda m: f"{m.group(1)}{repo}#{m.group(2)}", text, flags=re.M)
+          text = re.sub(r"@(?=[A-Za-z0-9-])", "@\u200b", text)
+          open(path, "w", encoding="utf-8").write(text)
+          PY
+          count() { if [ -z "$1" ]; then echo 0; else printf '%s\n' "$1" | wc -l | tr -d ' '; fi; }
+          list() { if [ -z "$1" ]; then echo "None."; else printf '%s\n' "$1" | sed 's/^/- `/; s/$/`/'; fi; }
+
+          body="$RUNNER_TEMP/body.md"
+          {
+            echo "<!-- upstream-drift upstream=$u_sha fork=$f_sha main=$m_sha -->"
+            echo "## $FORK_REF is $behind commits behind upstream main"
+            echo
+            echo "| Branch | Behind upstream/main | Ahead |"
+            echo "|---|---|---|"
+            echo "| \`$FORK_REF\` | $behind | $ahead |"
+            echo "| \`main\` | $main_behind | $main_ahead |"
+            echo
+            echo "Upstream tip \`${u_sha:0:9}\` ($(git log -1 --format=%cs "$U")), merge base \`${mb:0:9}\`:" \
+              "[compare](https://github.com/$UPSTREAM_REPO/compare/$mb...$u_sha)."
+            echo "Layers in order (main is an ancestor of \`$FORK_REF\`): $layers."
+            echo
+            echo "### Tier 2 paths upstream changed ($(count "$tier2"))"
+            echo
+            list "$tier2"
+            echo
+            echo "### Trial merge conflicts ($(count "$conflicts"))"
+            echo
+            echo "A 3-way merge of upstream/main and \`$FORK_REF\`; the rebase replays commit by commit and can conflict differently."
+            echo
+            list "$conflicts"
+            echo
+            echo "### Upstream first-parent commits since the merge base ($fp_total)"
+            echo
+            cat "$RUNNER_TEMP/log.md"
+            if [ "$fp_total" -gt 150 ]; then echo "- … $((fp_total - 150)) more"; fi
+            echo
+            echo "Run \`/upstream-sync\` in Claude Code to bring the fork up to date."
+          } > "$body"
+          # Issue bodies are capped at 65,536 characters.
+          if [ "$(wc -c < "$body")" -gt 60000 ]; then
+            head -c 60000 "$body" > "$body.cut"; printf '\n\n… cut at 60,000 characters.\n' >> "$body.cut"; mv "$body.cut" "$body"
+          fi
+          cat "$body" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "BEHIND=$behind"
+            echo "U_SHA=$u_sha"
+            echo "BODY=$body"
+          } >> "$GITHUB_ENV"
+
+      - name: Update the drift issue
+        if: env.DRY_RUN != 'true'
+        run: |
+          set -euo pipefail
+          n=$(gh issue list --label "$LABEL" --state open --json number -q '.[0].number')
+          if [ "$BEHIND" = 0 ]; then
+            if [ -n "$n" ]; then
+              gh issue comment "$n" --body "In sync: \`$FORK_REF\` is 0 commits behind upstream main (\`${U_SHA:0:9}\`)."
+              gh issue close "$n"
+              echo "Closed #$n"
+            else
+              echo "In sync; no open drift issue"
+            fi
+            exit 0
+          fi
+          title="Upstream drift: $FORK_REF is $BEHIND commits behind"
+          if [ -z "$n" ]; then
+            gh issue create --title "$title" --label "$LABEL" --body-file "$BODY"
+          elif [ "$(gh issue view "$n" --json body -q .body | sed -n 1p)" != "$(sed -n 1p "$BODY")" ]; then
+            gh issue edit "$n" --title "$title" --body-file "$BODY"
+            echo "Updated #$n"
+          else
+            echo "#$n is current"
+          fi
