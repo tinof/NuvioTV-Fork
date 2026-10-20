@@ -135,6 +135,15 @@ none
 
 ## Notes
 
+Upstream syncs (ROADMAP U1.5) run through `/upstream-sync` (`.claude/skills/upstream-sync/`), not `/ship`.
+Two layers, both rebased: `main` = `upstream/main` + the base layer (CI, test and fix commits and
+`.github/workflows/upstream-drift.yml`, which only runs from the default branch); `perf/shield-pass` = `main` +
+the Shield work, so `main` stays its ancestor. A sync publishes both with one atomic `--force-with-lease`
+push, after scripted verification, the gate against an upstream baseline, an independent review of the
+changed hunks and green CI on pushed candidate branches. Upstream's four issue workflows (triage, labels,
+housekeeping, release) are disabled in this fork so they leave the drift issue alone; their files stay as
+upstream has them.
+
 Migrated from `docs/REVIEW.md` on 2026-10-17. The generic review rules (core rules, who built it,
 resolving findings, changes after the review, closing a step, review record and labels, outside
 contributors) now live in the ship plugin; the routing table there is the same one this repo used.
