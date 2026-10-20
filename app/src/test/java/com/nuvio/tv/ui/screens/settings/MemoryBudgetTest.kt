@@ -5,6 +5,7 @@ package com.nuvio.tv.ui.screens.settings
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -100,6 +101,30 @@ class MemoryBudgetTest {
     fun testConversionBudgetFollowsTheSizedBudget() {
         assertTrue(MemoryBudget.conversionBudgetMb(150) <= 150)
         assertEquals(MemoryBudget.MIN_BUFFER_MB, MemoryBudget.conversionBudgetMb(10))
+    }
+
+    @Test
+    fun testLowRamTierFollowsDeviceRamOnNvidiaWithOffHeapBuffers() {
+        val gb = 1024L * 1024L * 1024L
+        val shieldRam = (2.8 * gb).toLong()
+        // A 384 MB heap is low on its own; on the Shield the off-heap buffers make device RAM decide.
+        assertTrue(MemoryBudget.lowRamTierFor(384, offHeap = false, deviceRamBytes = shieldRam, switch = null, manufacturer = "NVIDIA"))
+        assertFalse(MemoryBudget.lowRamTierFor(384, offHeap = true, deviceRamBytes = shieldRam, switch = null, manufacturer = "NVIDIA"))
+        assertTrue(MemoryBudget.lowRamTierFor(512, offHeap = true, deviceRamBytes = (1.9 * gb).toLong(), switch = null, manufacturer = "NVIDIA"))
+        // RAM not known: the heap decides.
+        assertTrue(MemoryBudget.lowRamTierFor(384, offHeap = true, deviceRamBytes = 0L, switch = null, manufacturer = "NVIDIA"))
+        // Other boxes keep the heap rule.
+        assertTrue(MemoryBudget.lowRamTierFor(384, offHeap = true, deviceRamBytes = (3.8 * gb).toLong(), switch = null, manufacturer = "Amlogic"))
+        assertFalse(MemoryBudget.lowRamTierFor(512, offHeap = true, deviceRamBytes = (1.9 * gb).toLong(), switch = null, manufacturer = null))
+    }
+
+    @Test
+    fun testLowRamTierSwitchForcesEitherSide() {
+        val gb = 1024L * 1024L * 1024L
+        assertFalse(MemoryBudget.lowRamTierFor(384, offHeap = true, deviceRamBytes = (3.8 * gb).toLong(), switch = true, manufacturer = "Amlogic"))
+        assertTrue(MemoryBudget.lowRamTierFor(384, offHeap = true, deviceRamBytes = (2.8 * gb).toLong(), switch = false, manufacturer = "NVIDIA"))
+        // Without off-heap buffers the switch cannot move the tier off the heap.
+        assertTrue(MemoryBudget.lowRamTierFor(384, offHeap = false, deviceRamBytes = (3.8 * gb).toLong(), switch = true, manufacturer = "Amlogic"))
     }
 
     @Test
