@@ -133,7 +133,12 @@ The native library is media3's JNI wrapper (Apache 2.0), dav1d (BSD 2-Clause) an
 
 `lib-datasource-release.aar` SHA-256:
 `692cae00f2eadf35dc53e25107c464c5648ef39d2bf74adcb2756b8c51a7e502`.
-The previous binary was `5375c0ff43784d210a69e7bfc438b9da9b2f42d6fb3b967ddae9b55902c7bf3d`.
+The original binary was `5375c0ff43784d210a69e7bfc438b9da9b2f42d6fb3b967ddae9b55902c7bf3d`. NuvioTV
+1.1.0-beta.7 (tapframe ba710a269) ships its own rebuild,
+`44c07852a524e43bc978f8e816c9b2680a0e3a999bec09d8049509a3db898d0e`: it rethrows the status error unwrapped
+but still reports every status other than 200, 206 and 416 as 400, so a localhost 404 or 410 still arrives as
+400 and upstream's own `testHttpError404` fails. This fork's binary replaces it; the upstream sync of
+2026-10-20 kept it.
 
 Only `androidx/media3/datasource/LocalhostZeroCopyDataSource.class` changed. Its source is
 `datasource-aar-src/LocalhostZeroCopyDataSource.java`: halibiram/media 7da81855
@@ -145,7 +150,8 @@ expired-link check (404/410) and the 416 retry in the player see it.
 Rebuild recipe: run the "Patch datasource AAR" workflow (`.github/workflows/patch-datasource-aar.yml`). It
 compiles the unpatched upstream file with `--release 8 -g -proc:none` against {the AAR's `classes.jar`,
 lib-common classes, androidx-annotation 1.9.1, checker-qual 3.48.3, android.jar} and stops unless `javap -c -p`
-(constant-pool indices removed) equals the shipped class. It then compiles the patched file the same way and puts
+(constant-pool indices removed) equals the class in the original binary, which it reads from git history
+(commit 5f98b3880); the AAR in the tree is already rebuilt. It then compiles the patched file the same way and puts
 it back into `classes.jar` and the AAR with entry order and timestamps unchanged.
 
 ## lib-extractor-release.aar (moov fix)
