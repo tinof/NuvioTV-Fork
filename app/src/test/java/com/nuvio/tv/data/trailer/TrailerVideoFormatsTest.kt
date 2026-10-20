@@ -151,4 +151,30 @@ class TrailerVideoFormatsTest {
         codecs = codecs,
         isHdr = isHdr
     )
+
+    @Test
+    fun `AV1 trailers need a hardware decoder on Nvidia unless the switch says otherwise`() {
+        assertTrue(trailerAv1HardwareOnly(null, manufacturer = "NVIDIA"))
+        assertFalse(trailerAv1HardwareOnly(null, manufacturer = "Amazon"))
+        assertFalse(trailerAv1HardwareOnly(false, manufacturer = "NVIDIA"))
+        assertTrue(trailerAv1HardwareOnly(true, manufacturer = "Amazon"))
+    }
+
+    @Test
+    fun `the hardware AV1 rule drops only AV1 and keeps the decoder question`() {
+        val anyDecoder: (String, Int, Int, Int) -> Boolean = { _, _, _, _ -> true }
+        val shield = trailerCanDecode(av1HardwareOnly = true, hasHardwareAv1 = { false }, canDecode = anyDecoder)
+        assertFalse(shield("av01.0.08M.08", 1920, 1080, 24))
+        assertTrue(shield("avc1.640028", 1920, 1080, 24))
+        assertTrue(shield("vp09.00.40.08", 1920, 1080, 24))
+
+        val hardwareAv1 = trailerCanDecode(av1HardwareOnly = true, hasHardwareAv1 = { true }, canDecode = anyDecoder)
+        assertTrue(hardwareAv1("av01.0.08M.08", 1920, 1080, 24))
+
+        val off = trailerCanDecode(av1HardwareOnly = false, hasHardwareAv1 = { false }, canDecode = anyDecoder)
+        assertTrue(off("av01.0.08M.08", 1920, 1080, 24))
+
+        val noDecoder = trailerCanDecode(av1HardwareOnly = false, hasHardwareAv1 = { true }) { _, _, _, _ -> false }
+        assertFalse(noDecoder("avc1.640028", 1920, 1080, 24))
+    }
 }
