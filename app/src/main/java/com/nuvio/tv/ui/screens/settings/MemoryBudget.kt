@@ -1,9 +1,12 @@
 package com.nuvio.tv.ui.screens.settings
 
 import android.content.Context
+import android.os.Build
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.upstream.DefaultAllocatorNative
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.BufferSizing
+import com.nuvio.tv.core.util.DebugSwitches
 import com.nuvio.tv.data.local.BufferSettings
 import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.ui.screens.player.NuvioExoPlayerPerformanceHelper
@@ -82,9 +85,6 @@ object MemoryBudget {
 
     private val maxHeapMb: Long = Runtime.getRuntime().maxMemory() / (1024L * 1024L)
 
-    /** True when the app heap is below the high-RAM threshold (Fire TV / TV-stick class). */
-    val isLowRamTier: Boolean = maxHeapMb < HIGH_HEAP_THRESHOLD_MB
-
     // The custom buffers and the parallel chunks use native memory whenever the engine's allocator
     // library loads, so the budget then follows device RAM like the native engine does.
     val offHeapBuffers: Boolean = runCatching {
@@ -93,6 +93,45 @@ object MemoryBudget {
     }.getOrDefault(false)
 
     private val deviceRamBytes: Long = NuvioExoPlayerPerformanceHelper.getRamFromMemInfo()
+
+    /**
+     * The heap rule alone, for memory that stays on the Java heap even with off-heap buffers: the parallel chunk
+     * ceiling ([tierMaxChunkMbFor]) and the trailer pool.
+     */
+    internal val lowHeap: Boolean = maxHeapMb < HIGH_HEAP_THRESHOLD_MB
+
+    /**
+     * True on the Fire TV / TV-stick class: the app heap below the high-RAM threshold, or on Nvidia with off-heap
+     * buffers, device RAM below 2.3 GB. Declared after [offHeapBuffers] and [deviceRamBytes], which it reads.
+     */
+    val isLowRamTier: Boolean = lowRamTierFor(
+        maxHeapMb = maxHeapMb,
+        offHeap = offHeapBuffers,
+        deviceRamBytes = deviceRamBytes,
+        switch = DebugSwitches.flag("debug.nuvio.lowram_from_ram"),
+    )
+
+    /**
+     * The tier from the Java heap, except on Nvidia with off-heap buffers: the buffers then do not live on the heap,
+     * so device RAM decides ([DeviceProfile.RamClass.SMALL] is low). RAM not known falls back to the heap.
+     * [switch] (debug.nuvio.lowram_from_ram): true decides from device RAM on any box with off-heap buffers, false
+     * always from the heap.
+     */
+    internal fun lowRamTierFor(
+        maxHeapMb: Long,
+        offHeap: Boolean,
+        deviceRamBytes: Long,
+        switch: Boolean?,
+        manufacturer: String? = Build.MANUFACTURER,
+    ): Boolean {
+        val heapLow = maxHeapMb < HIGH_HEAP_THRESHOLD_MB
+        if (!offHeap || !(switch ?: DeviceProfile.isNvidia(manufacturer))) return heapLow
+        return when (DeviceProfile.ramClass(deviceRamBytes)) {
+            DeviceProfile.RamClass.UNKNOWN -> heapLow
+            DeviceProfile.RamClass.SMALL -> true
+            DeviceProfile.RamClass.MID, DeviceProfile.RamClass.LARGE -> false
+        }
+    }
 
     val budgetMb: Int = budgetMbFor(offHeapBuffers, deviceRamBytes, maxHeapMb)
 
@@ -255,7 +294,7 @@ object MemoryBudget {
 
     /** Hard chunk-size ceiling for this device; binds everywhere, including performance mode. */
     fun tierMaxChunkMb(nativeMemory: Boolean, connections: Int): Int =
-        tierMaxChunkMbFor(isLowRamTier, offHeapBuffers, deviceRamBytes, maxHeapMb, nativeMemory, connections)
+        tierMaxChunkMbFor(lowHeap, offHeapBuffers, deviceRamBytes, maxHeapMb, nativeMemory, connections)
 
     /**
      * Under 2.3 GB of RAM, or with chunks on the heap, a small heap keeps 16 MB; above it the ceiling follows RAM with
