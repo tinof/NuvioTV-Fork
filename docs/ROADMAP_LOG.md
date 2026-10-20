@@ -10,6 +10,36 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-20: U1.5 upstream sync onto 1.1.0-nt.7.3 (follow-ups: PR #6)
+
+Step: [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits
+behind at each pull request. (The step stays open: it recurs.)
+
+- Upstream had 285 new commits (51 first-parent, with the merge of official NuvioTV 1.1.0-beta.7). Nine Opus
+  analysts, one per area, classified every fork commit against them before the rebase, and a critic checked
+  coverage. The rebase was done by hand: 80 of the 95 commits re-applied with identical patches, 15 needed
+  a conflict fix or new context, and `be0ce8ec9` with its revert `5b03ca095` was dropped as a net-zero pair
+  (rationale in the R1.1 entry).
+- Evidence: `:app:testFullDebugUnitTest` green (6549 tests, 0 failures; plain upstream/main: 6361 tests, 1
+  failure, `testHttpError404`); CI `PR Full Debug Build` run 39407560065 green; an independent review of the
+  resolutions found no defects. Force-pushed with a lease on the old tip.
+- Resolutions that keep the fork's intent on upstream's new code:
+  - The datasource AAR stays the fork's (`692cae00…`). Upstream's ba710a269 rebuild (`44c07852…`) still reports
+    localhost 404/410 as 400.
+  - `MemoryBudget`: upstream's chunk ceiling and the trailer pool take the heap-only `lowHeap`; the fork's RAM
+    tier stays for the other users.
+  - Trailers use upstream's decoder check with `hdrDisplay = false`; the lossless default also skips tracks that
+    upstream flags as commentary or audio description; the "DV decoder" Stats row sits beside upstream's
+    slimmer DV rows; the pre-blurred glass hooks into upstream's prepared hero, whose fade stays 280 ms.
+- Owner decision on the settings upstream changed: keep the fork's where this pass has one, take upstream's
+  elsewhere. Kept, as new Nvidia rows in `docs/shield-todo.md`: AV1 trailers need hardware (`trailer_av1_hw`),
+  full swap still refuses thumbnail decodes on `mdarcy` (`thumb_swap_room`, against 4f7c16200). Kept and
+  noted: TrueHD on the platform sink (Q1.2 now tests upstream's keep-alive, 3aeb1e180, on the packer path).
+  Taken from upstream: Automatic speed-up on, higher parallel-download limits, the TV channel sync at boot,
+  DV detail rows only for native FEL.
+- The datasource patch workflow now checks against the original AAR from git history; its old guard could
+  not pass against any rebuilt AAR.
+
 ## 2026-10-18: R1.3 and D1.2 deferred
 
 The owner deferred R1.3 (True black bars with ASS subtitles on the canvas overlay and Overlay OpenGL, on a
