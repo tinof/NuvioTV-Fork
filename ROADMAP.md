@@ -107,6 +107,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 | Date | Step | Items | Where |
 |------|------|-------|-------|
 | 2026-10-20 | U1.5: rebased onto upstream 1.1.0-nt.7.3; the fork keeps its Shield settings where upstream changed them. | U1, Q1 | [log](docs/ROADMAP_LOG.md), PR #6 |
+| 2026-10-19 | Appendix A: DV7 added for Profile 7 input, from AetherEngine's FEL design and hdr-analyze's FEL plan. | DV7 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.3 and D1.2 deferred by the owner: ASS subtitles are not in use. | R1, D1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.2 closed unrun: the default it tested was reverted in R1.1; its session did not reproduce incident 02. | R1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-18 | R1.1: the Nvidia `opaque_window` default reverted; R1.2 did not reproduce incident 02 with it. | R1 | [log](docs/ROADMAP_LOG.md), PR #4 |
@@ -484,7 +485,7 @@ because a wrong passthrough path is invisible until measured.
 ## Appendix A: on-device Dolby Vision conversion
 
 A separate track, outside the north star and the Priorities list. `/ship:roadmap-next` does not rank these
-steps; they are picked by hand. Steps use the format above, with item IDs DV1 to DV6. Work in
+steps; they are picked by hand. Steps use the format above, with item IDs DV1 to DV7. Work in
 `hdr-analyze` (`tinof/hdr-analyze`) is named as such. Conversion steps follow the development
 principles: each conversion is gated by `DeviceProfile`, yields to a saved setting, has a
 `debug.nuvio.*` revert switch and is documented. The plan was drafted on 2026-10-16 with Codex
@@ -504,6 +505,11 @@ RPU NAL to each access unit (AU) and signal the track as Dolby Vision.
 
 Why: the 2019 Shield outputs Dolby Vision and HDR10 but not HDR10+, so HDR10+ titles play as static
 HDR10 today. HDR10 and HLG titles gain a dynamic, TV-led mapping only when the L1 metadata is good.
+
+**Profile 7.** The fork already converts Profile 7 to 8.1 per AU with libdovi (mode 2 on Nvidia). DV7
+makes that path robust and prepares FEL improvements that change only the RPU. The Shield cannot play
+the FEL residual: its decoder ignores the enhancement layer, and Android has no way to present composed
+frames with a Dolby Vision RPU (`DESIGN.md` 5.2).
 
 **Plan in one paragraph.** One RPU injection layer with interchangeable L1 providers. First the
 providers that need no pixels (static, HDR10+), then shot lists made on a PC (a local sidecar, then a LAN
@@ -584,7 +590,10 @@ neither G-B nor the playback-time G-F run.
   and from HDR10+, 8.4 bt2100 and canary) and the same title with deliberately different L1 values,
   played through Nuvio; then the same sources converted in the app. Pass: Dolby Vision on the TV, the
   canary turns green, the L1 variants change the picture as expected, the RPUs pulled from the debug
-  log validate with `dovi_tool info`, no added dropped frames.
+  log validate with `dovi_tool info`, no added dropped frames. Two more checks on DV7.6's fixed-pixel
+  clip: a pulse variant whose L1 alternates (passes when the picture pulses with the L1 period), and,
+  for the DV7 FEL candidates only, a Profile 8.1 mapping canary against its identity control (passes
+  when only the canary turns green).
 - **G-D, renderer replacement (T1 server, T3).** The framing and capacity read in DV1.1, then the
   replacement tests of `DESIGN.md` 2.3 and 2.4 (mutation, flushes, seeks, reuse) passing on the device.
 - **G-E, worth it (T0 HDR10, T1, T3).** Owner A/B on the TV over a fixed corpus: dark scenes,
@@ -721,9 +730,62 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
 
 - **Status:** Deferred until DV5.4 passes.
 
+#### DV7: Profile 7 input
+
+- **Status:** Open. The evidence and what carries over from AetherEngine are in
+  [`DESIGN.md` 5](docs/dv-conversion/DESIGN.md#5-profile-7-input). DV7.8 waits for hdr-analyze's FEL
+  reference reconstruction and its decision gates (`docs/FEL_PLAN.md` sections 6 and 7).
+- [DV7.1][desk] Guard every libdovi call in `dovi_bridge.cpp` (parse, convert, write and the read-only
+  readers): check the RPU CRC (MPEG-2 CRC32 over the unescaped payload) and pre-scan for the known abort
+  paths (`DESIGN.md` 5.1; hdr-analyze E15.1 guards the same parser) before libdovi sees the RPU; a
+  refused RPU takes the failure path. Gate: tests that feed each known abort shape and a CRC-broken RPU
+  through the guard and get a refusal, not a crash, and a CRC-repairing mutation run over synthetic and
+  real Profile 7 RPUs with no crash.
+- [DV7.2][device][owner][new-build] Probe how the Shield's Dolby Vision decoder handles, inside a
+  converted Profile 7 stream, an AU without an RPU and an AU that repeats the previous AU's RPU, with a
+  `debug.nuvio.*` switch that drops or repeats the RPU on every Nth AU. Gate: the HUD, logcat and the
+  owner's TV reading for both cases in the log.
+- [DV7.3][desk] Failure handling from DV7.2's result: a failed or refused RPU is replaced by the last good
+  converted RPU for at most 3 AUs and then dropped; the run resets at every flush, seek and release;
+  `use_prev_vdr_rpu_flag` is resolved in decode order in the extractor. A borrowed RPU is rewritten with
+  `scene_refresh_flag` cleared, which the bundled libdovi C API cannot do: an entry point in DV2.2's
+  staticlib, or a rebuilt libdovi with a setter. Gate: unit tests for the borrow run, its reset and a
+  `use_prev_vdr_rpu_flag` fixture; every borrowed RPU has `scene_refresh_flag` 0 and a valid CRC. Needs:
+  DV7.1, DV7.2, DV2.2.
+- [DV7.4][desk] The per-RPU fallback from mode 2 to mode 1 on every path (in-band Matroska
+  `DolbyVisionMatroskaTransformer.kt:453`, MP4 `dovi_bridge.cpp:757`, TS `dovi_bridge.cpp:878`), with
+  `docs/shield-todo.md:49` kept accurate. Gate: unit tests per path that a mode-2 failure is retried in
+  mode 1; the HUD's mode count shows the mode used.
+- [DV7.5][desk] One log line per Dolby Vision load: conversion taken or not, with the first reason in a
+  fixed order (setting, `DeviceProfile`, revert switch, profile, mode, abandon). Gate: unit tests for
+  each reason.
+- [DV7.6][desk] In hdr-analyze (its step WS6.7), an offline fixed-pixel HDR10 test clip in three
+  Profile 8.1 variants that differ only in their RPUs: an identity control, a mapping canary whose
+  chroma mapping turns the picture green on a device that applies the 8.1 mapping (like the 8.4
+  canary), and a pulse whose L1 alternates
+  between a mid value and a maximum of 4095 on a fixed period. Gate: every RPU validates with
+  `dovi_tool info` and passes the `dolby_vision` crate's Profile 8 checks, the mapping and L1 read back
+  as written, and the three files have byte-identical video apart from the RPU NAL units.
+- [DV7.7][device][owner] The DV7.6 clips through Nuvio to the owner's TV, with the expected visible
+  difference written down before the session and the playback chain recorded; then one FEL title in
+  mode 2 and in mode 1, as a first look only (mode 1 is not FEL_PLAN candidate b, `DESIGN.md` 5.4). Gate:
+  the RPUs pulled from the debug log equal the files' RPUs, the owner's readings are in the log, and the
+  two G-C rows of the qualification matrix are set; the canary result is evidence for hdr-analyze's
+  FEL_PLAN gate 3 on this chain; no default changes. Needs: DV7.6.
+- [DV7.8][desk] A FEL RPU provider: complete RPUs from hdr-analyze in the playback manifest, injected in
+  the extractor for Profile 7 titles, with a different RPU length per AU allowed, and the title's
+  residual statistics (FEL_PLAN candidate d) in the HUD. Starts only when DV7.7's canary passes and
+  hdr-analyze has passed FEL_PLAN gates 1 to 4 for candidate b or gates 1 to 5 for candidate c; turning
+  it on by default needs FEL_PLAN gate 6. Gate: extractor unit tests with manifest fixtures: every AU
+  carries the manifest's RPU, RPU lengths vary per AU, and a different encode of the same title is
+  rejected. Needs: DV4.1, DV4.4, DV7.7.
+
 #### Owner decisions
 
 - Parity tolerances. Proposal: for identical frames, per-shot L1 median within 4 codes and maximum
   within 16 codes of the desktop; for approximation policies, the error table of DV1.5 decides.
 - Whether static HDR10 → 8.1 is ever on by default (after G-E).
 - Whether a LAN PC running hdr-analyze is an acceptable dependency.
+- Whether Profile 7 FEL titles stay on mode 2 on Nvidia after DV7.7, and whether an RPU-only FEL
+  provider (DV7.8) is wanted once hdr-analyze has measured what it gains; a default change needs
+  FEL_PLAN gate 6 (real playback against dual-layer playback of the disc).
