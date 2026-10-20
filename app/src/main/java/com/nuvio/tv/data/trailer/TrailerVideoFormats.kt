@@ -1,6 +1,11 @@
 package com.nuvio.tv.data.trailer
 
 import android.content.Context
+import android.os.Build
+import androidx.media3.common.MimeTypes
+import com.nuvio.tv.core.performance.DeviceProfile
+import com.nuvio.tv.core.player.VideoDecoderCapabilities
+import com.nuvio.tv.core.util.DebugSwitches
 
 /** Trailers play on top of the UI through a TextureView; this cap holds on every device. */
 internal const val TRAILER_MAX_VIDEO_HEIGHT = 1080
@@ -83,6 +88,26 @@ internal fun trailerVideoCodecRank(codec: TrailerVideoCodec?): Int = when (codec
  */
 @Suppress("UNUSED_PARAMETER")
 internal fun deviceTrailerVideoLimits(context: Context): TrailerVideoLimits = TrailerVideoLimits(
-    canDecode = VideoDecoderSupport::canDecode,
+    canDecode = trailerCanDecode(
+        av1HardwareOnly = trailerAv1HardwareOnly(DebugSwitches.flag("debug.nuvio.trailer_av1_hw")),
+        hasHardwareAv1 = { VideoDecoderCapabilities.hasHardwareDecoder(MimeTypes.VIDEO_AV1) },
+    ),
     hdrDisplay = false
 )
+
+/**
+ * On Nvidia an AV1 trailer needs a hardware decoder, as before NuvioTV 1.1.0-beta.7: the Shield has none, and
+ * Android's software AV1 decoder would run beside the UI. [switch] (debug.nuvio.trailer_av1_hw): false accepts any decoder that claims the
+ * format, true asks for hardware on any box.
+ */
+internal fun trailerAv1HardwareOnly(switch: Boolean?, manufacturer: String? = Build.MANUFACTURER): Boolean =
+    switch ?: DeviceProfile.isNvidia(manufacturer)
+
+internal fun trailerCanDecode(
+    av1HardwareOnly: Boolean,
+    hasHardwareAv1: () -> Boolean,
+    canDecode: (codecs: String, width: Int, height: Int, fps: Int) -> Boolean = VideoDecoderSupport::canDecode,
+): (codecs: String, width: Int, height: Int, fps: Int) -> Boolean = { codecs, width, height, fps ->
+    (!av1HardwareOnly || videoCodecMimeType(codecs) != MimeTypes.VIDEO_AV1 || hasHardwareAv1()) &&
+        canDecode(codecs, width, height, fps)
+}
