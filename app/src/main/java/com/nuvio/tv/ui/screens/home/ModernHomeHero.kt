@@ -1,7 +1,5 @@
 package com.nuvio.tv.ui.screens.home
 
-import com.nuvio.tv.ui.theme.NuvioMotion
-
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.v2.components.v2GlassSource
 import dev.chrisbanes.haze.hazeSource
@@ -82,6 +80,9 @@ import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 import com.nuvio.tv.ui.components.TrailerPlayer
 import androidx.compose.ui.res.stringResource
 
+/** Hero picture and trailer fades; shorter than the shared overlay token so focus feels direct. */
+private const val HERO_FADE_MS = 280
+
 private data class ModernHeroSecondaryMeta(
     val highlightText: String?,
     val ageRating: String?,
@@ -105,8 +106,10 @@ internal fun ModernHeroScene(
     // This source attaches only while the glass sidebar is visible. Home stops trailers
     // on sidebar entry; other glass controls retain their existing capture/quality policy.
     val sidebarSource = com.nuvio.tv.ui.v2.components.LocalSidebarBackdropSource.current
-    Box(modifier.then(if (sidebarSource != null) Modifier.hazeSource(sidebarSource) else Modifier)
-        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
+    // The offscreen buffer only gives the sidebar capture one flattened layer; without
+    // a capture it is a full-screen buffer for nothing.
+    Box(modifier.then(if (sidebarSource != null) Modifier.hazeSource(sidebarSource)
+        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen } else Modifier)) {
         ModernHeroMediaLayer(
             artwork = state().artwork,
             preparedImage = state().preparedImage,
@@ -163,7 +166,7 @@ internal fun ModernHeroMediaLayer(
     val trailerRendered by remember { derivedStateOf { latestTrailerRendered.value() } }
     val transitionProgressState = animateFloatAsState(
         targetValue = if (shouldPlay && trailerRendered) 1f else 0f,
-        animationSpec = tween(durationMillis = 480),
+        animationSpec = tween(durationMillis = HERO_FADE_MS),
         label = "heroBackdropTrailerCrossfadeProgress"
     )
     val localContext = LocalContext.current
@@ -892,7 +895,7 @@ private fun HeroBackdropImages(image: coil3.Image?, modifier: Modifier) {
             outgoing = current
             current = image
             alpha.snapTo(0f)
-            alpha.animateTo(1f, tween(350))
+            alpha.animateTo(1f, tween(HERO_FADE_MS))
             outgoing = null
         }
     }

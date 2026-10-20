@@ -36,7 +36,8 @@ fun rememberDeviceVisualQuality(canvas: UiCanvasSnapshot, preferences: DeviceUiP
             api = Build.VERSION.SDK_INT,
             lowRam = manager?.isLowRamDevice ?: true,
             totalRamBytes = memory.totalMem,
-            heapMb = manager?.memoryClass ?: 0,
+            // The app declares largeHeap, so this is its real heap (memoryClass is 192 MB on a Shield).
+            heapMb = manager?.largeMemoryClass ?: 0,
             hardwareAccelerated = accelerated,
             rootWidthPx = canvas.windowWidthPx,
             rootHeightPx = canvas.windowHeightPx,
@@ -46,7 +47,7 @@ fun rememberDeviceVisualQuality(canvas: UiCanvasSnapshot, preferences: DeviceUiP
     val automatic = remember(capabilities) { VisualQualityResolver.automatic(capabilities) }
     // Persist the device-local initial assessment independently of the user's manual mode.
     // A valid lower historical tier survives recomposition and relaunch.
-    val assessmentKey = remember(capabilities) { "2:${BuildConfig.VERSION_CODE}:$capabilities" }
+    val assessmentKey = remember(capabilities) { "3:${BuildConfig.VERSION_CODE}:$capabilities" }
     LaunchedEffect(assessmentKey, automatic.tier, rootReady, canvas.hasValidGeometry) {
         // Pre-attachment hardware/root values must not invalidate persisted history.
         if (!rootReady || !canvas.hasValidGeometry) return@LaunchedEffect
