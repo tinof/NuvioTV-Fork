@@ -245,7 +245,8 @@ class TrailerPlayerPool @Inject constructor(
 
     /** Trailer cap for this device tier, lowered further when the user set a smaller Target Buffer Size. */
     private fun trailerTargetBufferMb(settings: PlayerSettings?): Int {
-        val tierCapMb = if (MemoryBudget.isLowRamTier) LOW_RAM_TRAILER_BUFFER_MB else TRAILER_BUFFER_MB
+        // The trailer allocator is on the Java heap, so the heap decides, not the off-heap RAM tier.
+        val tierCapMb = if (MemoryBudget.lowHeap) LOW_RAM_TRAILER_BUFFER_MB else TRAILER_BUFFER_MB
         val userTargetMb = settings
             ?.takeIf { it.bufferEngineEnabled && !it.bufferBudgetManaged }
             ?.let { MemoryBudget.effectiveBufferMb(it.bufferSettings.targetBufferSizeMb) }
