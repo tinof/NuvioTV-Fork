@@ -10,6 +10,8 @@ Reviews of this design are kept next to it:
 - `claude-factcheck-r1.md`: the citation check of draft 1.
 - `codex-r1-review.md`: Codex's critique of draft 2, with what was changed for each point.
 - `codex-r2-recheck.md`: Codex's re-check of those changes, with the fixes applied after it.
+- `codex-dv7-review.md`: Codex's review of the Profile 7 additions (section 5, DV7), with the
+  disposition of each point.
 
 Device results go to `QUALIFICATION.md`.
 
@@ -167,6 +169,12 @@ analysis generation. Results of an older generation are dropped; only validated,
 finished cached shot) carries over. Tests cover duplicate presentation times, B-frames across cuts,
 backward seeks, late callbacks, end-of-stream drain, codec reuse and the drop-to-keyframe path.
 
+The generation changes in the same critical section that stops issuing work for the old one, not after
+it. AetherEngine changed its delivery epoch after the lock was released; a callback in that gap took a
+new-epoch ticket, which was dropped as stale, and delivery stalled until its stall guard skipped the
+hole (section 5.3). A test covers a new-generation result that arrives before the generation change is
+installed.
+
 ### 2.4 Injection and replacement
 
 - **Extractor injection** for providers that are ready when the AU is read: static, HDR10+ and a shot
@@ -209,7 +217,8 @@ Measured HLG L1 is taken in the PQ domain reconstructed by the selected composer
 chroma MMR on downsampled luma, the upsampling at the stream's chroma siting, then the RPU matrix and
 max-RGB (`frame.rs:682-710`, `:766-784`; `kernels.cu:178-289`). Generic HLG luminance is a different
 signal and never stands in for it. The compose pass is therefore part of the first measured HLG tier.
-Sampling may be approximate; the signal may not.
+Sampling may be approximate; the signal may not. An absent curve is the identity, not zero: AetherEngine
+showed a green and purple picture when chroma curves with fewer than two pivots returned 0.
 
 ### 2.7 Shared Rust code
 
@@ -258,6 +267,11 @@ around changes. This saves analysis work, not HEVC reference decoding. HLG compo
 step, checked against the two-pass desktop path. A tiled compose pass with a halo might avoid the scratch
 write and read; it is a hypothesis to measure.
 
+Two rules from AetherEngine's Metal composer apply to the Vulkan import (DV5.11): a GPU completion
+callback releases its slot and does nothing that can block, and every other step moves to another
+queue (its first asynchronous version deadlocked against the decoder lock); and an imported image keeps
+both its view and its source buffer alive until the GPU has finished with it.
+
 ## 3. Budget
 
 Derived, not measured. One 4K frame in P010 is 24.9 MB.
@@ -283,7 +297,10 @@ Derived, not measured. One 4K frame in P010 is 24.9 MB.
   reserve; the time to reach the lead after start and after a seek is measured.
 - **Decode.** Two full-rate 4K24 streams need 48 decoded frames per second, and the analysis decoder must
   run faster than playback to catch up. Two 4K60 streams are outside the validated envelope: they stay
-  off until G-B measures them.
+  off until G-B measures them. The enable decision is a pure, unit-tested pixel-rate check (width ×
+  height × frame rate of both decodes against a ceiling that G-B sets), as AetherEngine gates its
+  dual-layer route at 311 Mpx/s. An unknown frame rate or size refuses the second decode until it is
+  measured; budgeting it as 24 fps, as AetherEngine does, would admit a 60 fps stream.
 - **Thermal.** Unknown. Under pressure the analysis lowers its rate first, then stops; playback keeps
   the committed or fallback RPUs.
 
@@ -305,3 +322,97 @@ Derived, not measured. One 4K frame in P010 is 24.9 MB.
   before any HLG tier.
 - Dolby Vision is a Dolby trademark; this is an unofficial conversion with no certification claim, as in
   hdr-analyze's `docs/PROVENANCE.md`.
+
+## 5. Profile 7 input
+
+Added on 2026-10-19 after reading AetherEngine's FEL design
+(github.com/superuser404notfound/AetherEngine, `docs/dolby-vision-fel.md`) against this fork's code and
+hdr-analyze `docs/FEL_PLAN.md`. The steps are DV7 in Appendix A.
+
+### 5.1 What the fork does today
+
+Checked in code on 2026-10-19.
+
+- **Conversion per AU.** libdovi 3.3.2 rewrites each RPU: in-band Matroska at
+  `DolbyVisionMatroskaTransformer.kt:453`, BlockAdditional through `convertRpuNal` (`:150`, `:399-414`),
+  MP4 in `dovi_bridge.cpp:746-780` and TS in `dovi_bridge.cpp:862-900`. Enhancement-layer NAL units are
+  dropped. Active Auto conversion uses mode 2 on Nvidia and on devices whose decoder capabilities select
+  it, subject to the `dv7_manual` switch (`DolbyVisionBaseLayerPolicy.kt:56-66`, `:150-157`;
+  `DolbyVisionExtractorsFactory.kt:308-315`); other devices keep Auto's mode 1.
+- **What the modes keep.** For FEL, mode 2 sets the mapping to the identity and drops the residual; the
+  display-management levels stay. Mode 1 (`ToMel`) keeps the authored mapping and produces a
+  MEL-compatible RPU that keeps Profile 7 syntax; the fork carries it under its Profile 8 signalling
+  (`DolbyVisionExtractorsFactory.kt:515-516`). That is a compatibility path, not a Profile 8.1 RPU with
+  the mapping kept (`To81MappingPreserved`, which the 3.3.2 C API cannot reach,
+  `DolbyVisionExtractorsFactory.kt:300-306`), and not FEL_PLAN candidate (b).
+- **Fallback.** The per-RPU fallback from mode 2 to mode 1 exists only in `convertRpuNal`, the
+  BlockAdditional path (`:405-411`). In-band Matroska (`:453`), MP4 (`dovi_bridge.cpp:757`) and TS
+  (`:878`) use one mode. `docs/shield-todo.md:49` describes the fallback as general. Separately, when the
+  decoder fails under mode 2 the whole playback retries once in mode 1
+  (`PlayerRuntimeControllerInitialization.kt:2295-2300`).
+- **Failure.** A failed RPU is dropped and the AU goes on without one (`DolbyVisionMatroskaTransformer.kt:461-466`,
+  `dovi_bridge.cpp:773-780`, `:894-900`). Matroska abandons conversion after 60 consecutive failures
+  (`:168-187`, `:607`); MP4 and TS keep trying and only count the drops (`dovi_bridge.cpp:102-113`). What
+  the Shield's Dolby Vision decoder does with an AU without an RPU inside a Dolby Vision stream is not
+  measured. The bundled C API cannot change a scene-refresh flag: apart from conversion it can only
+  remove the mapping and set the L5 offsets (`DV7/libdovi/android-arm64/include/libdovi/rpu_parser.h`).
+- **libdovi can end the process.** The `dolby_vision` 3.3.2 crate, libdovi's Rust core, calls
+  `unimplemented!` on a polynomial piece with `poly_order_minus1 == 0` and `linear_interp_flag` set, in
+  the parser (`src/rpu/rpu_data_mapping.rs:414`) and the writer (`:229`). Its cargo-c build sets
+  `-Cpanic=abort` (`Cargo.toml:35`) and the C API has no `catch_unwind`, so the panic aborts the app.
+  Whether the bundled binaries were built with that configuration is not recorded; without
+  `catch_unwind` a panic that leaves an `extern "C"` function aborts anyway on Rust 1.81 and later. The
+  `catch (...)` in `dovi_bridge.cpp:682` and `runCatching` in `DoviBridge.kt` cannot stop an abort.
+  AetherEngine also reports a writer crash on a curve that mixes polynomial and MMR pieces, and that
+  libdovi parses before it checks the CRC. The bridge checks no CRC. hdr-analyze found no such RPU on
+  its eight FEL test cuts; a corrupt stream can still produce one.
+
+### 5.2 Why the Shield cannot play the FEL residual
+
+- AetherEngine composes the base layer, the enhancement layer and the RPU on the GPU of Apple devices
+  and hands the frames to the display layer with a per-frame Profile 8.1 RPU attached, which tvOS
+  applies as Dolby Vision display management. Android has no such route: a surface takes only static
+  HDR metadata (`ASurfaceTransaction_setHdrMetadata_smpte2086`, `_cta861_3` in the NDK
+  `surface_control.h`), and no dataspace or app API carries a Dolby Vision RPU. The gralloc
+  `SMPTE2094_10` metadata type is a HAL field that no app API writes. Dolby Vision output comes only from
+  a Dolby Vision bitstream into `OMX.Nvidia.DOVI.decode`.
+- That decoder uses the base layer and the RPU and ignores the residual (`docs/shield-todo.md:10`;
+  NVIDIA and AVS forum reports, no official NVIDIA statement found).
+- Composing and re-encoding breaks the rule of A.1. The X1 encoder is specified at 4K30 HEVC, and
+  10-bit encoding is not confirmed.
+- Real FEL playback in this fork is the Amlogic route (`core/player/amlfel/`, on the AM9 FEL kernel).
+
+### 5.3 What carries over from AetherEngine
+
+| Lesson | Where |
+|---|---|
+| Check the RPU CRC and pre-scan for the known abort paths before libdovi; targeted tests and a CRC-repairing mutation run | DV7.1 |
+| A missing or failed RPU borrows the previous one for at most 3 frames, then the base layer goes on alone; `use_prev_vdr_rpu_flag` is resolved in decode order at demux. Here the borrowed RPU must have its scene-refresh flag cleared, which needs a writer the bundled C API lacks | DV7.2, DV7.3 |
+| One log line per load says whether the route was taken, with the first reason in a fixed order | DV7.5 |
+| A pulse clip (pixels constant, only the RPU changes) shows that the TV uses the metadata, not only the Dolby Vision mode | G-C, DV7.6, DV7.7 |
+| Change the generation inside the critical section that stops the old work | section 2.3, DV5.1 |
+| A pure pixel-rate gate for a second decode (an unknown frame rate refuses here) | section 3, DV5.4 |
+| Completion callbacks never block; imported images and their buffers live until the GPU finishes | section 2.9, DV5.11 |
+| An absent curve is the identity | section 2.6, DV5.8 |
+
+### 5.4 FEL quality through the RPU alone
+
+hdr-analyze's FEL candidates (`docs/FEL_PLAN.md` section 5) all keep the base layer and change only the
+RPU, so this injector can carry them with no pixels on the Shield:
+
+- (a) mapping set to the identity, residual dropped: mode 2, what the Shield plays today.
+- (b) authored mapping kept in a Profile 8.1 RPU, residual dropped. The fork's mode 1 keeps the
+  mapping too, but in a Profile 7 MEL-compatible RPU (5.1), so a mode 1 against mode 2 comparison is a
+  first look, not a test of (b). The fork prefers mode 2 because the curves "assume the enhancement
+  layer this pipeline strips" (`DolbyVisionExtractorsFactory.kt:304-306`), which is FEL_PLAN's open
+  question for (b). hdr-analyze's reference reconstruction decides it.
+- (c) a mapping refitted per frame or shot against the reference reconstruction: computed on a PC,
+  delivered as complete RPUs in the playback manifest (section 2.8).
+- (d) residual statistics per title, for the HUD.
+
+Order: the device question first (does the Shield-to-TV chain apply a Profile 8.1 mapping at all; the
+8.4 canary shows that it applies an 8.4 composer, not that it reads the 8.1 mapping), then hdr-analyze's
+FEL_PLAN gates: (b) needs gates 1 to 4, (c) gates 1 to 5, and a default change gate 6. A refitted
+mapping can change the serialized RPU size (variable-length coefficients, emulation prevention), so
+extractor injection from a manifest must accept a different RPU length per AU; it does not meet the
+capacity limit of section 2.4.
