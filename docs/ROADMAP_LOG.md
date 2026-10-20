@@ -40,6 +40,35 @@ behind at each pull request. (The step stays open: it recurs.)
 - The datasource patch workflow now checks against the original AAR from git history; its old guard could
   not pass against any rebuilt AAR.
 
+## 2026-10-19: Appendix A, DV7 Profile 7 input
+
+The owner asked whether AetherEngine's Profile 7 FEL playback (an engine for Apple platforms that
+composes the base layer, the enhancement layer and the RPU on the GPU, then attaches a per-frame Profile
+8.1 RPU that tvOS applies) can be used in this fork, together with hdr-analyze's FEL plan. Two parallel
+Opus agents checked the platform facts on the web and mapped AetherEngine's design onto this fork's code;
+their file:line references and the DoViBaker and libplacebo siting quotes were re-checked by hand.
+
+- The composition does not carry over to the Shield: Android surfaces take only static HDR metadata, no
+  app API carries a Dolby Vision RPU, `OMX.Nvidia.DOVI.decode` ignores the enhancement layer, and a
+  re-encode is ruled out (`docs/dv-conversion/DESIGN.md` 5.2).
+- libdovi can abort the app: the `dolby_vision` 3.3.2 crate calls `unimplemented!` on polynomial pieces
+  with linear interpolation, its cargo-c build sets `-Cpanic=abort`, and its C API has no
+  `catch_unwind`. The bridge checks no CRC. Today a failed RPU is dropped, and the mode-2 → mode-1
+  fallback exists only on the BlockAdditional path (`DESIGN.md` 5.1).
+- New item DV7 (DV7.1–DV7.8): the libdovi guard, the RPU failure probe and handling, the fallback on
+  every path, one route log line, an 8.1 canary and a pulse clip from hdr-analyze, and an RPU-only FEL
+  provider that waits for hdr-analyze's FEL reference reconstruction. G-C gains the two clips.
+- AetherEngine lessons for existing steps went into `DESIGN.md` 2.3 (generation change inside the
+  critical section), 2.6 (an absent curve is the identity), 2.9 (completion callbacks and image lifetime)
+  and 3 (a pure pixel-rate gate for the second decode).
+- In hdr-analyze, `docs/FEL_PLAN.md` gained AetherEngine and DoViBaker as prior art and a table of
+  enhancement-layer siting, and its roadmap gained WS6.7 (the clip DV7.6 names) and E15.1 (the same
+  parser guard as DV7.1) (tinof/hdr-analyze PR #65).
+- Codex (gpt-6.1-sol, high) reviewed the draft: 7 major and 4 minor points, all re-checked and applied.
+  The main ones: the bundled C API cannot clear a scene-refresh flag, so DV7.3 needs DV2.2's writer;
+  mode 1 keeps Profile 7 syntax and is not FEL_PLAN candidate b; the pulse test needs a fixed-pixel
+  clip; DV7.8 follows FEL_PLAN's gates exactly (`docs/dv-conversion/codex-dv7-review.md`).
+
 ## 2026-10-18: R1.3 and D1.2 deferred
 
 The owner deferred R1.3 (True black bars with ASS subtitles on the canvas overlay and Overlay OpenGL, on a
