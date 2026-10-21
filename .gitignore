@@ -68,6 +68,7 @@ AGENTS.md
 /docs/*
 !/docs/ROADMAP_LOG.md
 !/docs/dv-conversion/
+!/docs/aac-to-dts/
 status-page/
 sentry.properties
 
