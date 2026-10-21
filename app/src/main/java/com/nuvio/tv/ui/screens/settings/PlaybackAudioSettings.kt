@@ -153,6 +153,14 @@ internal fun PlaybackAudioSection(
         onToggle = { onUpdate { setForceOpticalPassthrough(!settings.forceOpticalPassthrough) } },
         enabled = enabled && settings.decoderPriority != 0
     )
+
+    SettingsToggleRow(
+        title = stringResource(R.string.audio_transcode_aac_to_dts),
+        subtitle = stringResource(R.string.audio_transcode_aac_to_dts_sub),
+        checked = settings.transcodeAacToDts && settings.decoderPriority != 0,
+        onToggle = { onUpdate { setTranscodeAacToDts(!settings.transcodeAacToDts) } },
+        enabled = enabled && settings.decoderPriority != 0
+    )
 }
 
 @Composable
