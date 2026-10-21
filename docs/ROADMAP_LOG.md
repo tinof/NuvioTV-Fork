@@ -10,6 +10,64 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-21: Q6 Transcode AAC to DTS (branch `feat/Q6-aac-dts`)
+
+The owner asked whether AAC tracks could be transcoded to DTS during playback with FFmpeg's `dca` encoder,
+for their Sony HT-A9 (Neural:X). The detail is in
+[`docs/aac-to-dts/DESIGN.md`](aac-to-dts/DESIGN.md); this entry records the session.
+
+**Feasibility**
+
+- A workflow (dca source, sink path, Codex design opinion, skeptic) found it feasible.
+- The fork's FFmpeg renderer already re-encoded to AC-3 for Force AC-3.
+- `dca` needs packed S32, the experimental flag and 512-sample frames.
+- Media3's `DecoderAudioRenderer` reports one access unit per buffer, so DTS frame counting had to be fixed.
+- On the owner's HDMI route, AAC already reaches the AVR as lossless PCM. The owner chose DTS for the AVR's
+  processing.
+
+**Owner decisions**
+
+- AAC with 1–2 channels only.
+- Tuned swresample instead of libsoxr.
+- An all-device toggle, default off.
+
+**Plan review**
+
+- Codex reviewed the plan in two rounds through the `ExitPlanMode` hook and raised 6 concerns: the
+  end-of-stream flush, output timestamps, the priming trim and its timestamps, PREFER re-creation in both
+  directions, and the end-of-stream loss bound.
+- All were handled within the plan.
+
+**Built**
+
+- 17 commits on `feat/Q6-aac-dts` (see DESIGN §4).
+- Two CI AARs from the module:
+  - `d8e211b4…`, run 39589348150, the module as it was;
+  - `a1152a6d…`, run 39594133508, with the DTS target.
+- The resampler was measured on a host n7.0.2 build: `filter_size` 144, `cutoff` 0.875, `kaiser_beta` 13
+  give images ≤ −130 dB and ripple 0.0033 dB at 4.1× the default CPU (soxr: 3.4×).
+
+**Code review**
+
+- 4 Opus finders, each with an Opus verifier.
+- 10 findings confirmed. 9 were fixed and the tenth was the planned AAR step (DESIGN §6). The most serious:
+  - a refused transcode would have been learned as a DTS denial, because `player.audioFormat` is null at
+    error time;
+  - the DTS decision bypassed the speed and policy checks through `sinkSupportsFormat`.
+
+**Gate**
+
+- `:app:testFullDebugUnitTest` against the shipped AAR: 6569 tests, 0 failures.
+
+**Device** (M2 snapshot `~/shield-snapshots/20261021-aacdts/`)
+
+- *Blue Lights* S1E1 (AAC 2.0, 48 kHz) on the `.shield` debug build.
+- Logcat: `DTS transcode: 48000 Hz 2 ch -> 48000 Hz 2 ch, 1509000 bit/s, frame 512 samples`.
+- AudioFlinger: a DIRECT output with processing format `AUDIO_FORMAT_DTS` at 48 kHz.
+- After the start: no underruns, sink errors or discontinuities.
+- Owner: "converted properly to DTS 2.0. Play perfectly on my Sony HT-A9."
+- Q6.2–Q6.5 are still open.
+
 ## 2026-10-21: live playback capture (Q5, M3.3 added)
 
 The owner reported occasional dropped frames during playback. This was a read-only capture while the owner
