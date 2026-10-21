@@ -917,6 +917,10 @@ class PlayerRuntimeController(
     // Own IEC output failures per stream; from the second one, rebuilds leave HD audio to the system sink.
     internal val iecFailureStrikes: MutableMap<String, Int> = mutableMapOf()
     internal val iecOffStreamUrls: MutableSet<String> = mutableSetOf()
+    /** Streams whose AAC-to-DTS AudioTrack was refused; they play the AAC as PCM. */
+    internal val aacToDtsOffStreamUrls: MutableSet<String> = mutableSetOf()
+    /** The player and the MIME type of its latest audio input format. */
+    internal var lastAudioInputMime: Pair<ExoPlayer, String?>? = null
     internal val audioDisabledForcedStreamUrls: MutableSet<String> = mutableSetOf()
     // URLs proven dead this session (sniff failure on a non-media body, or HTTP
     // 404/410): auto-failover skips them and the source panel greys them out.

@@ -225,7 +225,8 @@ private fun PlayerRuntimeController.commitSurroundResolution(
         downmixNormalizationEnabled = !settings.maintainOriginalAudioOnDownmix,
         forceOpticalPassthrough = inputs.forceOpticalActive,
         deniedTranscodeMimes = surround.deniedTranscodeMimes,
-        transcodeAacToDts = settings.transcodeAacToDts && settings.decoderPriority != 0
+        transcodeAacToDts = settings.transcodeAacToDts && settings.decoderPriority != 0 &&
+            currentStreamUrl !in aacToDtsOffStreamUrls
     )
     val changed = surroundResolveNeedsReselect(lastAppliedSurroundResolve, surround) || policyChanged
     lastAppliedSurroundResolve = surround
