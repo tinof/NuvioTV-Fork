@@ -1531,7 +1531,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                         audioOutputChannels = surroundAudioOutputChannels,
                         downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                         forceOpticalPassthrough = isForcePassthroughActive,
-                        deniedTranscodeMimes = deniedTranscodeMimes
+                        deniedTranscodeMimes = deniedTranscodeMimes,
+                        transcodeAacToDts = isTranscodeAacToDtsActive
                     )
                     applyCenterMixLevel(_uiState.value.centerMixLevelDb)
                     updateAudioControlAvailability()
@@ -3731,7 +3732,8 @@ private class SubtitleOffsetRenderersFactory(
                 audioOutputChannels = audioOutputChannels,
                 downmixNormalizationEnabled = downmixNormalizationEnabled,
                 forceOpticalPassthrough = forceOpticalPassthrough,
-                deniedTranscodeMimes = deniedTranscodeMimes
+                deniedTranscodeMimes = deniedTranscodeMimes,
+                transcodeAacToDts = transcodeAacToDts
             )
         }
         onFfmpegAudioRendererChanged(ffmpegRenderers.firstOrNull())
@@ -3742,10 +3744,12 @@ internal fun FfmpegAudioRenderer.applyDownmixSettings(
     audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
     downmixNormalizationEnabled: Boolean,
     forceOpticalPassthrough: Boolean,
-    deniedTranscodeMimes: Set<String>
+    deniedTranscodeMimes: Set<String>,
+    transcodeAacToDts: Boolean
 ) {
     setForceOpticalPassthrough(forceOpticalPassthrough)
     setDeniedTranscodeMimes(deniedTranscodeMimes)
+    setTranscodeAacToDts(transcodeAacToDts)
     if (downmixEnabled) {
         setAudioOutputChannels(
             audioOutputChannels.ffmpegLayoutName,
