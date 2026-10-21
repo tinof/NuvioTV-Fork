@@ -45,6 +45,33 @@ class AudioRoutingSnapshotTest {
     }
 
     @Test
+    fun aacToDts_resolvesTranscodeDtsWithoutFallback() {
+        val routing = resolveAudioRoutingSnapshot(
+            sourceMime = MimeTypes.AUDIO_AAC,
+            sourceChannelCount = 2,
+            isIecActive = false,
+            isTranscodingAc3 = false,
+            isAudioPathActive = true,
+            sinkMime = MimeTypes.AUDIO_DTS,
+            sinkChannelCount = 2,
+            isTranscodingDts = true
+        )
+        assertEquals(AudioRoutingMode.TRANSCODE_DTS, routing?.mode)
+        assertEquals("transcode DTS", routing?.outputFormat)
+        assertFalse(routing!!.isFallback)
+    }
+
+    @Test
+    fun dtsTranscode_isADtsSinkForANonDtsSource() {
+        assertTrue(isDtsTranscode(MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_DTS))
+        assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS))
+        assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS))
+        assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS_EXPRESS, MimeTypes.AUDIO_DTS))
+        assertFalse(isDtsTranscode(MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_RAW))
+        assertFalse(isDtsTranscode(null, MimeTypes.AUDIO_DTS))
+    }
+
+    @Test
     fun directPassthrough_resolvesDirectPassthrough() {
         val routing = resolveAudioRoutingSnapshot(
             sourceMime = MimeTypes.AUDIO_AC3,
