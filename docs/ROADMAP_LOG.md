@@ -10,6 +10,67 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-21: live playback capture (Q5, M3.3 added)
+
+The owner reported occasional dropped frames during playback. This was a read-only capture while the owner
+watched.
+
+**Session**
+
+- **App and title:** `com.nuvio.tv.test` 1.1.0-nt.7.3 (installed 2026-10-20, `speed-profile`). A 4K HDR title
+  at 23.976 fps on display mode 6 (2160p 23.976 Hz), DTS-HD passthrough through the fork's IEC sink, over
+  Wi-Fi.
+- **Shield:** up 6.7 days. Load average about 3. zram swap 524 of 524 MB used, as at the 2026-10-14
+  baseline.
+- **Method:** `dumpsys SurfaceFlinger --latency` on the video layer every ~8.8 s, which keeps about 511
+  frames per dump, plus `logcat -v monotonic` and `/proc/vmstat` every 2.5 s. 296 s of memory samples.
+- **Event classes:**
+  - A gap in desired present means the app never queued the frame: an app-side skip.
+  - A gap only in actual present means a late compositor present.
+
+**Results**
+
+- **Events:** 12. 10 app-side skips (7, 1, 3, 1, 1, 3, 1, 2, 4 and 1 frames) and 2 late presents
+  (3 frames and 1 frame).
+  - The owner's report at about uptime 583323 s matches the 4-frame skip at 583316.9 s.
+  - The events fall at −4.4 s to +3.8 s from the sampling ticks, so they are not an observer effect.
+- **Memory:**
+  - 11 of the 12 events fell in 2.5 s windows with 40–80k `workingset_refault`. The 2-frame skip at
+    583311.0 s had only 7.5k.
+  - The 7-frame skip at 583200.9 s fell in the capture's only direct-reclaim window
+    (`pgscan_direct` 791), next to a Nuvio "NativeAlloc concurrent copying GC" of 1.097 s total.
+  - Totals over 296 s: `workingset_refault` 939,858; `pgscan_kswapd` 1,323,002; `pgscan_direct` 1,051;
+    `pgmajfault` 5,761; `pswpin` 66 and `pswpout` 297. MemAvailable ranged from 343 to 590 MB.
+  - 80 SIGKILL process exits (Zygote "exited due to signal 9"). Whether lmkd or ActivityManager sent them
+    was not established.
+  - Respawn loops: GservicesProvider started 20 times and TvProvider 14 times. Nuvio is not the
+    TvProvider caller: `TvRecommendationManager.kt:155` defers Watch Next while playing.
+  - Resident memory: Nuvio RSS 772–798 MB, of which `allocHeldMb` 489 is the media buffer. NvMap
+    812 MB, unattributed without root.
+- **Buffer manager:** on `onTrimMemory` 15 the cap went from 500 to 175 MB and buffered-ahead fell from
+  52 s to 8 s. It eased to 300 MB about 60 s later. RSS went 770 → 422 → 586 MB in 2 min.
+- **Ruled out:**
+  - Frame rate (matched).
+  - Composition (video on a DEVICE overlay).
+  - Thermals (49 °C, fan 0).
+  - Wi-Fi (5 GHz, −51 dBm, Rx 650 Mbps, buffer never under 8 s).
+  - Audio: AudioFlinger DIRECT track with 0 underruns and 0 delayed writes; corrected timestamp jitter
+    std 0.07 ms. IEC `stalls` counts writes into a full track (`IecPassthroughAudioSink.kt:748-750`),
+    which is backpressure.
+- **Limits:** this is a correlation with memory pressure, not a proven cause.
+  - The scratch analyzer hard-coded the PID.
+  - It kept about 21 s of SurfaceFlinger history from before the capture started (frame span 321 s
+    against 296 s of samples).
+  - `NuvioExoEvent dropped_video_frames` cannot show single drops, because of the 50-drop notify
+    threshold.
+
+**Steps added**
+
+- Q5.1 to Q5.7 (`ROADMAP.md`, item Q5): a frame-gap script; a controlled baseline; proactive pressure
+  sampled at its own cadence; an Nvidia 3 GB budget of about 300 MB; hysteresis; the search for the
+  large-object churn; and the comparison run.
+- M3.3: log the decoder drop and skip counters with the `BUFFER:` line.
+
 ## 2026-10-20: U1.5 made repeatable (PR #9)
 
 Upstream ships several times a week, so the sync of the same day became a procedure with its own checks.
