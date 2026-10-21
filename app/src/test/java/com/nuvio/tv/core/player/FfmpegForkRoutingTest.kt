@@ -11,15 +11,21 @@ import org.junit.Test
 
 /** Executes the renderer shipped in app/libs, not a duplicate policy implementation. */
 class FfmpegForkRoutingTest {
+    // A sink that plays AC-3: the denied-codec path also asks the sink before transcoding.
     private fun renderer(sinkTakesAc3: Boolean = true): FfmpegAudioRenderer {
         val sink = mockk<AudioSink>(relaxed = true)
         every { sink.supportsFormat(any()) } answers { sinkTakesAc3 }
+        every { sink.getFormatSupport(any()) } answers {
+            if (sinkTakesAc3) AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY else AudioSink.SINK_FORMAT_UNSUPPORTED
+        }
         return FfmpegAudioRenderer(null, null, sink)
     }
     private fun transcodes(renderer: FfmpegAudioRenderer, mime: String, channels: Int): Boolean {
-        val method = FfmpegAudioRenderer::class.java.getDeclaredMethod("shouldTranscodeToAc3", Format::class.java, String::class.java)
+        val method = FfmpegAudioRenderer::class.java.getDeclaredMethod(
+            "shouldTranscodeToAc3", Format::class.java, String::class.java
+        )
         method.isAccessible = true
-        val format = Format.Builder().setSampleMimeType(mime).setChannelCount(channels).build()
+        val format = Format.Builder().setSampleMimeType(mime).setChannelCount(channels).setSampleRate(48_000).build()
         return method.invoke(renderer, format, mime) as Boolean
     }
     @Test fun emptyDeniedSetLeavesLosslessFormatsOnTheirExistingPath() {
