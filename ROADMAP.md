@@ -106,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-21 | Q5 and M3.3 added from a live capture: 12 stutter events in 5 min, correlated with memory pressure. | Q5, M3 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-20 | U1.5 made repeatable: two-layer branches, the daily drift issue and the `/upstream-sync` skill. | U1 | [log](docs/ROADMAP_LOG.md), PR #9 |
 | 2026-10-20 | U1.5: rebased onto upstream 1.1.0-nt.7.3; the fork keeps its Shield settings where upstream changed them. | U1, Q1 | [log](docs/ROADMAP_LOG.md), PR #6 |
 | 2026-10-19 | Appendix A: DV7 added for Profile 7 input, from AetherEngine's FEL design and hdr-analyze's FEL plan. | DV7 | [log](docs/ROADMAP_LOG.md) |
@@ -159,18 +160,20 @@ because a wrong passthrough path is invisible until measured.
 2. **Device safety and baselines** (M2, M1). Gate: the protocol tested once; baseline tables for this
    app and the upstream app in the log. The playback start stage is logged before the playback baseline.
 3. **Switch-back safety and AFR plan** (R2, Q2). Gate: the mitigation ships; the re-entry test passes.
-4. **Passthrough correctness** (Q1). Gate: AVR readings recorded for TrueHD, DTS-HD MA and E-AC3; the
+4. **Playback stutter under memory pressure** (Q5). Added 2026-10-21: the owner sees it in every 4K title.
+   Gate: Q5.7 beats the Q5.2 baseline.
+5. **Passthrough correctness** (Q1). Gate: AVR readings recorded for TrueHD, DTS-HD MA and E-AC3; the
    `hbr_iec` default decided.
-5. **Start and Stop latency** (S1, S3). Gate: click → playing and the Stop stall beat the M1 baseline.
-6. **Seek and thumbnails** (S2). Gate: CPU, native heap and drops with thumbnails on within the S2
+6. **Start and Stop latency** (S1, S3). Gate: click → playing and the Stop stall beat the M1 baseline.
+7. **Seek and thumbnails** (S2). Gate: CPU, native heap and drops with thumbnails on within the S2
    tolerance of thumbnails off. The measured 43 % CPU load comes before UI tuning.
-7. **Small correctness fixes** (R3). Gate: unit tests; the CEC check passes.
-8. **UI frames and navigation** (S4). Gate: the M1 journeys beat the baseline and the upstream app at the
+8. **Small correctness fixes** (R3). Gate: unit tests; the CEC check passes.
+9. **UI frames and navigation** (S4). Gate: the M1 journeys beat the baseline and the upstream app at the
    chosen refresh rate.
-9. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4).
-10. **Media3 backports** (E1), only on a symptom; the ready grace is startable.
-11. **Diagnostics and docs** (M3, D1).
-12. **Upstream pull requests** (U1). The commit sorting and the question to the maintainer can start any
+10. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4).
+11. **Media3 backports** (E1), only on a symptom; the ready grace is startable.
+12. **Diagnostics and docs** (M3, D1).
+13. **Upstream pull requests** (U1). The commit sorting and the question to the maintainer can start any
     time; the pull requests follow the items they carry.
 
 ## Reliability
@@ -299,6 +302,61 @@ because a wrong passthrough path is invisible until measured.
   title (DV mode and, where shown, the signal format) against the hwcomposer mode name in logcat (D8). Gate:
   readings in the log.
 
+### Q5: memory pressure and frame skips
+
+- **Status:** Open. From the live capture of 2026-10-21 (see the log).
+- In 5 minutes of a 4K HDR title with DTS-HD passthrough over Wi-Fi, SurfaceFlinger showed 12 stutter
+  events: 10 app-side skips of 1–7 frames and 2 late presents.
+  - 11 of the 12 fell in windows of heavy page-cache refaulting, and the worst coincided with the only
+    direct-reclaim burst.
+  - This is a correlation; it is not yet shown to be the cause.
+- The player holds a 500 MB buffer on 3 GB boxes (`BufferSizing.kt:17`).
+- Pressure handling reacts only to the system `lowMemory` flag (`BufferMemoryKeeper.kt:126`), sampled only
+  in the 10 s `BUFFER:` log block (`PlayerRuntimeControllerPlaybackEvents.kt:397-408`).
+- The restore steps let the buffer grow back into reclaim (`BufferMemoryKeeper.kt:138-141`).
+- [Q5.1][desk][device] Commit `scripts/shield_frame_gaps.py` with a `.gitignore` exception, as in M2.1.
+  - It takes `--serial`, wraps every adb call in a timeout and is read-only.
+  - It resolves the PID and the SurfaceView layer from the package, and drops SurfaceFlinger frames from
+    before the capture started.
+  - It reports coverage gaps.
+  - It reports app-side skips against late presents, next to vmstat, GC and SIGKILL exits. A kill is named
+    lmkd only when an lmkd line confirms it.
+  - Gate: a dry run on the Shield shows both event classes with no coverage gap.
+- [Q5.2][device][new-build] Baseline on a CI build of unchanged HEAD with the same build type, package and
+  settings that Q5.7 will use.
+  - Take it once the device state has settled (at least 1 day of uptime).
+  - Use one fixed 4K HDR, DTS-HD, Wi-Fi title from the same start position, and three 30-minute runs.
+  - Keep the title, segment, settings and device state frozen until Q5.7.
+  - Gate: skips, direct-reclaim windows and SIGKILL exits per run in the log.
+  - Needs: Q5.1.
+- [Q5.3][desk] Proactive pressure.
+  - Sample MemAvailable at a bounded cadence of its own (for example every 2 s while playing), not only in
+    the 10 s `BUFFER:` block.
+  - Raise LOW when `availMb − thresholdMb` falls below `SYSTEM_MARGIN_MB` + a margin, not only on
+    `lowMemory`.
+  - Add a `debug.nuvio.*` switch for the margin.
+  - Gate: unit tests, including a pressure burst shorter than 10 s.
+- [Q5.4][desk] Nvidia default: an automatic budget of about 300 MB on 3 GB `mdarcy` (`BufferSizing.kt:17`).
+  - Count the parallel chunk window inside the budget (`BufferSizing.kt:79`).
+  - Gate it by `DeviceProfile`, with a revert switch and a row in `docs/shield-todo.md`.
+  - Gate: unit test.
+- [Q5.5][desk] Hysteresis.
+  - Ease a level only when the room covers the added amount plus a margin, and hold 3–5 min after a
+    critical event (`BufferMemoryKeeper.kt:138-141`, `:248`).
+  - Keep trimming idle memory while pressure lasts, at most every 30 s, and log only trims that free
+    memory (`:133`).
+  - Gate: unit tests, including allocations that go idle after a level change.
+- [Q5.6][device][new-build] Find the large-object churn (17–27 MB of large objects freed per GC, every 3–6 s
+  during playback).
+  - Use a `.shielddbg` debuggable build, heap dumps or allocation tracking only (M2).
+  - First suspects: the per-access-unit copy in `IecPassthroughAudioSink.kt:1059` and the 8-frame burst
+    pool (`:1177`).
+  - Gate: allocation sites named in the log.
+- [Q5.7][device][new-build] The Q5.2 runs on a build of HEAD plus Q5.3–Q5.5, with everything else the same.
+  - Gate: skips and direct-reclaim windows below the Q5.2 baseline in all three runs, no rebuffers, and
+    buffer ahead never under 8 s.
+  - Needs: Q5.2, Q5.3, Q5.4, Q5.5.
+
 ## Snappiness
 
 ### S1: start latency
@@ -425,6 +483,11 @@ because a wrong passthrough path is invisible until measured.
 - [M3.1][desk] Count playback-head stalls (the client's `disabled due to previous underrun` restarts) on the
   HUD, cumulative across track rebuilds (A4). Gate: unit test.
 - [M3.2][desk] Log `STHRESH` only on API 31+ (A5). Gate: unit test.
+- [M3.3][desk] Log `droppedBufferCount`, `skippedOutputBufferCount` and `maxConsecutiveDroppedBufferCount`
+  with the 10 s `BUFFER:` line.
+  - `onDroppedVideoFrames` fires only after 50 drops (`PlayerRuntimeControllerInitialization.kt:3462`), so
+    single drops never reach logcat today.
+  - Gate: unit test.
 
 ## Engine
 
