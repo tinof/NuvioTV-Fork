@@ -1497,7 +1497,12 @@ internal fun PlayerRuntimeController.initializePlayer(
                 forceSoftwareAv1 = am9SystemProperty("debug.nuvio.sw_av1") == "1",
                 videoCodecQueueing = videoQueueing,
                 mapDv7ToHevc = mapDv7ToHevcEnabled,
-                onPlaybackSpeedAwareAudioSinkCreated = { playbackSpeedAwareAudioSink = it },
+                onPlaybackSpeedAwareAudioSinkCreated = { sink ->
+                    playbackSpeedAwareAudioSink = sink
+                    sink.onCapabilitiesNotified = {
+                        Handler(Looper.getMainLooper()).post { recreateDtsTranscodeDecoderIfNeeded() }
+                    }
+                },
                 onAudioDiagnosticEvent = { line -> queuePlaybackRawEventLine(line) },
                 onFfmpegAudioRendererChanged = { renderer ->
                     ffmpegAudioRenderer = renderer
