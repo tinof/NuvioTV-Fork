@@ -72,6 +72,10 @@ internal class PlaybackSpeedAwareAudioSink(
     @Volatile
     private var listener: AudioSink.Listener? = null
 
+    /** Called, on the thread that changed it, after this sink tells Media3 its formats changed. */
+    @Volatile
+    var onCapabilitiesNotified: (() -> Unit)? = null
+
     private val passthroughPacer = PassthroughWaterLevelPacer(onDiagnosticEvent)
     private val iecSink: IecPassthroughAudioSink? = sink as? IecPassthroughAudioSink
     private val monitor = PlaybackAudioSinkMonitor(platformSink, iecSink, reducedStartThresholdFrames)
@@ -264,11 +268,13 @@ internal class PlaybackSpeedAwareAudioSink(
         super.setPlaybackParameters(playbackParameters)
         if (shouldNotify) {
             listener?.onAudioCapabilitiesChanged()
+            onCapabilitiesNotified?.invoke()
         }
     }
 
     fun notifyAudioProcessingRequirementChanged() {
         listener?.onAudioCapabilitiesChanged()
+        onCapabilitiesNotified?.invoke()
     }
 
     override fun getFormatSupport(format: Format): Int {
