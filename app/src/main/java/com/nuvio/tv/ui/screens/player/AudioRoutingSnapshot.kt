@@ -6,6 +6,7 @@ internal enum class AudioRoutingMode {
     PASSTHROUGH_IEC,
     PASSTHROUGH_DIRECT,
     TRANSCODE_AC3,
+    TRANSCODE_DTS,
     PCM
 }
 
@@ -39,7 +40,8 @@ internal fun resolveAudioRoutingSnapshot(
     isAudioPathActive: Boolean,
     sinkMime: String?,
     sinkChannelCount: Int,
-    isTunnelled: Boolean = false
+    isTunnelled: Boolean = false,
+    isTranscodingDts: Boolean = false
 ): AudioRoutingSnapshot? {
     if (sourceMime == null) return null
     val isSourceSurroundOrHbr = isSurroundOrHbrMime(sourceMime, sourceChannelCount)
@@ -57,6 +59,14 @@ internal fun resolveAudioRoutingSnapshot(
                 mode = AudioRoutingMode.TRANSCODE_AC3,
                 outputFormat = "transcode AC-3 5.1",
                 isFallback = true
+            )
+        }
+        // Chosen by the "Transcode AAC to DTS" setting, so not a fallback.
+        isTranscodingDts -> {
+            AudioRoutingSnapshot(
+                mode = AudioRoutingMode.TRANSCODE_DTS,
+                outputFormat = "transcode DTS",
+                isFallback = false
             )
         }
         sinkMime != null && sinkMime != MimeTypes.AUDIO_RAW && PassthroughWaterLevelPacer.isPassthroughMime(sinkMime) -> {
@@ -109,6 +119,7 @@ internal fun PlayerRuntimeController.getAudioRoutingSnapshot(isTunnelled: Boolea
 
     val isTranscodingAc3 =
         sourceMime != MimeTypes.AUDIO_AC3 && sinkFormat?.sampleMimeType == MimeTypes.AUDIO_AC3
+    val isTranscodingDts = isDtsTranscode(sourceMime, sinkFormat?.sampleMimeType)
 
     return resolveAudioRoutingSnapshot(
         sourceMime = sourceMime,
@@ -118,6 +129,11 @@ internal fun PlayerRuntimeController.getAudioRoutingSnapshot(isTunnelled: Boolea
         isAudioPathActive = ffmpeg?.isAudioPathActive() == true,
         sinkMime = sinkFormat?.sampleMimeType,
         sinkChannelCount = sinkFormat?.channelCount ?: -1,
-        isTunnelled = isTunnelled
+        isTunnelled = isTunnelled,
+        isTranscodingDts = isTranscodingDts
     )
 }
+
+/** A DTS sink format for a source that is not DTS: the FFmpeg AAC-to-DTS transcode. */
+internal fun isDtsTranscode(sourceMime: String?, sinkMime: String?): Boolean =
+    sourceMime != null && sinkMime == MimeTypes.AUDIO_DTS && !sourceMime.startsWith(MimeTypes.AUDIO_DTS)
