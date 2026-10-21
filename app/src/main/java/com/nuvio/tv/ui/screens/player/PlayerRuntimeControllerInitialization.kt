@@ -3604,6 +3604,18 @@ private class SubtitleOffsetRenderersFactory(
             eventListener,
             out
         )
+        // The FFmpeg renderer gets a sink that counts the AC-3/DTS frames in each transcode
+        // buffer. It is rebuilt before the MediaCodec renderer below because each renderer sets
+        // itself as the shared sink's listener and the last one built keeps it.
+        for (index in startIndex until out.size) {
+            if (out[index] is FfmpegAudioRenderer) {
+                out[index] = FfmpegAudioRenderer(
+                    eventHandler,
+                    eventListener,
+                    EncodedFrameCountingAudioSink(audioSink)
+                )
+            }
+        }
         if (playbackAwareSink != null && out.size > startIndex) {
             val mediaCodecAudioRendererIndex = (startIndex until out.size)
                 .firstOrNull { index -> out[index] is MediaCodecAudioRenderer }
