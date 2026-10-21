@@ -663,6 +663,7 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
                     "tvArcSoundbar=${currentPlayerSettingsForReport.surroundTvArcSoundbar} " +
                     "iecActive=${playbackSpeedAwareAudioSink?.isIecHbrActive()} " +
                     "forceOptical=${currentPlayerSettingsForReport.forceOpticalPassthrough} " +
+                    "aacToDts=${currentPlayerSettingsForReport.transcodeAacToDts} " +
                     "tunnelingEffective=${state.tunnelingApplied}"
             )
         )
