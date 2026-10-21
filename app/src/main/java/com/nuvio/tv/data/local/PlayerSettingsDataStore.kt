@@ -306,6 +306,7 @@ data class PlayerSettings(
     val maintainOriginalAudioOnDownmix: Boolean = true,
     val tunnelingEnabled: Boolean = false,
     val forceOpticalPassthrough: Boolean = false,
+    val transcodeAacToDts: Boolean = false,
     val useSystemPassthrough: Boolean = false,
     val dtsHdTvPassthrough: Boolean = false,
     val surroundFormatMode: SurroundFormatMode = SurroundFormatMode.AUTO,
@@ -808,6 +809,7 @@ class PlayerSettingsDataStore @Inject constructor(
         booleanPreferencesKey("downmix_normalization_enabled")
     private val tunnelingEnabledKey = booleanPreferencesKey("tunneling_enabled")
     private val forceOpticalPassthroughKey = booleanPreferencesKey("force_optical_passthrough")
+    private val transcodeAacToDtsKey = booleanPreferencesKey("transcode_aac_to_dts")
     private val allowAc3PassthroughKey = booleanPreferencesKey("allow_ac3_passthrough")
     private val allowEac3PassthroughKey = booleanPreferencesKey("allow_eac3_passthrough")
     private val allowTruehdPassthroughKey = booleanPreferencesKey("allow_truehd_passthrough")
@@ -1298,6 +1300,7 @@ class PlayerSettingsDataStore @Inject constructor(
                         ?: !(prefs[downmixNormalizationEnabledLegacyKey] ?: false),
                 tunnelingEnabled = prefs[tunnelingEnabledKey] ?: false,
                 forceOpticalPassthrough = prefs[forceOpticalPassthroughKey] ?: false,
+                transcodeAacToDts = prefs[transcodeAacToDtsKey] ?: false,
                 useSystemPassthrough = prefs[useSystemPassthroughKey] ?: defaultUseSystemPassthrough(),
                 dtsHdTvPassthrough = prefs[dtsHdTvPassthroughKey] ?: false,
                 surroundFormatMode = storedSurroundFormatMode(
@@ -1671,6 +1674,12 @@ class PlayerSettingsDataStore @Inject constructor(
     internal suspend fun setForceOpticalPassthrough(enabled: Boolean, profileId: Int) {
         store(profileId).edit { prefs ->
             prefs[forceOpticalPassthroughKey] = enabled
+        }
+    }
+
+    suspend fun setTranscodeAacToDts(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[transcodeAacToDtsKey] = enabled
         }
     }
 
