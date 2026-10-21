@@ -48,6 +48,7 @@ import java.util.List;
   private static final int AUDIO_DECODER_ERROR_OTHER = -2;
   private static final int TRANSCODE_TARGET_NONE = 0;
   private static final int TRANSCODE_TARGET_AC3 = 1;
+  private static final int TRANSCODE_TARGET_DTS = 2;
   // LINT.ThenChange(../../../../../jni/ffmpeg_jni.cc)
 
   // FLAC parsing constants
@@ -91,7 +92,7 @@ import java.util.List;
     codecName = checkNotNull(FfmpegLibrary.getCodecName(format.sampleMimeType));
     extraData = getExtraData(format.sampleMimeType, format.initializationData);
     this.outputEncoding = outputEncoding;
-    transcoding = outputEncoding == C.ENCODING_AC3;
+    transcoding = outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_DTS;
     encoderDelay = format.encoderDelay;
     inputSampleRate = format.sampleRate;
     outputBufferSize = INITIAL_OUTPUT_BUFFER_SIZE;
@@ -254,6 +255,8 @@ import java.util.List;
     switch (outputEncoding) {
       case C.ENCODING_AC3:
         return TRANSCODE_TARGET_AC3;
+      case C.ENCODING_DTS:
+        return TRANSCODE_TARGET_DTS;
       default:
         return TRANSCODE_TARGET_NONE;
     }
