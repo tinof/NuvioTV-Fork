@@ -1,14 +1,28 @@
-## Current FFmpeg AAR
+## Current FFmpeg AAR (module build, 2026-10-21)
 
 `lib-decoder-ffmpeg-release.aar` SHA-256:
-`472ad29e08fc0c5e12c0c89e96d1130ff0529eefba31e85d31b14dccaec7baa4`.
+`d8e211b40878744e3c040377c1a920b0dbee6a0e58ee62eaeb8688bf6b597b96`.
 
-Built 24 Oct 2026 by `.github/workflows/build-ffmpeg-decoder.yml` from the current `ffmpeg-decoder-downmix`
-module and FFmpeg n7.0.2 (https://github.com/FFmpeg/FFmpeg/tree/n7.0.2), NDK 27.0.12077973, for ARMv7, ARM64,
-x86 and x86_64. FFmpeg is built without `--enable-gpl` and `--enable-nonfree` and is used under the LGPL 2.1 or
-later. Native source and binary match again: this build adds the AC-3 encoder flush at the end of the stream and
-the LFE mixed into stereo downmixes at -6 dB. 16 KB ELF LOAD alignment checked on every ABI; the library needs only
-Android system libraries.
+Built by the "Build FFmpeg decoder AAR" workflow (`.github/workflows/build-ffmpeg-decoder.yml`, run
+39589348150 on tinof/NuvioTV-Fork) from `ffmpeg-decoder-downmix` as it is in the commit that adds this
+AAR, against FFmpeg n7.0.2 (git tag), NDK 27.0.12077973, API 24, all four ABIs. Encoders: `ac3` and
+`dca` (FFmpeg's DTS core encoder, enabled for Transcode AAC to DTS and not used by this build's JNI
+yet). FFmpeg is built without `--enable-gpl` and `--enable-nonfree` and is used under the LGPL 2.1 or
+later. This is the first AAR built from the module source; it ships the module changes that the
+previous binary lacked (high-sample-rate AC-3 resampling, the sink check on denied-codec AC-3
+routing, limiter timing on the encoder rate). The public Java API is a superset of the previous
+AAR's: it adds `isTranscodingToAc3`, `ac3SampleRate`, `ac3TrailingSilenceSamples` and
+`ac3FrameDurationUs`.
+
+## Previous FFmpeg AAR (0.9.3-beta-nt1)
+
+`lib-decoder-ffmpeg-release.aar` SHA-256:
+`0c6fd345c8f4911b9d03d86d2d45187f3b696c91d1adaad5b0e9917ad5238831`.
+
+That AAR was built from the module sources in
+`ffmpeg-aar-src/0.9.3-beta-nt1/` and FFmpeg n7.0.2 (https://github.com/FFmpeg/FFmpeg/tree/n7.0.2),
+with the configure line in `.github/workflows/build-ffmpeg-decoder.yml`. FFmpeg is built without
+`--enable-gpl` and `--enable-nonfree` and is used under the LGPL 2.1 or later.
 
 `ffmpeg-aar-src/0.9.3-beta-nt1/` holds the three module files that have changed since this binary
 was built (`ffmpeg_jni.cc`, `FfmpegAudioRenderer.java`, `FfmpegAudioDecoder.java`). The other module
