@@ -10,7 +10,8 @@ name: Build FFmpeg decoder AAR
 # The decoder list below supersets the codecs detected in the shipped AAR
 # (TrueHD, DTS, AC-3/E-AC-3, FLAC, ALAC, MLP, WMA, APE, WavPack, TTA, ...);
 # extend it if a format regresses. --enable-encoder=ac3 is required by the
-# Force AC-3 Transcoding path.
+# Force AC-3 Transcoding path, --enable-encoder=dca by Transcode AAC to DTS
+# (FFmpeg's native DTS core encoder, LGPL, flagged experimental).
 
 on:
   workflow_dispatch:
@@ -66,7 +67,7 @@ jobs:
             --disable-programs --disable-doc --disable-everything \
             --disable-avdevice --disable-avformat --disable-swscale --disable-postproc \
             --disable-avfilter --disable-symver --disable-network \
-            --enable-swresample --enable-encoder=ac3 --extra-ldexeflags=-pie \
+            --enable-swresample --enable-encoder=ac3 --enable-encoder=dca --extra-ldexeflags=-pie \
             --ar=$TOOLCHAIN/bin/llvm-ar --nm=$TOOLCHAIN/bin/llvm-nm \
             --ranlib=$TOOLCHAIN/bin/llvm-ranlib --strip=$TOOLCHAIN/bin/llvm-strip"
 
