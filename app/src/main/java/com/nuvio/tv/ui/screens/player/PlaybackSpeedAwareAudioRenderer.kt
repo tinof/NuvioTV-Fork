@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.Util
+import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.RendererCapabilities
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
@@ -115,6 +116,12 @@ internal class PlaybackSpeedAwareAudioRenderer(
         // bundled FFmpeg decoder handles, and only while softwareDecodersAvailable is
         // true, which already requires the FFmpeg renderer to be in the renderer list.
         if (playbackSpeedAwareAudioSink.isPolicyDeniedPassthrough(format)) {
+            return emptyList()
+        }
+        // "Transcode AAC to DTS": leave mono and stereo AAC to the FFmpeg renderer, which encodes
+        // it to DTS. The sink's DTS check also covers Bluetooth and speed, so when DTS cannot
+        // play this list is normal again and MediaCodec decodes to PCM.
+        if (playbackSpeedAwareAudioSink.prefersDtsTranscode(format) && FfmpegLibrary.isAvailable()) {
             return emptyList()
         }
         val decoderInfos = if (!playbackSpeedAwareAudioSink.shouldForcePcmForFormat(format) && playbackSpeedAwareAudioSink.supportsFormat(format)) {
