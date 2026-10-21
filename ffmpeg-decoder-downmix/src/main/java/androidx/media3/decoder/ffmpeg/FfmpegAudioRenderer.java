@@ -40,6 +40,7 @@ import androidx.media3.exoplayer.audio.AudioRendererEventListener;
 import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.DecoderAudioRenderer;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
+import androidx.media3.exoplayer.source.MediaSource;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -204,6 +205,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
             outputEncoding);
     decoder.setUserCenterMixLevelDb(userCenterMixLevelDb);
     decoder.setDownmixNormalizationEnabled(downmixNormalizationEnabled);
+    decoder.setStreamOffsetUs(getStreamOffsetUs());
     activeDecoder = decoder;
     TraceUtil.endSection();
     return decoder;
@@ -249,6 +251,20 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     @Nullable FfmpegAudioDecoder decoder = activeDecoder;
     if (decoder != null) {
       decoder.setDownmixNormalizationEnabled(downmixNormalizationEnabled);
+    }
+  }
+
+  @Override
+  protected void onStreamChanged(
+      Format[] formats,
+      long startPositionUs,
+      long offsetUs,
+      MediaSource.MediaPeriodId mediaPeriodId)
+      throws ExoPlaybackException {
+    super.onStreamChanged(formats, startPositionUs, offsetUs, mediaPeriodId);
+    @Nullable FfmpegAudioDecoder decoder = activeDecoder;
+    if (decoder != null) {
+      decoder.setStreamOffsetUs(offsetUs);
     }
   }
 
