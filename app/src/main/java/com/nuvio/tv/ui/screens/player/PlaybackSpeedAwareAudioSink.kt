@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.extractor.Ac3Util
+import com.nuvio.tv.core.player.AacToDtsRouting
 import com.nuvio.tv.core.player.AudioPassthroughPolicy
 import com.nuvio.tv.ui.screens.player.iec.HbrPayload
 import com.nuvio.tv.ui.screens.player.iec.IecPassthroughAudioSink
@@ -34,6 +35,8 @@ internal class PlaybackSpeedAwareAudioSink(
     // Claims AC-3 up to 5.1 whatever the platform reports, for Force AC-3 and for
     // denied formats that are transcoded.
     private val forceAc3Support: Boolean = false,
+    // "Transcode AAC to DTS": mono and stereo AAC go to the FFmpeg renderer while DTS can play.
+    private val transcodeAacToDts: Boolean = false,
     // Test harness: refuses the first passthrough buffer of this MIME as a failed open.
     private val faultInjectRejectMime: String? = null,
     reducedStartThresholdFrames: Int = 0,
@@ -314,6 +317,17 @@ internal class PlaybackSpeedAwareAudioSink(
 
     fun isPolicyDeniedPassthrough(format: Format): Boolean {
         return passthroughPolicy.deniesPassthrough(format.sampleMimeType)
+    }
+
+    /**
+     * Whether [format] should be transcoded to DTS. The DTS check goes through
+     * [getFormatSupport], so Bluetooth, speed != 1x, the session PCM latch and the passthrough
+     * policy all turn it off. The FFmpeg renderer asks the same sink, so both renderers agree.
+     */
+    fun prefersDtsTranscode(format: Format): Boolean {
+        return transcodeAacToDts &&
+            AacToDtsRouting.isEligibleSource(format) &&
+            getFormatSupport(AacToDtsRouting.DTS_OUTPUT_FORMAT) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
     }
 
     private fun markPcmFallbackIfNeeded(format: Format?, speed: Float): Boolean {
