@@ -57,6 +57,12 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   /** The default input buffer size. */
   private static final int DEFAULT_INPUT_BUFFER_SIZE = 960 * 6;
 
+  /** DTS core output of "Transcode AAC to DTS": always 48 kHz. */
+  public static final int DTS_SAMPLE_RATE = 48_000;
+
+  // xHE-AAC (USAC). FFmpeg 7.0 has no decoder for it.
+  private static final String XHE_AAC_CODECS_PREFIX = "mp4a.40.42";
+
   private volatile int userCenterMixLevelDb;
   @Nullable private volatile String requestedOutputLayoutName;
   private volatile int requestedOutputChannelCount;
@@ -66,6 +72,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   private volatile boolean downmixActive;
   private volatile boolean forceOpticalPassthrough;
   private volatile Set<String> deniedTranscodeMimes = Collections.emptySet();
+  private volatile boolean transcodeAacToDts;
 
   public FfmpegAudioRenderer() {
     this(/* eventHandler= */ null, /* eventListener= */ null);
@@ -139,15 +146,19 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     if (forceOpticalPassthrough && MimeTypes.AUDIO_AC3.equals(mimeType)) {
       return C.FORMAT_UNSUPPORTED_SUBTYPE;
     }
-    boolean transcodeToAc3 = shouldTranscodeToAc3(format, mimeType);
+    boolean transcodeToDts = shouldTranscodeToDts(format);
+    boolean transcodeToAc3 = !transcodeToDts && shouldTranscodeToAc3(format, mimeType);
 
-    if (!transcodeToAc3 && (format.channelCount <= 0 || format.sampleRate <= 0)) {
+    if (!transcodeToDts && !transcodeToAc3
+        && (format.channelCount <= 0 || format.sampleRate <= 0)) {
       return format.cryptoType == C.CRYPTO_TYPE_NONE
           ? C.FORMAT_HANDLED
           : C.FORMAT_UNSUPPORTED_DRM;
     }
     boolean supportsConfiguredOutput;
-    if (transcodeToAc3) {
+    if (transcodeToDts) {
+      supportsConfiguredOutput = true;
+    } else if (transcodeToAc3) {
       supportsConfiguredOutput = sinkSupportsFormat(ac3OutputFormat(format));
     } else {
       int outputChannelCount = resolveOutputChannelCount(format.channelCount);
@@ -175,13 +186,19 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
       throws FfmpegDecoderException {
     TraceUtil.beginSection("createFfmpegAudioDecoder");
     String mimeType = checkNotNull(format.sampleMimeType);
-    boolean transcodeToAc3 = shouldTranscodeToAc3(format, mimeType);
+    boolean transcodeToDts = shouldTranscodeToDts(format);
+    boolean transcodeToAc3 = !transcodeToDts && shouldTranscodeToAc3(format, mimeType);
     int initialInputBufferSize =
         format.maxInputSize != Format.NO_VALUE ? format.maxInputSize : DEFAULT_INPUT_BUFFER_SIZE;
     @C.PcmEncoding int outputEncoding;
     int nativeOutputChannelCount;
     @Nullable String outputLayoutName;
-    if (transcodeToAc3) {
+    if (transcodeToDts) {
+      outputEncoding = C.ENCODING_DTS;
+      nativeOutputChannelCount = 0;
+      outputLayoutName = null;
+      downmixActive = false;
+    } else if (transcodeToAc3) {
       outputEncoding = C.ENCODING_AC3;
       nativeOutputChannelCount = 6;
       outputLayoutName = "5.1";
@@ -215,6 +232,15 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   protected Format getOutputFormat(FfmpegAudioDecoder decoder) {
     checkNotNull(decoder);
     int encoding = decoder.getEncoding();
+    if (encoding == C.ENCODING_DTS) {
+      // A mono DTS bitstream still opens a stereo AudioTrack: passthrough bytes are opaque to the
+      // track, and a stereo mask is one every HDMI DTS profile lists.
+      return new Format.Builder()
+          .setSampleMimeType(MimeTypes.AUDIO_DTS)
+          .setChannelCount(2)
+          .setSampleRate(decoder.getSampleRate())
+          .build();
+    }
     if (encoding == C.ENCODING_AC3) {
       return new Format.Builder()
           .setSampleMimeType(MimeTypes.AUDIO_AC3)
@@ -272,6 +298,14 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     this.forceOpticalPassthrough = enabled;
   }
 
+  /**
+   * Sets whether mono and stereo AAC is encoded to DTS core (48 kHz, 1509 kbit/s) when the sink
+   * can play DTS.
+   */
+  public void setTranscodeAacToDts(boolean enabled) {
+    this.transcodeAacToDts = enabled;
+  }
+
   public void setDeniedTranscodeMimes(@Nullable Set<String> mimeTypes) {
     deniedTranscodeMimes =
         mimeTypes == null || mimeTypes.isEmpty()
@@ -289,8 +323,41 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     return rendererEnabled && activeDecoder != null;
   }
 
+  // Read activeDecoder once: other threads call these while onDisabled() clears it.
   public boolean isTranscodingToAc3() {
-    return rendererEnabled && activeDecoder != null && activeDecoder.getEncoding() == C.ENCODING_AC3;
+    @Nullable FfmpegAudioDecoder decoder = activeDecoder;
+    return rendererEnabled && decoder != null && decoder.getEncoding() == C.ENCODING_AC3;
+  }
+
+  public boolean isTranscodingToDts() {
+    @Nullable FfmpegAudioDecoder decoder = activeDecoder;
+    return rendererEnabled && decoder != null && decoder.getEncoding() == C.ENCODING_DTS;
+  }
+
+  /** Channels in the DTS bitstream being written (1 or 2), or 0 when not transcoding to DTS. */
+  public int getDtsTranscodeChannelCount() {
+    @Nullable FfmpegAudioDecoder decoder = activeDecoder;
+    return rendererEnabled && decoder != null && decoder.getEncoding() == C.ENCODING_DTS
+        ? decoder.getChannelCount()
+        : 0;
+  }
+
+  /** Mono or stereo AAC that the DTS transcode accepts. */
+  public static boolean isDtsTranscodeSource(Format format) {
+    return MimeTypes.AUDIO_AAC.equals(format.sampleMimeType)
+        && format.channelCount >= 1
+        && format.channelCount <= 2
+        && format.cryptoType == C.CRYPTO_TYPE_NONE
+        && (format.codecs == null || !format.codecs.startsWith(XHE_AAC_CODECS_PREFIX));
+  }
+
+  /** The sink format of the DTS transcode. */
+  public static Format dtsOutputFormat() {
+    return new Format.Builder()
+        .setSampleMimeType(MimeTypes.AUDIO_DTS)
+        .setChannelCount(2)
+        .setSampleRate(DTS_SAMPLE_RATE)
+        .build();
   }
 
   /**
@@ -303,6 +370,14 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
       return false;
     }
     return sinkSupportsFormat(Util.getPcmFormat(pcmEncoding, channelCount, inputFormat.sampleRate));
+  }
+
+  // getSinkFormatSupport, not sinkSupportsFormat: the app's sink applies Bluetooth, speed and the
+  // passthrough policy in getFormatSupport only, and MediaCodec's decline asks the same question.
+  private boolean shouldTranscodeToDts(Format format) {
+    return transcodeAacToDts
+        && isDtsTranscodeSource(format)
+        && getSinkFormatSupport(dtsOutputFormat()) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY;
   }
 
   private boolean shouldTranscodeToAc3(Format format, String mimeType) {

@@ -93,9 +93,15 @@ static const int AUDIO_DECODER_ERROR_INVALID_DATA = -1;
 static const int AUDIO_DECODER_ERROR_OTHER = -2;
 static const int TRANSCODE_TARGET_NONE = 0;
 static const int TRANSCODE_TARGET_AC3 = 1;
+static const int TRANSCODE_TARGET_DTS = 2;
 // LINT.ThenChange(../java/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder.java)
 
 static const int64_t AC3_BIT_RATE = 640000;
+// DTS core as the owner's offline converter writes it: 1509 kbit/s at 48 kHz
+// gives 2012-byte frames, inside the 2040-byte payload of an IEC 61937 DTS
+// type I burst.
+static const int64_t DTS_BIT_RATE = 1509000;
+static const int DTS_SAMPLE_RATE = 48000;
 
 struct AudioLimiter {
   float attenuation;
@@ -124,8 +130,12 @@ struct DecoderContext {
   bool downmix_active;
   AudioLimiter limiter;
 
-  // Transcode encoder fields
+  // Transcode encoder fields (AC-3 or DTS core)
   int transcode_target;
+  // DTS keeps the channel count of the first decoded frame (1 or 2) for the
+  // life of the decoder, so a later layout change never reopens the encoder
+  // with a different count. 0 until the first frame.
+  int dts_channels;
   // Decoded samples still to drop at the start of the stream (AAC priming).
   int start_trim_samples;
   // Samples sent out by the encoder since the last reset.
@@ -763,7 +773,8 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
         return AUDIO_DECODER_ERROR_INVALID_DATA;
       }
 
-      // The limiter works on planar float only.
+      // The limiter works on planar float; the DTS path (packed S32) never
+      // downmixes.
       if (decoderContext->downmix_active &&
           decoderContext->output_sample_format == AV_SAMPLE_FMT_FLTP) {
         limitPlanarFloat(&decoderContext->limiter, converted_data,
@@ -852,6 +863,12 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   if (decoderContext->transcode_target == TRANSCODE_TARGET_AC3) {
     av_channel_layout_default(&outputLayout, 6);
     decoderContext->output_sample_format = AV_SAMPLE_FMT_FLTP;
+  } else if (decoderContext->transcode_target == TRANSCODE_TARGET_DTS) {
+    if (decoderContext->dts_channels == 0) {
+      decoderContext->dts_channels = inputLayout.nb_channels >= 2 ? 2 : 1;
+    }
+    av_channel_layout_default(&outputLayout, decoderContext->dts_channels);
+    decoderContext->output_sample_format = AV_SAMPLE_FMT_S32;
   } else {
     if (!getOutputChannelLayout(decoderContext, &inputLayout, &outputLayout)) {
       av_channel_layout_uninit(&inputLayout);
@@ -867,9 +884,13 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   // keep feeding the encoder's rate rather than re-deriving one.
   int outputSampleRate = inputSampleRate;
   if (decoderContext->transcode_target != TRANSCODE_TARGET_NONE) {
-    outputSampleRate = decoderContext->encoder_initialized
-        ? decoderContext->encoder_context->sample_rate
-        : ac3TargetSampleRate(inputSampleRate);
+    if (decoderContext->encoder_initialized) {
+      outputSampleRate = decoderContext->encoder_context->sample_rate;
+    } else if (decoderContext->transcode_target == TRANSCODE_TARGET_DTS) {
+      outputSampleRate = DTS_SAMPLE_RATE;
+    } else {
+      outputSampleRate = ac3TargetSampleRate(inputSampleRate);
+    }
   }
   AVSampleFormat inputSampleFormat = (AVSampleFormat)frame->format;
   bool isDownmixActive = outputLayout.nb_channels < inputLayout.nb_channels;
@@ -963,9 +984,10 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
 
   if (decoderContext->transcode_target != TRANSCODE_TARGET_NONE &&
       !decoderContext->encoder_initialized) {
-    const AVCodec* encoder = avcodec_find_encoder(AV_CODEC_ID_AC3);
+    bool dts = decoderContext->transcode_target == TRANSCODE_TARGET_DTS;
+    const AVCodec* encoder = avcodec_find_encoder(dts ? AV_CODEC_ID_DTS : AV_CODEC_ID_AC3);
     if (!encoder) {
-      LOGE("AC3 encoder not found. Check FFmpeg build options.");
+      LOGE("%s encoder not found. Check FFmpeg build options.", dts ? "DTS" : "AC3");
       av_channel_layout_uninit(&inputLayout);
       av_channel_layout_uninit(&outputLayout);
       return AUDIO_DECODER_ERROR_OTHER;
@@ -980,7 +1002,12 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     enc_ctx->sample_fmt = decoderContext->output_sample_format;
     enc_ctx->sample_rate = outputSampleRate;
     av_channel_layout_copy(&enc_ctx->ch_layout, &outputLayout);
-    enc_ctx->bit_rate = AC3_BIT_RATE;
+    enc_ctx->bit_rate = dts ? DTS_BIT_RATE : AC3_BIT_RATE;
+    if (dts) {
+      // FFmpeg flags its DTS encoder experimental; avcodec_open2 refuses it
+      // without this ("-strict -2").
+      enc_ctx->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
+    }
 
     int ret = avcodec_open2(enc_ctx, encoder, NULL);
     if (ret < 0) {
@@ -1030,6 +1057,12 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       return AUDIO_DECODER_ERROR_OTHER;
     }
     decoderContext->encoder_initialized = true;
+    if (dts) {
+      LOGI("DTS transcode: %d Hz %d ch -> %d Hz %d ch, %lld bit/s, frame %d samples",
+           inputSampleRate, inputLayout.nb_channels, enc_ctx->sample_rate,
+           enc_ctx->ch_layout.nb_channels, (long long)enc_ctx->bit_rate,
+           enc_ctx->frame_size);
+    }
   }
 
   av_channel_layout_uninit(&inputLayout);
