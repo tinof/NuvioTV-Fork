@@ -42,6 +42,7 @@ COMMON_OPTIONS="
     --disable-symver
     --enable-swresample
     --enable-encoder=ac3
+    --enable-encoder=dca
     --extra-ldexeflags=-pie
     --disable-v4l2-m2m
     --disable-vulkan
