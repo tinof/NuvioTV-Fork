@@ -1367,7 +1367,8 @@ internal fun PlayerRuntimeController.initializePlayer(
             // AAC to DTS needs the FFmpeg renderer in the list. Bluetooth, speed and the
             // passthrough policy are checked live by the sink, so they are not part of this flag.
             val isTranscodeAacToDtsActive = playerSettings.transcodeAacToDts &&
-                playerSettings.decoderPriority != 0
+                playerSettings.decoderPriority != 0 &&
+                url !in aacToDtsOffStreamUrls
             // Force-AC3 does not escalate the *global* extension mode to
             // PREFER (that would put software AV1 video decode ahead of
             // MediaCodec). The FFmpeg audio renderer is instead reordered
@@ -2995,6 +2996,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         format: Format,
                         decoderReuseEvaluation: DecoderReuseEvaluation?
                     ) {
+                        lastAudioInputMime = this@apply to format.sampleMimeType
                         playbackAnalyticsDiagnostics.onAudioInputFormatChanged(
                             eventTime = eventTime,
                             format = format,
@@ -3991,6 +3993,20 @@ internal fun PlayerRuntimeController.noteAudioTrackRejection(error: PlaybackExce
     if (!error.isAudioTrackFailure()) return
     val mime = failedAudioTrackInputFormat(error)?.sampleMimeType
     val routeKey = currentAudioOutputRoute?.key
+    // A refused DTS track made by the AAC-to-DTS transcode says nothing about real DTS tracks on
+    // this route, so it is not learned. This stream plays the AAC as PCM from now on. The player
+    // has already dropped its audio format when the error arrives, so the last input format the
+    // analytics listener saw for this player is used.
+    val sourceMime = lastAudioInputMime?.takeIf { it.first === _exoPlayer }?.second
+    if (isDtsTranscode(sourceMime, mime)) {
+        aacToDtsOffStreamUrls.add(currentStreamUrl)
+        Log.w(
+            PlayerRuntimeController.TAG,
+            "AUDIO_TRACK_REJECTION_NOT_LEARNED DTS transcode of $sourceMime refused on route=$routeKey; " +
+                "AAC to DTS off for this stream"
+        )
+        return
+    }
     AudioTrackRejectionLog.labelForMime(mime)?.let { label ->
         AudioTrackRejectionLog.record(label, routeKey, System.currentTimeMillis())
         Log.w(PlayerRuntimeController.TAG, "AUDIO_TRACK_REJECTION encoding=$label route=$routeKey retry=$retryScheduled")
