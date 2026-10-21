@@ -197,6 +197,7 @@ internal data class ExoConstructionFingerprint(
     val audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
     val maintainOriginalAudioOnDownmix: Boolean,
     val forceOpticalPassthroughActive: Boolean,
+    val transcodeAacToDtsActive: Boolean = false,
     val useSystemPassthrough: Boolean,
     val dtsHdTvPassthrough: Boolean = false,
     val iecOff: Boolean = false,
@@ -1349,6 +1350,10 @@ internal fun PlayerRuntimeController.initializePlayer(
             val dtsHdTvPassthroughActive = playerSettings.dtsHdTvPassthrough &&
                 !isBluetoothAudioOutput &&
                 TvArcAudioOutput.isActive(context)
+            // AAC to DTS needs the FFmpeg renderer in the list. Bluetooth, speed and the
+            // passthrough policy are checked live by the sink, so they are not part of this flag.
+            val isTranscodeAacToDtsActive = playerSettings.transcodeAacToDts &&
+                playerSettings.decoderPriority != 0
             // Force-AC3 does not escalate the *global* extension mode to
             // PREFER (that would put software AV1 video decode ahead of
             // MediaCodec). The FFmpeg audio renderer is instead reordered
@@ -1497,6 +1502,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 audioOutputChannels = surroundAudioOutputChannels,
                 downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                 forceOpticalPassthrough = isForcePassthroughActive,
+                transcodeAacToDts = isTranscodeAacToDtsActive,
                 useSystemPassthrough = playerSettings.useSystemPassthrough,
                 dtsHdTvPassthrough = dtsHdTvPassthroughActive,
                 iecOff = iecOffStreamUrls.contains(url),
@@ -1624,6 +1630,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 audioOutputChannels = surroundAudioOutputChannels,
                 maintainOriginalAudioOnDownmix = playerSettings.maintainOriginalAudioOnDownmix,
                 forceOpticalPassthroughActive = isForcePassthroughActive,
+                transcodeAacToDtsActive = isTranscodeAacToDtsActive,
                 useSystemPassthrough = playerSettings.useSystemPassthrough,
                 dtsHdTvPassthrough = dtsHdTvPassthroughActive,
                 iecOff = iecOffStreamUrls.contains(url),
@@ -3410,6 +3417,7 @@ private class SubtitleOffsetRenderersFactory(
     private val audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
     private val downmixNormalizationEnabled: Boolean,
     private val forceOpticalPassthrough: Boolean,
+    private val transcodeAacToDts: Boolean = false,
     private val useSystemPassthrough: Boolean,
     private val dtsHdTvPassthrough: Boolean = false,
     private val iecOff: Boolean = false,
@@ -3608,6 +3616,7 @@ private class SubtitleOffsetRenderersFactory(
             passthroughPolicy = audioPassthroughPolicy,
             onDiagnosticEvent = onAudioDiagnosticEvent,
             forceAc3Support = forceOpticalPassthrough || deniedTranscodeMimes.isNotEmpty(),
+            transcodeAacToDts = transcodeAacToDts,
             faultInjectRejectMime = faultInjectRejectMime,
             reducedStartThresholdFrames = reducedStartThresholdFrames,
             platformSink = baseAudioSink,
