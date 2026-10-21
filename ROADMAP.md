@@ -357,6 +357,30 @@ because a wrong passthrough path is invisible until measured.
     buffer ahead never under 8 s.
   - Needs: Q5.2, Q5.3, Q5.4, Q5.5.
 
+### Q6: Transcode AAC to DTS
+
+- **Status:** Partial. Branch `feat/Q6-aac-dts`: per-profile setting (default off) that sends mono and
+  stereo AAC to the AVR as DTS core (FFmpeg `dca`, 48 kHz, 1509 kbit/s), for the owner's Sony HT-A9 and its
+  Neural:X upmixer. Same encoder settings as the owner's offline `docs/todts`.
+  - MediaCodec declines such tracks while the sink can play DTS, so the FFmpeg renderer takes them.
+  - The resampler (44.1 → 48 kHz) is tuned against soxr precision 28; numbers in the commit.
+  - The branch also ships the first decoder AAR built from `ffmpeg-decoder-downmix`, and fixes for the AC-3
+    transcode (frame count per buffer, end-of-stream flush, output timestamps, priming).
+- [Q6.1][desk] CI build of the decoder AAR with the DTS target, replace it in `app/libs`, update the SHA.
+  Gate: `:app:testFullDebugUnitTest` green with the shipped AAR.
+- [Q6.2][device][owner][new-build] Toggle on; play AAC 2.0 at 48 kHz and at 44.1 kHz, a mono title and an
+  HE-AACv2 title. Gate: logcat `DTS transcode:` line, `dumpsys media.audio_flinger` shows a DIRECT DTS
+  output at 48 kHz, the HUD shows "DTS transcode", and the HT-A9 shows DTS with Neural:X.
+  Needs: Q6.1.
+- [Q6.3][device][owner][new-build] Sync and controls: a flash-and-beep clip as DTS against PCM (offset
+  within 20 ms), 20 seeks, pause/resume, speed 1.25x (PCM) and back (DTS) in both decoder modes, play to
+  the end, resume at 30 min, track switch AAC 2.0 ↔ E-AC3 5.1 ↔ AAC 5.1, Bluetooth during playback.
+  Gate: results in the log, no `UnexpectedDiscontinuity` or `audioSinkError`. Needs: Q6.1.
+- [Q6.4][device][new-build] Regression of Force AC-3 and denied-codec AC-3 on the module-built AAR.
+  Gate: AC-3 output, sync and HUD as before. Needs: Q6.1.
+- [Q6.5][device][new-build] CPU of the decoder thread for 44.1 kHz AAC with the tuned resampler
+  (`top -H`). Gate: number in the log. Needs: Q6.1.
+
 ## Snappiness
 
 ### S1: start latency
