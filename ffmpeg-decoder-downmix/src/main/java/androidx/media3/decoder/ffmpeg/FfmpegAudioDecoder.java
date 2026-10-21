@@ -43,8 +43,12 @@ import java.util.List;
 
   private static final int INITIAL_OUTPUT_BUFFER_SIZE = 65535 * 2;
 
+  // LINT.IfChange
   private static final int AUDIO_DECODER_ERROR_INVALID_DATA = -1;
   private static final int AUDIO_DECODER_ERROR_OTHER = -2;
+  private static final int TRANSCODE_TARGET_NONE = 0;
+  private static final int TRANSCODE_TARGET_AC3 = 1;
+  // LINT.ThenChange(../../../../../jni/ffmpeg_jni.cc)
 
   // FLAC parsing constants
   private static final byte[] flacStreamMarker = {'f', 'L', 'a', 'C'};
@@ -54,7 +58,13 @@ import java.util.List;
 
   private final String codecName;
   @Nullable private final byte[] extraData;
-  private final @C.PcmEncoding int outputEncoding;
+  private final @C.Encoding int outputEncoding;
+  private final boolean transcoding;
+  private final int encoderDelay;
+  private final int inputSampleRate;
+  private final TranscodeClock transcodeClock = new TranscodeClock();
+  private volatile long streamOffsetUs;
+  private boolean startTrimPending = true;
   private volatile int userCenterMixLevelDb;
   private volatile boolean downmixNormalizationEnabled;
   private int outputBufferSize;
@@ -71,7 +81,7 @@ import java.util.List;
       int initialInputBufferSize,
       int outputChannelCount,
       @Nullable String requestedOutputLayoutName,
-      @C.PcmEncoding int outputEncoding)
+      @C.Encoding int outputEncoding)
       throws FfmpegDecoderException {
     super(new DecoderInputBuffer[numInputBuffers], new SimpleDecoderOutputBuffer[numOutputBuffers]);
     if (!FfmpegLibrary.isAvailable()) {
@@ -81,6 +91,9 @@ import java.util.List;
     codecName = checkNotNull(FfmpegLibrary.getCodecName(format.sampleMimeType));
     extraData = getExtraData(format.sampleMimeType, format.initializationData);
     this.outputEncoding = outputEncoding;
+    transcoding = outputEncoding == C.ENCODING_AC3;
+    encoderDelay = format.encoderDelay;
+    inputSampleRate = format.sampleRate;
     outputBufferSize = INITIAL_OUTPUT_BUFFER_SIZE;
     nativeContext =
         ffmpegInitialize(
@@ -91,7 +104,7 @@ import java.util.List;
             outputChannelCount,
             requestedOutputLayoutName,
             outputEncoding == C.ENCODING_PCM_FLOAT,
-            outputEncoding == C.ENCODING_AC3);
+            transcodeTarget(outputEncoding));
     if (nativeContext == 0) {
       throw new FfmpegDecoderException("Initialization failed.");
     }
@@ -129,10 +142,29 @@ import java.util.List;
       if (nativeContext == 0) {
         return new FfmpegDecoderException("Error resetting (see logcat).");
       }
+      transcodeClock.reset();
+      startTrimPending = true;
+    }
+    long encodedSamplesBefore = 0;
+    if (transcoding) {
+      // Bitstream output skips the sink's PCM trimming, so the AAC priming is dropped here, but
+      // only when decoding starts at the stream start (not on a resume or track switch).
+      if (startTrimPending) {
+        startTrimPending = false;
+        if (encoderDelay > 0
+            && TranscodeClock.startsStream(inputBuffer.timeUs, streamOffsetUs, inputSampleRate)) {
+          ffmpegSetStartTrim(nativeContext, encoderDelay);
+        }
+      }
+      encodedSamplesBefore = ffmpegGetEncodedSamples(nativeContext);
     }
     ByteBuffer inputData = Util.castNonNull(inputBuffer.data);
     int inputSize = inputData.limit();
     ByteBuffer outputData = outputBuffer.init(inputBuffer.timeUs, outputBufferSize);
+    // SimpleDecoder never hands the end-of-stream buffer to decode(), so a transcode flushes its
+    // decoder, resampler and encoder FIFO with the packet flagged as the stream's last sample.
+    boolean endOfStream =
+        inputBuffer.isEndOfStream() || (transcoding && inputBuffer.isLastSample());
     int result =
         ffmpegDecode(
             nativeContext,
@@ -143,7 +175,12 @@ import java.util.List;
             outputBufferSize,
             userCenterMixLevelDb,
             downmixNormalizationEnabled,
-            inputBuffer.isEndOfStream());
+            endOfStream);
+    if (transcoding) {
+      outputBuffer.timeUs =
+          transcodeClock.getOutputTimeUs(
+              inputBuffer.timeUs, encodedSamplesBefore, ffmpegGetSampleRate(nativeContext));
+    }
     if (result == AUDIO_DECODER_ERROR_OTHER) {
       return new FfmpegDecoderException("Error decoding (see logcat).");
     } else if (result == AUDIO_DECODER_ERROR_INVALID_DATA) {
@@ -204,8 +241,22 @@ import java.util.List;
   }
 
   /** Returns the encoding of output audio. */
-  public @C.PcmEncoding int getEncoding() {
+  public @C.Encoding int getEncoding() {
     return outputEncoding;
+  }
+
+  /** Sets the renderer's stream offset, which turns input times into media times. */
+  public void setStreamOffsetUs(long streamOffsetUs) {
+    this.streamOffsetUs = streamOffsetUs;
+  }
+
+  private static int transcodeTarget(@C.Encoding int outputEncoding) {
+    switch (outputEncoding) {
+      case C.ENCODING_AC3:
+        return TRANSCODE_TARGET_AC3;
+      default:
+        return TRANSCODE_TARGET_NONE;
+    }
   }
 
   /** Sets the center-mix offset in dB relative to stream metadata or the default (-3 dB). */
@@ -339,7 +390,7 @@ import java.util.List;
       int outputChannelCount,
       @Nullable String requestedOutputLayoutName,
       boolean outputFloat,
-      boolean transcodeToAc3);
+      int transcodeTarget);
 
   private native int ffmpegDecode(
       long context,
@@ -357,6 +408,10 @@ import java.util.List;
   private native int ffmpegGetSampleRate(long context);
 
   private native long ffmpegReset(long context, @Nullable byte[] extraData);
+
+  private native void ffmpegSetStartTrim(long context, int samples);
+
+  private native long ffmpegGetEncodedSamples(long context);
 
   private native void ffmpegRelease(long context);
 }
