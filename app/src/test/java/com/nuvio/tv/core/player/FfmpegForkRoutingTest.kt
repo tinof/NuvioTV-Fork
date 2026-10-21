@@ -1,19 +1,30 @@
 package com.nuvio.tv.core.player
 
+import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
 import androidx.media3.exoplayer.audio.AudioSink
+import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.*
 import org.junit.Test
 
 /** Executes the renderer shipped in app/libs, not a duplicate policy implementation. */
 class FfmpegForkRoutingTest {
-    private fun renderer() = FfmpegAudioRenderer(null, null, mockk<AudioSink>(relaxed = true))
+    // A sink that plays AC-3: the denied-codec path also asks the sink before transcoding.
+    private fun renderer(): FfmpegAudioRenderer {
+        val sink = mockk<AudioSink>(relaxed = true)
+        every { sink.supportsFormat(any()) } returns true
+        every { sink.getFormatSupport(any()) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+        return FfmpegAudioRenderer(null, null, sink)
+    }
     private fun transcodes(renderer: FfmpegAudioRenderer, mime: String, channels: Int): Boolean {
-        val method = FfmpegAudioRenderer::class.java.getDeclaredMethod("shouldTranscodeToAc3", String::class.java, Int::class.javaPrimitiveType)
+        val method = FfmpegAudioRenderer::class.java.getDeclaredMethod(
+            "shouldTranscodeToAc3", Format::class.java, String::class.java
+        )
         method.isAccessible = true
-        return method.invoke(renderer, mime, channels) as Boolean
+        val format = Format.Builder().setSampleMimeType(mime).setChannelCount(channels).setSampleRate(48_000).build()
+        return method.invoke(renderer, format, mime) as Boolean
     }
     @Test fun emptyDeniedSetLeavesLosslessFormatsOnTheirExistingPath() {
         val renderer = renderer()
