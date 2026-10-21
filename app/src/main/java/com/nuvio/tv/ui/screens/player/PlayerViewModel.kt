@@ -820,7 +820,8 @@ class PlayerViewModel @Inject constructor(
             val dot = when (routing?.mode) {
                 AudioRoutingMode.PASSTHROUGH_IEC,
                 AudioRoutingMode.PASSTHROUGH_DIRECT,
-                AudioRoutingMode.TRANSCODE_AC3 -> StatsDot.GOOD
+                AudioRoutingMode.TRANSCODE_AC3,
+                AudioRoutingMode.TRANSCODE_DTS -> StatsDot.GOOD
                 AudioRoutingMode.PCM -> if (losslessMime) StatsDot.WARN else StatsDot.NONE
                 null -> StatsDot.NONE
             }
