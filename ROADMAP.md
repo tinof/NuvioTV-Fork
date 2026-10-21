@@ -106,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-21 | Q6 added and built on `feat/Q6-aac-dts`: AAC to DTS transcode, DTS 2.0 confirmed on the owner's HT-A9. | Q6 | [log](docs/ROADMAP_LOG.md), [design](docs/aac-to-dts/DESIGN.md) |
 | 2026-10-21 | Q5 and M3.3 added from a live capture: 12 stutter events in 5 min, correlated with memory pressure. | Q5, M3 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-20 | U1.5 made repeatable: two-layer branches, the daily drift issue and the `/upstream-sync` skill. | U1 | [log](docs/ROADMAP_LOG.md), PR #9 |
 | 2026-10-20 | U1.5: rebased onto upstream 1.1.0-nt.7.3; the fork keeps its Shield settings where upstream changed them. | U1, Q1 | [log](docs/ROADMAP_LOG.md), PR #6 |
@@ -359,19 +360,25 @@ because a wrong passthrough path is invisible until measured.
 
 ### Q6: Transcode AAC to DTS
 
-- **Status:** Partial. Branch `feat/Q6-aac-dts`: per-profile setting (default off) that sends mono and
-  stereo AAC to the AVR as DTS core (FFmpeg `dca`, 48 kHz, 1509 kbit/s), for the owner's Sony HT-A9 and its
-  Neural:X upmixer. Same encoder settings as the owner's offline `docs/todts`.
+- **Status:** Partial. Branch `feat/Q6-aac-dts` (not merged; the owner keeps developing it before the
+  merge). Per-profile setting, default off, that sends mono and stereo AAC to the AVR as DTS core (FFmpeg
+  `dca`, 48 kHz, 1509 kbit/s) for the owner's Sony HT-A9 and its Neural:X upmixer, with the settings of the
+  owner's offline `docs/todts`. Design, evidence, measurements, review findings and build steps:
+  [`docs/aac-to-dts/DESIGN.md`](docs/aac-to-dts/DESIGN.md).
   - MediaCodec declines such tracks while the sink can play DTS, so the FFmpeg renderer takes them.
-  - The resampler (44.1 → 48 kHz) is tuned against soxr precision 28; numbers in the commit.
-  - The branch also ships the first decoder AAR built from `ffmpeg-decoder-downmix`, and fixes for the AC-3
-    transcode (frame count per buffer, end-of-stream flush, output timestamps, priming).
+  - The resampler (44.1 → 48 kHz) is tuned against soxr precision 28 (images ≤ −130 dB, 4.1× default CPU).
+  - The branch ships the first decoder AARs built from `ffmpeg-decoder-downmix`, and AC-3 transcode fixes
+    (frame count per buffer, end-of-stream flush, output timestamps, priming).
+  - 2026-10-21: the owner heard DTS 2.0 on the HT-A9 from a 48 kHz AAC 2.0 title; logs and AudioFlinger
+    agree (DIRECT `AUDIO_FORMAT_DTS`, no sink errors).
+  - After the merge, delete the CI-only branch `ci/Q6-ffmpeg-aar` on the fork.
 - [Q6.1][desk] CI build of the decoder AAR with the DTS target, replace it in `app/libs`, update the SHA.
-  Gate: `:app:testFullDebugUnitTest` green with the shipped AAR.
+  Gate: `:app:testFullDebugUnitTest` green with the shipped AAR. Done on the branch 2026-10-21: AAR
+  `a1152a6d…` (run 39594133508), 6569 tests, 0 failures; the step leaves the roadmap when the branch ships.
 - [Q6.2][device][owner][new-build] Toggle on; play AAC 2.0 at 48 kHz and at 44.1 kHz, a mono title and an
   HE-AACv2 title. Gate: logcat `DTS transcode:` line, `dumpsys media.audio_flinger` shows a DIRECT DTS
   output at 48 kHz, the HUD shows "DTS transcode", and the HT-A9 shows DTS with Neural:X.
-  Needs: Q6.1.
+  48 kHz AAC 2.0 confirmed 2026-10-21; 44.1 kHz, mono and HE-AACv2 pending. Needs: Q6.1.
 - [Q6.3][device][owner][new-build] Sync and controls: a flash-and-beep clip as DTS against PCM (offset
   within 20 ms), 20 seeks, pause/resume, speed 1.25x (PCM) and back (DTS) in both decoder modes, play to
   the end, resume at 30 min, track switch AAC 2.0 ↔ E-AC3 5.1 ↔ AAC 5.1, Bluetooth during playback.
@@ -380,6 +387,15 @@ because a wrong passthrough path is invisible until measured.
   Gate: AC-3 output, sync and HUD as before. Needs: Q6.1.
 - [Q6.5][device][new-build] CPU of the decoder thread for 44.1 kHz AAC with the tuned resampler
   (`top -H`). Gate: number in the log. Needs: Q6.1.
+- [Q6.6][owner] Decide whether the structured playback issue report gets a `transcodeAacToDts` field (the
+  report server's schema is unknown; today only the raw events line carries `aacToDts=`). Gate: decision
+  in the log.
+- [Q6.7][desk] The denied-codec AC-3 decision asks `getSinkFormatSupport`, as the DTS one does, so speed,
+  the passthrough policy and the PCM latch apply to it (today `sinkSupportsFormat` bypasses them, DESIGN
+  §3). Gate: unit test with a sink whose policy denies AC-3.
+- [Q6.8][desk] Extend the FFmpeg-first decoder re-creation (`PlayerRuntimeControllerDtsTranscode.kt`) to
+  Force AC-3 and denied-codec AC-3. Gate: unit test of the decision helper.
+- [Q6.9][desk] `ffmpeg_jni.cc` compiles without warnings at `-Wall -Wextra`. Gate: build log.
 
 ## Snappiness
 
