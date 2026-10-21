@@ -64,6 +64,27 @@ watched.
   - `NuvioExoEvent dropped_video_frames` cannot show single drops, because of the 50-drop notify
     threshold.
 
+**Same day: reboot control and debloat start**
+
+- **Collector fixes:** the scratch collector now resolves the PID and the layer at capture time, and drops
+  frames from before the capture. Re-run on the first capture, it still finds the same 12 events.
+- **Control run** (reboot only, capture from about 10 min after boot, 600 s, same build):
+  - 5 events: 4 single-frame app-side skips and 1 late present.
+  - All 5 fell between 1153 and 1164 s of uptime, while the system pushed memory into swap: SwapFree
+    went from 314 to 229 MB, with 2.6–12k `pswpout` and 44–64k `workingset_refault` per 2.5 s.
+  - 6 SIGKILL exits; MemAvailable 244–384 MB.
+  - Nuvio held `allocHeldMb` 452 with RSS 780–826 MB.
+- **Reading:** a reboot lowers the rate (0.5 per min against 2.4 per min at 6.7 days up) and the severity
+  (1 frame against 7). The box is back in reclaim within about 15 min of 4K playback, so a reboot is no
+  fix.
+- **Debloat, in progress:** 7 packages were disabled, from the ATV Optimizer catalog
+  (`bryanroscoe/shield_optimizer`): `tvrecommendations`, `nvgamecast`, `katniss`, `mediashell`,
+  `tv.remote.service`, `play.games` and `com.lb.app_manager`.
+  - MemAvailable went from about 384 to 450 MB at once, during playback.
+  - Not yet done: the reboot, the SMB toggle and the after-run.
+  - The device record and the undo commands are in the local Shield reference.
+  - Q5.2 waits until the debloated state has settled.
+
 **Steps added**
 
 - Q5.1 to Q5.7 (`ROADMAP.md`, item Q5): a frame-gap script; a controlled baseline; proactive pressure
