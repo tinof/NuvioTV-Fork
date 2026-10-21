@@ -961,6 +961,10 @@ class PlayerRuntimeController(
     internal val iecDecodeStreamUrls: MutableSet<String> = mutableSetOf()
     internal var iecFailureReturnJob: Job? = null
     internal var playerNoticeJob: Job? = null
+    /** Streams whose AAC-to-DTS AudioTrack was refused; they play the AAC as PCM. */
+    internal val aacToDtsOffStreamUrls: MutableSet<String> = mutableSetOf()
+    /** The player and the MIME type of its latest audio input format. */
+    internal var lastAudioInputMime: Pair<ExoPlayer, String?>? = null
     internal val audioDisabledForcedStreamUrls: MutableSet<String> = mutableSetOf()
     // URLs proven dead this session (sniff failure on a non-media body, or HTTP
     // 404/410): auto-failover skips them and the source panel greys them out.
