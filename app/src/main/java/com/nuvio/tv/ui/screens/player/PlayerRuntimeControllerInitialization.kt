@@ -2687,6 +2687,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                             sourceMime != MimeTypes.AUDIO_AC3
                         ) {
                             "AC-3 transcode"
+                        } else if (
+                            audioTrackConfig.encoding == C.ENCODING_DTS &&
+                            isDtsTranscode(sourceMime, MimeTypes.AUDIO_DTS)
+                        ) {
+                            "DTS transcode"
                         } else {
                             describeAudioEncoding(audioTrackConfig.encoding)
                         }
