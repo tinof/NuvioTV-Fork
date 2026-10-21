@@ -166,6 +166,10 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setForceOpticalPassthrough(enabled)
     }
 
+    suspend fun setTranscodeAacToDts(enabled: Boolean) {
+        playerSettingsDataStore.setTranscodeAacToDts(enabled)
+    }
+
     suspend fun setUseSystemPassthrough(enabled: Boolean) {
         playerSettingsDataStore.setUseSystemPassthrough(enabled)
     }
