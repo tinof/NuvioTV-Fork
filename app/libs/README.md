@@ -1,18 +1,21 @@
-## Current FFmpeg AAR (module build, 2026-10-21)
+## Current FFmpeg AAR (module build with the DTS target, 2026-10-21)
 
 `lib-decoder-ffmpeg-release.aar` SHA-256:
-`d8e211b40878744e3c040377c1a920b0dbee6a0e58ee62eaeb8688bf6b597b96`.
+`a1152a6db5cfcc8ba2d8518c69b871b0552db43844b409ab08af3f6e034e1f5e`.
 
 Built by the "Build FFmpeg decoder AAR" workflow (`.github/workflows/build-ffmpeg-decoder.yml`, run
-39589348150 on tinof/NuvioTV-Fork) from `ffmpeg-decoder-downmix` as it is in the commit that adds this
+39594133508 on tinof/NuvioTV-Fork) from `ffmpeg-decoder-downmix` as it is in the commit that adds this
 AAR, against FFmpeg n7.0.2 (git tag), NDK 27.0.12077973, API 24, all four ABIs. Encoders: `ac3` and
-`dca` (FFmpeg's DTS core encoder, enabled for Transcode AAC to DTS and not used by this build's JNI
-yet). FFmpeg is built without `--enable-gpl` and `--enable-nonfree` and is used under the LGPL 2.1 or
-later. This is the first AAR built from the module source; it ships the module changes that the
-previous binary lacked (high-sample-rate AC-3 resampling, the sink check on denied-codec AC-3
-routing, limiter timing on the encoder rate). The public Java API is a superset of the previous
-AAR's: it adds `isTranscodingToAc3`, `ac3SampleRate`, `ac3TrailingSilenceSamples` and
-`ac3FrameDurationUs`.
+`dca` (FFmpeg's DTS core encoder). FFmpeg is built without `--enable-gpl` and `--enable-nonfree` and is
+used under the LGPL 2.1 or later. Adds the DTS transcode target (`setTranscodeAacToDts`,
+`isTranscodingToDts`, `getDtsTranscodeChannelCount`, `isDtsTranscodeSource`, `dtsOutputFormat`,
+`TranscodeClock`) and the transcode timing fixes; see `ffmpeg-decoder-downmix/README.md`.
+
+The AAR before it (SHA-256 `d8e211b40878744e3c040377c1a920b0dbee6a0e58ee62eaeb8688bf6b597b96`, run
+39589348150) was the first one built from the module source. It shipped the module changes that the
+0.9.3-beta-nt1 binary lacked (high-sample-rate AC-3 resampling, the sink check on denied-codec AC-3
+routing, limiter timing on the encoder rate) and added `isTranscodingToAc3`, `ac3SampleRate`,
+`ac3TrailingSilenceSamples` and `ac3FrameDurationUs` to the public API.
 
 ## Previous FFmpeg AAR (0.9.3-beta-nt1)
 
