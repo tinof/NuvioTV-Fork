@@ -26,6 +26,7 @@ class ProfileSettingsCredentialPolicyTest {
     fun `audio passthrough and denied handling are device-local, excluded from profile settings blobs`() {
         val deviceLocalAudioKeys = listOf(
             "force_optical_passthrough",
+            "transcode_aac_to_dts",
             "allow_ac3_passthrough",
             "allow_eac3_passthrough",
             "allow_truehd_passthrough",
