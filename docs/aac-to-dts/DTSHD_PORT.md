@@ -879,3 +879,18 @@ guard, `2ae980d80` labels and setting text, then the docs commit.
 - The CI AAR (deviation 2) and its `app/libs/README.md` entry.
 - The licence grant for dts-hdma (deviation 1).
 
+### Risks found while building it
+
+- **Live capabilities:** without pinned capabilities (phones, tablets) DTS-HD MA is never chosen
+  (deviation 4).
+- **HDMI coming back with DTS-HD:** `PassthroughOutputReturn.shouldRebuild` uses `canPass`, which
+  counts DTS-HD as passable when only DTS is pinned. A player built while the output listed only DTS
+  stays on the core until the next playback, even when DTS-HD is listed again.
+- **Seek discard and a re-anchor in the same call:** the unit count is computed on the timeline before
+  the decode; if that decode also re-anchors the clock (a jump over 200 ms), the buffer is stamped on
+  the new anchor but cut by the old count. Rare, one buffer.
+- **HE-AAC priming:** `setPrimingTrim` divides by `Format.sampleRate`. Where that is the core rate of an
+  SBR stream, the trim is overestimated up to 2x, which only widens the discontinuity slack.
+- **Forced HD (`debug.nuvio.aac_dts_target=hd`)** on a DTS-only platform output writes DTS-HD MA into an
+  AudioTrack Media3 opens as DTS. That is the switch's purpose (testing), not a user path.
+
