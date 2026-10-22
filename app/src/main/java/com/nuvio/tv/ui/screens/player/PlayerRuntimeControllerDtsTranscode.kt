@@ -8,6 +8,20 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import com.nuvio.tv.core.player.AacToDtsRouting
+import com.nuvio.tv.core.util.DebugSwitches
+
+/** debug.nuvio.aac_dts_target (D6): a forced target, or null for automatic. */
+internal fun aacToDtsTargetOverride(): AacToDtsRouting.Target? =
+    AacToDtsRouting.parseTargetOverride(DebugSwitches.property(AacToDtsRouting.TARGET_OVERRIDE_PROPERTY))
+
+/** Whether this stream may get DTS-HD MA (see [AacToDtsRouting.hdAllowed]). */
+internal fun PlayerRuntimeController.aacToDtsHdAllowed(url: String, override: AacToDtsRouting.Target?): Boolean =
+    AacToDtsRouting.hdAllowed(
+        streamSteppedDown = url in aacToDtsHdOffStreamUrls,
+        override = override,
+        rendererWritesHd = FfmpegRendererDtsHd.writesHd
+    )
 
 /** One step down the AAC-to-DTS fallback chain (D5): DTS-HD MA, then the DTS core, then PCM. */
 internal enum class AacToDtsStepDown {
