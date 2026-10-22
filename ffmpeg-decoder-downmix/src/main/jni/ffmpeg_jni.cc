@@ -152,6 +152,13 @@ struct DecoderContext {
   int start_trim_samples;
   // Samples sent out by the encoder since the last reset.
   int64_t encoded_samples;
+  // DTS: dcaenc packets received and frames sent since the encoder opened.
+  // dcaenc's output lags its input by one frame (512 samples) and it has no
+  // delay capability, so packet p carries the audio of frame p - 1: packet 0
+  // (pre-roll only) is dropped, and one zero frame at the end of stream
+  // brings out the last real frame.
+  int64_t dts_packets_seen;
+  int64_t dts_frames_sent;
   AVCodecContext* encoder_context;
   AVAudioFifo* fifo;
   AVFrame* encoder_frame;
@@ -545,6 +552,10 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
   return decoderContext;
 }
 
+static bool isDtsTarget(const DecoderContext* decoderContext) {
+  return decoderContext->transcode_target == TRANSCODE_TARGET_DTS;
+}
+
 int ac3TrailingSilenceSamples(int queuedSamples, int frameSize) {
   if (frameSize <= 0 || queuedSamples <= 0) {
     return 0;
@@ -569,6 +580,10 @@ int receiveEncoderPackets(DecoderContext* decoderContext, uint8_t** outputBuffer
       logError("avcodec_receive_packet", ret);
       return AUDIO_DECODER_ERROR_OTHER;
     }
+    if (isDtsTarget(decoderContext) && decoderContext->dts_packets_seen++ == 0) {
+      av_packet_unref(decoderContext->encoder_packet);
+      continue;
+    }
     int packetSize = decoderContext->encoder_packet->size;
     if (*outSize + packetSize > *outputSize) {
       *outputSize = *outSize + packetSize;
@@ -588,6 +603,23 @@ int receiveEncoderPackets(DecoderContext* decoderContext, uint8_t** outputBuffer
   }
 }
 
+// Sends encoder_frame to the encoder and receives what it gives back.
+static int sendEncoderFrame(DecoderContext* decoderContext, uint8_t** outputBuffer,
+                            int* outSize, int* outputSize,
+                            GrowOutputBufferCallback growBuffer) {
+  int ret = avcodec_send_frame(decoderContext->encoder_context,
+                               decoderContext->encoder_frame);
+  if (ret < 0) {
+    logError("avcodec_send_frame", ret);
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  if (isDtsTarget(decoderContext)) {
+    decoderContext->dts_frames_sent++;
+  }
+  return receiveEncoderPackets(decoderContext, outputBuffer, outSize, outputSize,
+                               growBuffer);
+}
+
 int encodeFullFrames(DecoderContext* decoderContext, uint8_t** outputBuffer,
                         int* outSize, int* outputSize,
                         GrowOutputBufferCallback growBuffer) {
@@ -599,14 +631,8 @@ int encodeFullFrames(DecoderContext* decoderContext, uint8_t** outputBuffer,
     av_audio_fifo_read(decoderContext->fifo,
                        (void**)decoderContext->encoder_frame->data, frameSize);
     decoderContext->encoder_frame->nb_samples = frameSize;
-    int ret = avcodec_send_frame(decoderContext->encoder_context,
-                                 decoderContext->encoder_frame);
-    if (ret < 0) {
-      logError("avcodec_send_frame", ret);
-      return AUDIO_DECODER_ERROR_OTHER;
-    }
-    ret = receiveEncoderPackets(decoderContext, outputBuffer, outSize, outputSize,
-                                growBuffer);
+    int ret = sendEncoderFrame(decoderContext, outputBuffer, outSize, outputSize,
+                               growBuffer);
     if (ret < 0) {
       return ret;
     }
@@ -676,14 +702,21 @@ int flushEncoder(DecoderContext* decoderContext, uint8_t** outputBuffer,
                            decoderContext->encoder_frame->ch_layout.nb_channels,
                            (AVSampleFormat)decoderContext->encoder_frame->format);
     decoderContext->encoder_frame->nb_samples = frameSize;
-    int ret = avcodec_send_frame(decoderContext->encoder_context,
-                                 decoderContext->encoder_frame);
+    int ret = sendEncoderFrame(decoderContext, outputBuffer, outSize, outputSize,
+                               growBuffer);
     if (ret < 0) {
-      logError("avcodec_send_frame", ret);
-      return AUDIO_DECODER_ERROR_OTHER;
+      return ret;
     }
-    ret = receiveEncoderPackets(decoderContext, outputBuffer, outSize, outputSize,
-                                growBuffer);
+  }
+  // DTS: the packet of one more frame, of silence, carries the last real
+  // frame. The silent frame itself is never sent out.
+  if (isDtsTarget(decoderContext) && decoderContext->dts_frames_sent > 0) {
+    av_samples_set_silence(decoderContext->encoder_frame->data, 0, frameSize,
+                           decoderContext->encoder_frame->ch_layout.nb_channels,
+                           (AVSampleFormat)decoderContext->encoder_frame->format);
+    decoderContext->encoder_frame->nb_samples = frameSize;
+    int ret = sendEncoderFrame(decoderContext, outputBuffer, outSize, outputSize,
+                               growBuffer);
     if (ret < 0) {
       return ret;
     }
@@ -1082,7 +1115,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     }
     decoderContext->encoder_initialized = true;
     if (dts) {
-      LOGI("DTS transcode: %d Hz %d ch -> %d Hz %d ch, %lld bit/s, frame %d samples",
+      LOGI("DTS transcode: %d Hz %d ch -> %d Hz %d ch, %lld bit/s, frame %d samples, aligned",
            inputSampleRate, inputLayout.nb_channels, enc_ctx->sample_rate,
            enc_ctx->ch_layout.nb_channels, (long long)enc_ctx->bit_rate,
            enc_ctx->frame_size);
@@ -1151,6 +1184,8 @@ void clearEncoder(DecoderContext* decoderContext) {
   }
   decoderContext->encoder_initialized = false;
   decoderContext->encoded_samples = 0;
+  decoderContext->dts_packets_seen = 0;
+  decoderContext->dts_frames_sent = 0;
 }
 
 // Drops decoded samples from the start of the frame while start_trim_samples
