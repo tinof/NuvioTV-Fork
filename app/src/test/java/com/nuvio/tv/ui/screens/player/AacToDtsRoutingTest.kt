@@ -167,6 +167,37 @@ class AacToDtsRoutingTest {
     }
 
     @Test
+    fun aDtsHdTranscodeConfiguredForAnOutputWithoutDtsHd_isRefusedAsAFailedOpen() {
+        // Defensive: the target choice never picks HD there, but should it arrive, the refusal
+        // carries the marked format, so tryAacToDtsStepDown steps the stream to the core.
+        val dtsOnly = sink(hdAllowed = true, pinned = setOf(C.ENCODING_DTS))
+        dtsOnly.configure(AacToDtsRouting.DTS_HD_OUTPUT_FORMAT, 0, null)
+        val refused = runCatching { dtsOnly.handleBuffer(ByteBuffer.allocate(16), 0L, 1) }.exceptionOrNull()
+        assertTrue(refused is AudioSink.InitializationException)
+        assertEquals(AacToDtsRouting.DTS_HD_OUTPUT_FORMAT, failedAudioTrackInputFormat(refused))
+        assertEquals(
+            AacToDtsStepDown.HD_OFF,
+            aacToDtsStepDown(MimeTypes.AUDIO_AAC, failedAudioTrackInputFormat(refused)?.sampleMimeType)
+        )
+        // Still refused on the next buffer, until the next configure.
+        assertTrue(runCatching { dtsOnly.handleBuffer(ByteBuffer.allocate(16), 0L, 1) }.isFailure)
+        dtsOnly.configure(AacToDtsRouting.DTS_OUTPUT_FORMAT, 0, null)
+        assertTrue(dtsOnly.handleBuffer(ByteBuffer.allocate(16), 0L, 1))
+
+        val listsDtsHd = sink(hdAllowed = true, pinned = setOf(C.ENCODING_DTS, C.ENCODING_DTS_HD))
+        listsDtsHd.configure(AacToDtsRouting.DTS_HD_OUTPUT_FORMAT, 0, null)
+        assertTrue(listsDtsHd.handleBuffer(ByteBuffer.allocate(16), 0L, 1))
+        // The forced-HD test switch writes DTS-HD MA on a DTS-only output on purpose.
+        val forced = sink(hdAllowed = true, pinned = setOf(C.ENCODING_DTS), forced = Target.HD)
+        forced.configure(AacToDtsRouting.DTS_HD_OUTPUT_FORMAT, 0, null)
+        assertTrue(forced.handleBuffer(ByteBuffer.allocate(16), 0L, 1))
+        // A real DTS-HD track (not marked) keeps Media3's core fallback.
+        val realDtsHd = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_DTS_HD).setChannelCount(6).setSampleRate(48_000).build()
+        dtsOnly.configure(realDtsHd, 0, null)
+        assertTrue(dtsOnly.handleBuffer(ByteBuffer.allocate(16), 0L, 1))
+    }
+
+    @Test
     fun sinkTarget_realDtsHdTracksKeepMedia3sCoreFallback() {
         // The check applies to the transcode's marked query only.
         val realDtsHd = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_DTS_HD).setChannelCount(6).setSampleRate(48_000).build()
