@@ -31,7 +31,7 @@ Then, with Homebrew `ffmpeg-full` installed:
 FFMPEG_HOST_DIR=<that tree> ./run.sh [work dir]   # ends with "ALL HOST CHECKS PASSED"
 ```
 
-The driver is built with ASan and UBSan. The C sources in `src/main/jni/dtshdma/` are compiled with
+The driver is built with ASan and UBSan. The C sources in `src/main/jni/dcaxll/` are compiled with
 the JNI's own flags (`-std=c17 -Wall -Wextra -Wpedantic -Werror`).
 
 ## Cases
@@ -61,7 +61,7 @@ square waves whose AAC decode clips:
 - the same unit, alignment, end-of-stream and reset checks, on the core inside the HD units
   (decoded with `-core_only 1`);
 - every unit is core + ExSS, probes as `DTS-HD MA`, 2 channels, and is at most
-  `DTSHDMA_MAX_UNIT_BYTES_24(2, 2012)` = 5369 bytes;
+  `DCAXLL_MAX_UNIT_BYTES_24(2, 2012)` = 5369 bytes;
 - the XLL decodes bit-exactly to the PCM sent to the core encoder, which carries 24-bit values
   (low 8 bits zero); after a reset too;
 - no writer errors and nothing clamped by the writer, also on clipping input;
