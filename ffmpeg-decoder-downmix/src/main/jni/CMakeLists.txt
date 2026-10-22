@@ -51,7 +51,15 @@ find_library(m_lib m)
 
 add_library(ffmpegJNI
             SHARED
-            ffmpeg_jni.cc)
+            ffmpeg_jni.cc
+            dtshdma/dtshdma_enc.c)
+
+# The DTS-HD writer is portable C17 (dtshdma/PROVENANCE.md). C_STANDARD applies to the C
+# sources only, so the JNI stays C++11. The copied library must stay warning-clean: it is
+# never edited here, so a warning is fixed in dts-hdma and copied again.
+set_target_properties(ffmpegJNI PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+set_source_files_properties(dtshdma/dtshdma_enc.c
+                            PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Wpedantic;-Werror")
 
 # FFmpeg ships a top-level file named VERSION. On case-insensitive hosts a
 # regular -I for the FFmpeg root can shadow libc++'s <version> header. Search
