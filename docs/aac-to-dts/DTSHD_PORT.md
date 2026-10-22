@@ -923,5 +923,9 @@ Changed or new risks:
   player only, never through an in-place resolve.
 - **An output that does not list DTS-HD never gets DTS-HD MA**, even when its receiver would decode the
   own IEC engine's bursts. Android's capability list is the only evidence the app has.
+- **The owner's IEC route now depends on Media3's snapshot.** With System passthrough off, DTS-HD MA
+  needs `AudioCapabilities.getCapabilities` on the Shield to list DTS-HD. DESIGN.md §1 shows it in the
+  `dumpsys media.audio_policy` profile, which is not the same source. First device check: with System
+  passthrough off, `aacToDtsOut=hd` in the issue report; if it is `core`, the pinned set lacks DTS-HD.
 - The forced-HD switch still writes DTS-HD MA on a DTS-only output, through the IEC engine when it is
   on (test use only, as before).
