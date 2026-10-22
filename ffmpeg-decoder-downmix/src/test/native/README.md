@@ -48,3 +48,16 @@ DTS core target (`TRANSCODE_TARGET_DTS`), 48 kHz stereo and mono, 44.1 kHz stere
   loss stays within 1131 samples (FIFO remainder, resampler, held frame);
 - reset (a seek): the frame held before the reset is dropped, and after it the pre-roll is dropped
   again, so both halves decode aligned.
+
+DTS-HD MA target (`TRANSCODE_TARGET_DTS_HD`), 48 kHz stereo and mono, 44.1 kHz stereo, and full-scale
+square waves whose AAC decode clips:
+
+- the same unit, alignment, end-of-stream and reset checks, on the core inside the HD units
+  (decoded with `-core_only 1`);
+- every unit is core + ExSS, probes as `DTS-HD MA`, 2 channels, and is at most
+  `DTSHDMA_MAX_UNIT_BYTES_24(2, 2012)` = 5369 bytes;
+- the XLL decodes bit-exactly to the PCM sent to the core encoder, which carries 24-bit values
+  (low 8 bits zero); after a reset too;
+- no writer errors and nothing clamped by the writer, also on clipping input;
+- a mono source gives dual mono: L == R bit for bit; a stereo source keeps L and R apart;
+- the decoder reports 48000 Hz and 2 channels.

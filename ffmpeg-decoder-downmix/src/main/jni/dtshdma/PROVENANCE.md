@@ -21,3 +21,6 @@ contract is `docs/WRITER_SPEC.md` in that repository.
 **Licence:** the dts-hdma repository has no licence file yet. The owner wrote it for this module,
 which is distributed under GPL-3.0-only (`../../../../NOTICE.md`); a written grant in dts-hdma is an
 open owner decision (DTSHD_PORT.md, F10).
+
+`dtshd_stage.c` and `dtshd_stage.h` in this folder are not copies: they are this module's glue
+between the JNI and the library (quantizing, lookahead and pairing).
