@@ -257,29 +257,19 @@ The session raised the log buffer to 4 MB and set it back to 256 KiB.
 
 ## 8. How to build and test
 
-**CI AAR.** Runs on the fork, not upstream.
-- Plain `gh` resolves to `ysosrs123/NuvioTV-Fork` and fails with HTTP 403. Always pass
-  `-R tinof/NuvioTV-Fork`.
-- The local `perf/shield-pass` carries roadmap commits that are never pushed, so the build goes through a
-  branch cut from `origin/perf/shield-pass` that carries only the module: `ci/Q6-ffmpeg-aar`. Delete it
-  after merging.
-
-```sh
-git switch ci/Q6-ffmpeg-aar
-git checkout feat/Q6-aac-dts -- ffmpeg-decoder-downmix
-git commit -m "ci: ..."
-git push origin ci/Q6-ffmpeg-aar
-gh workflow run build-ffmpeg-decoder.yml -R tinof/NuvioTV-Fork --ref ci/Q6-ffmpeg-aar
-gh run download <id> -R tinof/NuvioTV-Fork -D <dir>   # AAR + ffmpeg-build-static-libs
-```
-
-The run takes about 4 minutes. Copy the AAR to `app/libs/lib-decoder-ffmpeg-release.aar` and record the
-SHA-256 and the run ID in `app/libs/README.md`.
+**No CI AAR (since 2026-10-22).** The owner decided that APKs and AARs are built locally only; the
+fork's binary workflows, `Build FFmpeg decoder AAR` among them, are disabled (PR #11). `app/libs` keeps
+the DTS-core AAR `a1152a6d…` of 2026-10-21 (CI run 39594133508), and no AAR with the DTS-HD MA writer is
+committed: it would put that binary on GitHub. A build with DTS-HD MA uses the local module below. The
+owner's gitignored `local.properties` sets it, so `scripts/shield_build_install.sh` builds with it by
+default. `gh` in this repo needs `-R tinof/NuvioTV-Fork` (plain `gh` resolves to the upstream repo).
 
 **Local module build.** Iterate on native code without CI:
-1. Make a configured n7.0.2 header tree: clone the n7.0.2 tag, then run `./configure --disable-everything
-   --disable-programs --disable-doc --disable-asm` and `sh ffbuild/version.sh . libavutil/ffversion.h`.
-2. Use the `ffmpeg-build-static-libs` artifact of a CI run (it already has `dca`).
+1. A configured n7.0.2 header tree. One is kept in `~/.local/share/nuvio-ffmpeg/ffmpeg-n7.0.2-headers`. To make a new one:
+   clone the n7.0.2 tag, then run `./configure --disable-everything --disable-programs --disable-doc
+   --disable-asm` and `sh ffbuild/version.sh . libavutil/ffversion.h`.
+2. Static FFmpeg libraries for the four ABIs, with `dca`. The `ffmpeg-build-static-libs` artifact of CI run
+   39594133508 is kept in `~/.local/share/nuvio-ffmpeg/static-libs`; `jni/build_ffmpeg.sh` builds new ones.
 3. Build:
 
 Gradle needs JDK 17 and the Android SDK: `JAVA_HOME=$(/usr/libexec/java_home -v 17)` and
@@ -348,6 +338,10 @@ Summary; the details, the Codex review and every deviation from the port design 
 - **Fixes to the core target that came with it:** alignment and the last frame (§4), the priming trim in
   `TranscodeClock`, the discard of pre-target units after a seek, the step-down before the PCM recovery,
   no latch change while a same-configuration retry is scheduled, the tunnel guard.
-- **Not yet:** the CI AAR (the app reaches the DTS-HD API by reflection and stays on the core with the
-  current AAR), the device run.
+- **AAR:** no CI AAR (binaries are local only since 2026-10-22, §8). The app reaches the DTS-HD API by
+  reflection, so a build with the `app/libs` AAR stays on the core; a local-module build has DTS-HD MA.
+- **Device, 2026-10-22:** the HT-A9 shows DTS-HD MA for a 48 kHz AAC 2.0 title. The log reads
+  `DTS-HD MA transcode: 48000 Hz 2 ch -> 48000 Hz 2 ch (stereo)`; AudioFlinger has a DIRECT output with
+  processing format `AUDIO_FORMAT_DTS_HD`, 2 channels (front left and right), 48 kHz; underruns only while
+  the track starts and after a pause; the decoder thread uses about 20 % of one core.
 
