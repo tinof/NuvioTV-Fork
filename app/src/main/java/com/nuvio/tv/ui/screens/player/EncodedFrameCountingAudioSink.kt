@@ -6,17 +6,20 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.extractor.Ac3Util
 import androidx.media3.extractor.DtsUtil
+import com.nuvio.tv.ui.screens.player.iec.DtsHdAccessUnits
 import java.nio.ByteBuffer
 
 /**
- * Sink wrapper for the FFmpeg audio renderer that reports how many AC-3 or DTS frames each
- * encoded buffer holds.
+ * Sink wrapper for the FFmpeg audio renderer that reports how many AC-3, DTS or DTS-HD access
+ * units each encoded buffer holds.
  *
  * Media3's DecoderAudioRenderer passes encodedAccessUnitCount = 1 for every buffer, and
  * DefaultAudioSink counts written frames as framesPerEncodedSample * count. A transcode buffer
- * holds every whole frame the encoder produced for one input packet: two or more 512-sample DTS
- * frames for one AAC frame, or two AC-3 frames for one HE-AAC frame. Counted as one, the sink's
- * written-frame total falls behind and caps the audio clock.
+ * holds every whole unit the encoder produced for one input packet: two or more 512-sample DTS
+ * frames or DTS-HD MA units (core + ExSS) for one AAC frame, or two AC-3 frames for one HE-AAC
+ * frame. DefaultAudioSink takes the frames per unit from the DTS core at the buffer's position
+ * for both DTS encodings. Counted as one, the sink's written-frame total falls behind and caps
+ * the audio clock.
  */
 internal class EncodedFrameCountingAudioSink(sink: AudioSink) : ForwardingAudioSink(sink) {
 
@@ -46,6 +49,9 @@ internal class EncodedFrameCountingAudioSink(sink: AudioSink) : ForwardingAudioS
          * not one this wrapper counts or no frame parses at index 0.
          */
         fun countEncodedFrames(mimeType: String?, buffer: ByteBuffer): Int? {
+            if (mimeType == MimeTypes.AUDIO_DTS_HD) {
+                return DtsHdAccessUnits.walk(buffer).count.takeIf { it > 0 }
+            }
             val frameSize: (ByteArray) -> Int = when (mimeType) {
                 MimeTypes.AUDIO_DTS -> { header ->
                     if (DtsUtil.getFrameType(header.syncWord()) == DtsUtil.FRAME_TYPE_CORE) {
