@@ -849,7 +849,7 @@ Each Codex point was checked against the code before it was designed for:
 | 1 | Step 2: licence file in dts-hdma (F10) | No licence change. dts-hdma commit `991777a` adds only the tight bound `DTSHDMA_MAX_UNIT_BYTES_24` (5369 B for stereo, measured worst 5284) with unit tests; the copy is from `991777a`, not `567cde0`. | Owner decision: no licence change. The copied library has no licence grant yet (risk). |
 | 2 | Step 6: CI AAR in `app/libs` before the app steps | Not built; `app/libs` keeps AAR `a1152a6d…`. The app reaches `setTranscodeAacToDtsHd`, `setDtsTranscodeTargetOverride` and `getDtsTranscodeTarget` by reflection (`FfmpegRendererDtsHd`). Without them (`rendererWritesHd = false`) the app never allows HD. | The session may not push, so CI cannot run. Reflection lets the app build and run with both the old AAR and the module (R13), and the gate tests run against `app/libs`. Replace with direct calls once the CI AAR lands. With the old AAR the core transcode is still the unaligned one. |
 | 3 | §3.1: TranscodeClock does not change | `setPrimingTrim` (C5): the discontinuity check takes the scheduled priming trim off the input time until a reset or a real re-anchor. `peekOutputTimeUs` for C6. Module JUnit tests added (§7.2 called them optional). | C5, C6. |
-| 4 | §4.2/§6.1: `hdDirect = getSinkFormatSupport(DTS-HD) == DIRECTLY` | The DTS-HD query uses a marked format (`Format.id = nuvio:aac-dts-hd-transcode`, `dtsHdOutputFormat()` / `AacToDtsRouting.DTS_HD_OUTPUT_FORMAT`). `PlaybackSpeedAwareAudioSink.getFormatSupport` answers it as supported only when the own IEC engine claims it (`claimsHbr`) or the pinned capabilities list `ENCODING_DTS_HD`. Real DTS-HD tracks are not marked and keep Media3's core fallback. Without pinned capabilities (phones, the live receiver) the transcode stays on the core. | C1. One check in the sink keeps the renderer and the sink in step. |
+| 4 | §4.2/§6.1: `hdDirect = getSinkFormatSupport(DTS-HD) == DIRECTLY` | The DTS-HD query uses a marked format (`Format.id = nuvio:aac-dts-hd-transcode`, `dtsHdOutputFormat()` / `AacToDtsRouting.DTS_HD_OUTPUT_FORMAT`). `PlaybackSpeedAwareAudioSink.getFormatSupport` answers it as supported only when the pinned capabilities list `ENCODING_DTS_HD`, on both routes (as built, the own IEC engine's `claimsHbr` was also enough; the review in §12 removed that, finding APP-DTSHD-1). Real DTS-HD tracks are not marked and keep Media3's core fallback. Without pinned capabilities (phones, the live receiver) the transcode stays on the core. | C1. One check in the sink keeps the renderer and the sink in step. |
 | 5 | §6.2: `noteAudioTrackRejection` adds the URL to the step-down sets | It only logs (`DTS core next`, `PCM next`, or `same-configuration retry first`). `tryAacToDtsStepDown` sets the latch and rebuilds at the position with `scheduleOwnedPlaybackRecovery`, after the IEC-off rung and before `tryDeniedAudioFfmpegFallback` / `tryAudioTrackPcmFallback`, without `markAudioPcmFallbackTried`. A step already taken falls through to the generic recovery. `aacToDtsStepDown(source, sink, retryScheduled)` returns null while a retry is scheduled. | C2, C3. Also changes the existing core path: a transient core refusal is retried as core before PCM. |
 | 6 | §5.4: split every DTS-HD buffer by `DtsHdAccessUnits` | Split only when the walker finds 2 or more units, each led by a core, at least one with an ExSS, covering the whole buffer. Anything else keeps the one-burst path. `packDtsHdInto` returns whether the unit fitted; overflows are counted (`iec_dtshd_overflow`, `dtshdOverflows=` in the health line). | C4. |
 | 7 | (not in the design) | Seek discard: `ffmpegDecode` takes `skipUnits`. For the DTS targets the decoder counts the units whose TranscodeClock stamp is before the output start (`unitsBefore`, one sample of slack, at most 64) and the JNI drops them, still counting them as encoded samples. AC-3 is unchanged. | C6. |
@@ -894,3 +894,34 @@ guard, `2ae980d80` labels and setting text, then the docs commit.
 - **Forced HD (`debug.nuvio.aac_dts_target=hd`)** on a DTS-only platform output writes DTS-HD MA into an
   AudioTrack Media3 opens as DTS. That is the switch's purpose (testing), not a user path.
 
+## 12. Review fixes (2026-10-22)
+
+A review of the port (module and app lenses, each finding checked by a second pass) confirmed four
+findings. Each was checked against the code again before it was fixed; none was rejected.
+
+| Finding | Severity | What was wrong | Fix | Commit |
+|---|---|---|---|---|
+| java-dts-target-flags-split | minor | The in-place surround resolve re-read the DTS-HD flag and `debug.nuvio.aac_dts_target` live and gave them to the FFmpeg renderer; the sink keeps its build-time values. With the switch changed mid-playback and then a route event, the renderer picked the core and the sink DTS-HD MA, and every capability notice re-created the decoder (an audio drop each time). `tryAacToDtsStepDown` also latched the step before it checked for a player to rebuild. | The renderer gets the sink's `transcodeAacToDts`, `transcodeAacToDtsHd` and `dtsTargetOverride` (`aacToDtsRendererFlags`); live values only before a sink exists. A changed setting or switch now applies with the next player. The step is latched only when a player exists. | `38927ce0a` |
+| APP-DTSHD-1 | major | `dtsHdOpensAsItself` was true when the own IEC engine claimed DTS-HD (`claimsHbr`), which only checks the IEC61937 probe. The passthrough policy lets DTS-HD through on a DTS-only output (so Media3 can play the core of real DTS-HD), so with System passthrough off, AAC that played as the core went out as 192 kHz DTS-HD MA bursts to a receiver that never listed DTS-HD. | The marked DTS-HD query counts only when the pinned capabilities list `ENCODING_DTS_HD`, on both routes (`outputListsDtsHd`). The owner's HT-A9 lists DTS-HD (DESIGN.md §1), so both of its routes keep DTS-HD MA. | `1a893070c` |
+| APP-DTSHD-2 | major | The module's DTS-HD output `Format` had no marker id, so at configure the sink could not tell the transcode from real DTS-HD. When the IEC engine then did not take it (open failure, tunnelling, mid-stream fallback), Media3 silently opened a DTS core AudioTrack for the DTS-HD MA units; no error, so no step-down and no re-creation. | `getOutputFormat` returns `dtsHdOutputFormat()` (marked). `PlaybackSpeedAwareAudioSink` refuses every buffer of a marked DTS-HD transcode configured for an output that does not list DTS-HD, as an `AudioSink.InitializationException` carrying that format (not recoverable), so `tryAacToDtsStepDown` takes HD_OFF. The forced-HD switch is exempt. After APP-DTSHD-1 the target choice never picks HD there, so this guard should not fire; on an output that lists DTS-HD an IEC fallback opens DTS-HD itself on the platform sink, so no mid-stream path was added in `fallbackToWrappedSink`. | `b7d98fc82` |
+| APP-DTSHD-3 | minor | On the own IEC route the Audio path row comes only from the isPlaying fallback, which checked `isIecHbrActive()` before the transcode: "AAC → Passthrough, IEC (AAC)". | The fallback names a transcode first (`transcodeSinkPathLabelForMime`): "AAC → DTS-HD MA transcode, IEC (48 kHz, 2ch)". | `119d6afa1` |
+
+Tests added: the renderer flags follow the sink; the own IEC route needs DTS-HD in the output
+(`sinkTarget_ownIecRoute_needsAnOutputThatListsDtsHd`, which replaces the test that asserted the old
+behaviour); the configure guard and its step (HD_OFF), with the forced switch, a DTS-HD output and real
+DTS-HD unaffected; the fallback row names. `AacToDtsTunnelGuardTest` now gives its IEC case an output
+that lists DTS-HD.
+
+Results after the fixes: host native test 173 checks pass (ASan + UBSan, no reports); module JVM tests 21
+pass; local module build passes for all four ABIs; app unit tests 6610 tests, 0 failures, 10 skipped,
+with and without the local module; the `.shield` debug APK with the local module builds. dts-hdma did
+not change, so its tests were not re-run.
+
+Changed or new risks:
+
+- **Debug switch mid-playback:** `debug.nuvio.aac_dts_target` and a step-down now apply with the next
+  player only, never through an in-place resolve.
+- **An output that does not list DTS-HD never gets DTS-HD MA**, even when its receiver would decode the
+  own IEC engine's bursts. Android's capability list is the only evidence the app has.
+- The forced-HD switch still writes DTS-HD MA on a DTS-only output, through the IEC engine when it is
+  on (test use only, as before).
