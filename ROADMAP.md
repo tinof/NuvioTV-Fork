@@ -106,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-22 | Q6.1 and Q6.10 shipped: DTS-HD MA for mono and stereo AAC when the output lists DTS-HD, AARs built locally only. | Q6 | [log](docs/ROADMAP_LOG.md), PR #12 |
 | 2026-10-21 | Q6 added and built on `feat/Q6-aac-dts`: AAC to DTS transcode, DTS 2.0 confirmed on the owner's HT-A9. | Q6 | [log](docs/ROADMAP_LOG.md), [design](docs/aac-to-dts/DESIGN.md) |
 | 2026-10-21 | Q5 and M3.3 added from a live capture: 12 stutter events in 5 min, correlated with memory pressure. | Q5, M3 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-20 | U1.5 made repeatable: two-layer branches, the daily drift issue and the `/upstream-sync` skill. | U1 | [log](docs/ROADMAP_LOG.md), PR #9 |
@@ -381,9 +382,6 @@ because a wrong passthrough path is invisible until measured.
   - 2026-10-22: the HT-A9 shows DTS-HD MA for a 48 kHz AAC 2.0 title; the log and AudioFlinger agree
     (stereo kept, DIRECT `AUDIO_FORMAT_DTS_HD`, 2 channels; decoder thread about 20 % of one core).
   - After the merge, delete the CI-only branch `ci/Q6-ffmpeg-aar` on the fork (it holds no DTS-HD code).
-- [Q6.1][desk] Decoder AAR with the DTS target in `app/libs`. Done 2026-10-21 (CI run 39594133508, AAR
-  `a1152a6d…`, 6569 tests). No later AAR is committed: binaries are local only since 2026-10-22, and an
-  AAR with the DTS-HD MA writer stays off GitHub. The step leaves the roadmap when the branch ships.
 - [Q6.2][device][owner][new-build] Toggle on; play AAC 2.0 at 48 kHz and at 44.1 kHz, a mono title and an
   HE-AACv2 title. Gate: logcat `DTS transcode:` line, `dumpsys media.audio_flinger` shows a DIRECT DTS
   output at 48 kHz, the HUD shows "DTS transcode", and the HT-A9 shows DTS with Neural:X.
@@ -405,11 +403,6 @@ because a wrong passthrough path is invisible until measured.
 - [Q6.8][desk] Extend the FFmpeg-first decoder re-creation (`PlayerRuntimeControllerDtsTranscode.kt`) to
   Force AC-3 and denied-codec AC-3. Gate: unit test of the decision helper.
 - [Q6.9][desk] `ffmpeg_jni.cc` compiles without warnings at `-Wall -Wextra`. Gate: build log.
-- [Q6.10][desk] DTS-HD MA transcode target: the `dcaxll` writer in the JNI, target choice (DTS-HD MA only
-  when the output lists DTS-HD, on both routes), step-down HD → core → PCM, frame counting and IEC bursts
-  for core+ExSS units, core alignment, the seek discard by output time, the priming-trim clock fix, labels.
-  Gate: host native test (`ffmpeg-decoder-downmix/src/test/native`, bit-exact XLL decode), module and app
-  unit tests. Done on the branch 2026-10-22.
 - [Q6.11][device][owner][new-build] DTS-HD MA on both routes (System passthrough on and off) for 48 kHz and
   44.1 kHz AAC 2.0, mono (dual mono, level against the old mono core) and HE-AACv2; seeks, pause, the end
   of a title, HDMI replug. Gate: log `DTS-HD MA transcode:` line, DIRECT `AUDIO_FORMAT_DTS_HD`, the HUD
@@ -418,6 +411,14 @@ because a wrong passthrough path is invisible until measured.
 - [Q6.12][device][new-build] Fallback chain: `settings put global nuvio_fault_reject_mime audio/vnd.dts.hd`
   gives `aac_dts_step_down step=HD_OFF` and the core; rejecting `audio/vnd.dts` too gives PCM; delete the
   setting after. Gate: the log lines. Needs: Q6.10.
+- [Q6.13][device][new-build] Review finding F2 of PR #12 (NEEDS-HUMAN): with MediaCodec first, AAC that the
+  platform decoder cannot take (the Shield's `c2.android.aac.decoder` stops at 48 kHz, so 64–96 kHz AAC)
+  stays on FFmpeg; a speed change to 1.25x then leaves its DTS decoder running, because
+  `dtsTranscodeNeedsDecoderRecreate` assumes MediaCodec takes the track (`PlayerRuntimeControllerDtsTranscode.kt:86`,
+  test `DtsTranscodeDecoderRecreateTest.mediaCodecFirst_onlyBetweenHdAndCore`). Play a 96 kHz AAC 2.0 file
+  with MediaCodec first, switch to 1.25x and back. Gate: the log shows PCM at 1.25x and DTS again at 1x;
+  if not, decide the fix (re-create when FFmpeg keeps the track, asking MediaCodec's renderer whether it
+  handles the source). Needs: Q6.10.
 
 ## Snappiness
 

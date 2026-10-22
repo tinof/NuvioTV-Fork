@@ -10,6 +10,34 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-22: Q6.1, Q6.10 Decoder AAR and the DTS-HD MA transcode target (PR #12)
+
+- [Q6.1][desk] Decoder AAR with the DTS target in `app/libs`. Done 2026-10-21 (CI run 39594133508, AAR
+  `a1152a6d…`, 6569 tests). No later AAR is committed: binaries are local only since 2026-10-22, and an
+  AAR with the DTS-HD MA writer stays off GitHub. The step leaves the roadmap when the branch ships.
+
+- [Q6.10][desk] DTS-HD MA transcode target: the `dcaxll` writer in the JNI, target choice (DTS-HD MA only
+  when the output lists DTS-HD, on both routes), step-down HD → core → PCM, frame counting and IEC bursts
+  for core+ExSS units, core alignment, the seek discard by output time, the priming-trim clock fix, labels.
+  Gate: host native test (`ffmpeg-decoder-downmix/src/test/native`, bit-exact XLL decode), module and app
+  unit tests. Done on the branch 2026-10-22.
+
+**Evidence**
+
+- Gate `:app:testFullDebugUnitTest`: 6611 tests, 0 failures, 10 skipped, on the reviewed head plus the F1 fix.
+- Host native test `ffmpeg-decoder-downmix/src/test/native` against FFmpeg n7.0.2 with ASan and UBSan: all
+  checks pass, among them a bit-exact XLL decode of the PCM the core encoder saw, core/XLL alignment, dual
+  mono, end of stream, reset and the seek discard.
+- Device, 2026-10-22: the HT-A9 shows DTS-HD MA for a 48 kHz AAC 2.0 title; log
+  `DTS-HD MA transcode: 48000 Hz 2 ch -> 48000 Hz 2 ch (stereo)`; AudioFlinger DIRECT
+  `AUDIO_FORMAT_DTS_HD`, 2 channels; the decoder thread about 20 % of one core.
+- CI: the `Checks` workflow on PR #12.
+- Review (Tier 2, codex and gemini): F1 FIXED (`PlaybackSpeedAwareAudioSinkAacToDtsSpeedTest`), F2
+  NEEDS-HUMAN, now Q6.13.
+
+**Resolution:** the DTS-HD MA target is on `perf/shield-pass`; DTS-HD MA needs a local-module build because
+binaries are built locally only since PR #11. The device steps Q6.2–Q6.5, Q6.11–Q6.13 stay open.
+
 ## 2026-10-21: Q6 Transcode AAC to DTS (branch `feat/Q6-aac-dts`)
 
 The owner asked whether AAC tracks could be transcoded to DTS during playback with FFmpeg's `dca` encoder,
