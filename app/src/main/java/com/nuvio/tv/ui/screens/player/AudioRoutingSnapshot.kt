@@ -158,6 +158,22 @@ internal fun transcodeSinkPathLabel(encoding: Int, sourceMime: String?): String?
 }
 
 /**
+ * The Audio path row's name for a transcode when it is read from the sink's MIME type (the row's
+ * fallback, which is the only writer on the own IEC route): "DTS-HD MA transcode, IEC" when the
+ * own IEC engine packs it. Null when it is not a transcode.
+ */
+internal fun transcodeSinkPathLabelForMime(sinkMime: String?, sourceMime: String?, iecActive: Boolean): String? {
+    val encoding = when (sinkMime) {
+        MimeTypes.AUDIO_DTS_HD -> androidx.media3.common.C.ENCODING_DTS_HD
+        MimeTypes.AUDIO_DTS -> androidx.media3.common.C.ENCODING_DTS
+        MimeTypes.AUDIO_AC3 -> androidx.media3.common.C.ENCODING_AC3
+        else -> return null
+    }
+    val label = transcodeSinkPathLabel(encoding, sourceMime) ?: return null
+    return if (iecActive) "$label, IEC" else label
+}
+
+/**
  * A DTS or DTS-HD sink format for a source that is not DTS: the FFmpeg AAC-to-DTS transcode. The
  * prefix test keeps every real DTS source out (DTS, DTS-HD, DTS Express, DTS:X).
  */

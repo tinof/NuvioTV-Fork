@@ -2928,10 +2928,19 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 if (source?.sampleMimeType != null && sinkFormat?.sampleMimeType != null) {
                                     val src = bitstreamAudioLabel(source)
                                         ?: describeAudioMime(source.sampleMimeType)
+                                    val iecActive = playbackSpeedAwareAudioSink?.isIecHbrActive() == true
+                                    // A transcode is named before the IEC check: the own IEC
+                                    // engine carries a DTS-HD MA transcode too.
+                                    val transcode = transcodeSinkPathLabelForMime(
+                                        sinkFormat.sampleMimeType,
+                                        source.sampleMimeType,
+                                        iecActive
+                                    )
                                     val detail = buildString {
                                         when {
                                             sinkFormat.sampleMimeType == MimeTypes.AUDIO_RAW -> append("PCM decode")
-                                            playbackSpeedAwareAudioSink?.isIecHbrActive() == true ->
+                                            transcode != null -> append(transcode)
+                                            iecActive ->
                                                 append("Passthrough, ")
                                                     .append(
                                                         com.nuvio.tv.ui.screens.player.iec.iecPathName(
