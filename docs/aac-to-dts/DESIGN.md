@@ -339,8 +339,8 @@ adb shell dumpsys media.audio_flinger | rg -A12 "type 1 \(DIRECT\)"
 Summary; the details, the Codex review and every deviation from the port design are in
 [DTSHD_PORT.md](DTSHD_PORT.md) §11.
 
-- **Target per stream:** DTS-HD MA when the output plays DTS-HD as itself (the own IEC engine, or pinned
-  capabilities that list DTS-HD), else the DTS core, else PCM. A refused DTS-HD AudioTrack steps the
+- **Target per stream:** DTS-HD MA when the output's pinned capabilities list DTS-HD (on both routes: the
+  platform sink and the own IEC engine), else the DTS core, else PCM. A refused DTS-HD AudioTrack steps the
   stream to the core, a refused core to PCM, never learned as a denial of real DTS (D5).
   `debug.nuvio.aac_dts_target=hd|core` forces the target (D6).
 - **JNI:** `TRANSCODE_TARGET_DTS_HD`; the vendored dtshdma writer pairs core packet p with the 24-bit PCM
