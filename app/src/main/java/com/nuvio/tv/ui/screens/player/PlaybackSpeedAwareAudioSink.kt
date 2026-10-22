@@ -37,6 +37,10 @@ internal class PlaybackSpeedAwareAudioSink(
     private val forceAc3Support: Boolean = false,
     // "Transcode AAC to DTS": mono and stereo AAC go to the FFmpeg renderer while DTS can play.
     private val transcodeAacToDts: Boolean = false,
+    // DTS-HD MA may be written for this stream (D5 step-down, debug switch, the renderer's AAR).
+    private val transcodeAacToDtsHd: Boolean = false,
+    // debug.nuvio.aac_dts_target (D6), null for automatic.
+    private val dtsTargetOverride: AacToDtsRouting.Target? = null,
     // Test harness: refuses the first passthrough buffer of this MIME as a failed open.
     private val faultInjectRejectMime: String? = null,
     reducedStartThresholdFrames: Int = 0,
@@ -285,6 +289,15 @@ internal class PlaybackSpeedAwareAudioSink(
             return AudioSink.SINK_FORMAT_UNSUPPORTED
         }
         val support = super.getFormatSupport(format)
+        // Media3 says DTS-HD plays directly when the output takes only DTS, and then opens the
+        // core. For the transcode's own DTS-HD query that would write DTS-HD MA that plays as
+        // its core, so it counts only when DTS-HD itself opens.
+        if (support == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY &&
+            AacToDtsRouting.isDtsHdTranscodeOutput(format) &&
+            !dtsHdOpensAsItself(format)
+        ) {
+            return AudioSink.SINK_FORMAT_UNSUPPORTED
+        }
         if (forceAc3Support &&
             support == AudioSink.SINK_FORMAT_UNSUPPORTED &&
             format.sampleMimeType == MimeTypes.AUDIO_AC3 &&
@@ -326,15 +339,39 @@ internal class PlaybackSpeedAwareAudioSink(
     }
 
     /**
-     * Whether [format] should be transcoded to DTS. The DTS check goes through
-     * [getFormatSupport], so Bluetooth, speed != 1x, the session PCM latch and the passthrough
-     * policy all turn it off. The FFmpeg renderer asks the same sink, so both renderers agree.
+     * Whether DTS-HD would open as DTS-HD: through the own IEC engine, which packs DTS-HD itself,
+     * or on a platform output whose pinned capabilities list DTS-HD. With live capabilities
+     * (phones, tablets) that is not known here, so the transcode stays on the core there.
      */
-    fun prefersDtsTranscode(format: Format): Boolean {
-        return transcodeAacToDts &&
-            AacToDtsRouting.isEligibleSource(format) &&
+    private fun dtsHdOpensAsItself(format: Format): Boolean =
+        iecSink?.claimsHbr(format) == true || pinnedOutputEncodings?.contains(C.ENCODING_DTS_HD) == true
+
+    /**
+     * The DTS target for [format]: DTS-HD MA, the DTS core or none (PCM). The checks go through
+     * [getFormatSupport], so Bluetooth, speed != 1x, the session PCM latch and the passthrough
+     * policy all turn it off, and DTS-HD counts only when it opens as itself. The FFmpeg renderer
+     * asks the same sink the same questions, so both renderers agree.
+     */
+    fun dtsTranscodeTarget(format: Format): AacToDtsRouting.Target = AacToDtsRouting.chooseTarget(
+        enabled = transcodeAacToDts,
+        eligible = AacToDtsRouting.isEligibleSource(format),
+        hdAllowed = transcodeAacToDtsHd,
+        forced = dtsTargetOverride,
+        hdDirect = {
+            getFormatSupport(AacToDtsRouting.DTS_HD_OUTPUT_FORMAT) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+        },
+        coreDirect = {
             getFormatSupport(AacToDtsRouting.DTS_OUTPUT_FORMAT) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
-    }
+        }
+    )
+
+    /** Whether [format] should be transcoded to DTS (core or DTS-HD MA) by the FFmpeg renderer. */
+    fun prefersDtsTranscode(format: Format): Boolean =
+        dtsTranscodeTarget(format) != AacToDtsRouting.Target.NONE
+
+    /** The sink format the transcode of [format] would write, or null when it plays as PCM. */
+    fun dtsTranscodeOutputFormat(format: Format): Format? =
+        AacToDtsRouting.outputFormatOf(dtsTranscodeTarget(format))
 
     private fun markPcmFallbackIfNeeded(format: Format?, speed: Float): Boolean {
         if (format == null || !isEncodedPassthroughCandidate(format)) {
