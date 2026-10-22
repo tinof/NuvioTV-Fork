@@ -45,7 +45,7 @@ extern "C" {
 #include <libavutil/audio_fifo.h>
 }
 
-#include "dtshdma/dtshd_stage.h"
+#include "dcaxll/dtshd_stage.h"
 
 #define LOG_TAG "ffmpeg_jni"
 #define LOGE(...) \
@@ -163,7 +163,7 @@ struct DecoderContext {
   int64_t dts_packets_seen;
   int64_t dts_frames_sent;
   // DTS-HD MA: the 24-bit PCM of the frames sent to dcaenc and the writer that pairs each core
-  // packet with the XLL of its frame (dtshdma/dtshd_stage.h).
+  // packet with the XLL of its frame (dcaxll/dtshd_stage.h).
   dtshd_stage hd;
   bool hd_error_logged;
   // DTS: units still to drop in the current decode call. After a seek the first packet at or

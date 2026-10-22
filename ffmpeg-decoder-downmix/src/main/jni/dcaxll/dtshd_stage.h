@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: GPL-3.0-only
  *
- * DTS-HD MA stage of the AAC transcode: the glue between ffmpeg_jni.cc and the dtshdma writer.
+ * DTS-HD MA stage of the AAC transcode: the glue between ffmpeg_jni.cc and the dcaxll writer.
  * No JNI and no FFmpeg in here, so the host test links it as it is.
  *
  * The JNI sends 512-sample stereo frames of packed S32 to FFmpeg's dcaenc. Each frame first goes
@@ -17,7 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "dtshdma_enc.h"
+#include "dcaxll_enc.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,9 +26,9 @@ extern "C" {
 #define DTSHD_STAGE_CHANNELS 2
 
 typedef struct dtshd_stage {
-  dtshdma_enc* writer;
+  dcaxll_enc* writer;
   /* [slot][channel][sample], 24-bit values */
-  int32_t pcm[2][DTSHD_STAGE_CHANNELS][DTSHDMA_UNIT_SAMPLES];
+  int32_t pcm[2][DTSHD_STAGE_CHANNELS][DCAXLL_UNIT_SAMPLES];
   int64_t units_taken;   /* frames kept since the last reset */
   long writer_errors;    /* units written as a plain core because the writer refused */
   long first_error;      /* the first writer error code, 0 if none */
@@ -45,7 +45,7 @@ void dtshd_stage_free(dtshd_stage* st);
 /* Forgets the kept frames (a seek). The writer keeps no state between units. */
 void dtshd_stage_reset(dtshd_stage* st);
 
-/* Rounds one frame of interleaved stereo S32 (DTSHDMA_UNIT_SAMPLES frames) to 24 bits in place
+/* Rounds one frame of interleaved stereo S32 (DCAXLL_UNIT_SAMPLES frames) to 24 bits in place
  * and keeps the 24-bit values for the XLL. */
 void dtshd_stage_take_frame(dtshd_stage* st, int32_t* interleaved);
 
@@ -60,7 +60,7 @@ long dtshd_stage_pair(dtshd_stage* st, int64_t packet_index, const uint8_t* core
 void dtshd_expand_mono_s32(int32_t* buf, int frames);
 
 /* Room one unit may need in the output, for a core of core_size bytes. */
-#define DTSHD_STAGE_MAX_UNIT_BYTES(core_size) DTSHDMA_MAX_UNIT_BYTES(DTSHD_STAGE_CHANNELS, core_size)
+#define DTSHD_STAGE_MAX_UNIT_BYTES(core_size) DCAXLL_MAX_UNIT_BYTES(DTSHD_STAGE_CHANNELS, core_size)
 
 #ifdef __cplusplus
 }
