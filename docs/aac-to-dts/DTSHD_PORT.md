@@ -85,13 +85,13 @@ and why, is in §11. Steps 0 and 12 (hardware) are open.
   - The "iec-hbr" and "hbr-format" reasons (`:4238-4242`) never apply to a transcode.
   - This already affects the core path. It matters more for HD, an HBR format.
 - **F8. The size bound in the library header is larger than one 2-channel IEC burst.**
-  - `DTSHDMA_MAX_UNIT_BYTES(2, 2012)` is 8332 B (`dts-hdma/src/dtshdma_enc.h`). A 2-channel DTS-HD burst
+  - `DCAXLL_MAX_UNIT_BYTES(2, 2012)` is 8332 B (`dts-hdma/src/dcaxll_enc.h`). A 2-channel DTS-HD burst
     carries at most 8192 − 8 (preamble) − 12 (start code) = 8172 B (`Iec61937Packer.kt:58-69`).
   - The header bound assumes 32 bits per sample. The writer never needs that many:
     - every residual it codes fits in 24 bits (orders above that are skipped);
     - a signed 24-bit residual zigzags to at most 2^24 − 1, so `mbl` ≤ 24;
     - `choose_code` always has Rice k = `mbl` (quotients 0) available, at 1 + `mbl` bits per sample
-      (`dts-hdma/src/dtshdma_enc.c:225-246`);
+      (`dts-hdma/src/dcaxll_enc.c:228-249`);
     - so the largest unit is 25 bits × 512 × 2 / 8 = 3200 B of samples, plus about 90 B of headers, plus
       the 2012 B core: about 5.30 KB.
   - The README's measured worst case is 5284 B. So a unit always fits, but the header bound does not
@@ -105,6 +105,7 @@ and why, is in §11. Steps 0 and 12 (hardware) are open.
 - **F10. dts-hdma has no licence file.** The module is GPL-3.0-only (`ffmpeg-decoder-downmix/NOTICE.md`).
   The owner wrote the library, so this is a one-line owner decision: a licence grant in dts-hdma and in the
   provenance note. The library has no Swift-derived code (`dts-hdma/README.md`, last bullet).
+  Resolved 2026-10-22: LGPL-2.1-or-later, see §13.
 
 ## 2. JNI (`ffmpeg-decoder-downmix/src/main/jni/ffmpeg_jni.cc`)
 
@@ -130,8 +131,8 @@ and why, is in §11. Steps 0 and 12 (hardware) are open.
 
 ### 2.2 Files and build
 
-- **Copy verbatim** `dts-hdma/src/dtshdma_enc.c` and `dtshdma_enc.h` to
-  `ffmpeg-decoder-downmix/src/main/jni/dtshdma/`.
+- **Copy verbatim** `dts-hdma/src/dcaxll_enc.c` and `dcaxll_enc.h` to
+  `ffmpeg-decoder-downmix/src/main/jni/dcaxll/`.
   - Add `PROVENANCE.md` with: the repository, commit `567cde03200bef966a4d97f8336c8152a21747bd`, the
     SHA-256 of both files, the copy date, the rule "edit in dts-hdma first, then re-copy", and the licence
     grant (F10).
@@ -143,7 +144,7 @@ and why, is in §11. Steps 0 and 12 (hardware) are open.
   - add both `.c` files to `add_library(ffmpegJNI ...)` (`:52-54`);
   - `set_target_properties(ffmpegJNI PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)`. `C_STANDARD` is a
     target property: it applies to the target's C sources only, so `CXX_STANDARD 11` is untouched;
-  - `set_source_files_properties(dtshdma/dtshdma_enc.c dtshdma/dtshd_stage.c PROPERTIES COMPILE_OPTIONS
+  - `set_source_files_properties(dcaxll/dcaxll_enc.c dcaxll/dtshd_stage.c PROPERTIES COMPILE_OPTIONS
     "-Wall;-Wextra;-Wpedantic;-Werror")`, so the copied code stays warning-clean (DESIGN.md §9 lists the
     unchecked warnings). The copy is verbatim (D4), so a warning can only be fixed upstream. Step 1's host
     build therefore compiles both files with exactly these flags (clang, `-std=c17`) before step 3
@@ -151,7 +152,7 @@ and why, is in §11. Steps 0 and 12 (hardware) are open.
   - the `-idirafter` FFmpeg include (`:59-61`) also reaches the C files, which is harmless.
 - **Other build files.** The gradle CMake version 3.22.1 (`ffmpeg-decoder-downmix/build.gradle.kts:51-57`)
   supports `C_STANDARD 17`, and NDK 29 clang supports `-std=c17`.
-  - `dtshdma_enc.h` already has `extern "C"` guards. `ffmpeg_jni.cc` includes it after the FFmpeg block
+  - `dcaxll_enc.h` already has `extern "C"` guards. `ffmpeg_jni.cc` includes it after the FFmpeg block
     (`:30-46`).
   - **`build_ffmpeg.sh` does not change.** It already has `--enable-encoder=dca` (`:45`), and the writer
     uses only libc. The CI workflow does not change either (`.github/workflows/build-ffmpeg-decoder.yml:98`
@@ -165,8 +166,8 @@ dtshd_stage hd;                 /* writer pointer + ring, below */
 
 /* dtshd_stage.h */
 typedef struct dtshd_stage {
-    dtshdma_enc *writer;                         /* dtshdma_enc_create: the only allocation */
-    int32_t pcm[2][2][DTSHDMA_UNIT_SAMPLES];     /* ring of two units: [unit & 1][channel][sample], 24-bit */
+    dcaxll_enc *writer;                         /* dcaxll_enc_create: the only allocation */
+    int32_t pcm[2][2][DCAXLL_UNIT_SAMPLES];     /* ring of two units: [unit & 1][channel][sample], 24-bit */
     int64_t units_sent;                          /* frames sent to dcaenc since the last reset */
     int64_t packets_seen;                        /* dcaenc packets seen since the last reset */
     long writer_errors;
@@ -175,15 +176,15 @@ typedef struct dtshd_stage {
 
 - **Create.** `createContext` (`:483-543`) calls `dtshd_stage_init` when `transcodeTarget ==
   TRANSCODE_TARGET_DTS_HD`.
-  - Init runs `dtshdma_config_default(&cfg, 2)` and `dtshdma_enc_create`. The defaults are the grammar
+  - Init runs `dcaxll_config_default(&cfg, 2)` and `dcaxll_enc_create`. The defaults are the grammar
     the owner's hardware test passed with: official ExSS shape, fixed orders 0 and 1, Rice only, unary
     ≤ 22, patched core header.
   - If init fails, `createContext` returns NULL and the Java side throws "Initialization failed", as for
     any other create failure. The writer struct is about 30 KB.
 - **Memory.** The ring adds 8 KB to the `calloc`'d context (`:490-491`). Nothing is allocated per unit.
-- **The writer survives resets.** It keeps no state between units: `struct dtshdma_enc` is scratch only
-  (`dts-hdma/src/dtshdma_enc.c:38-49`). Only `units_sent` and `packets_seen` are reset (§2.8).
-- **Release.** `releaseContext` calls `dtshdma_enc_destroy`.
+- **The writer survives resets.** It keeps no state between units: `struct dcaxll_enc` is scratch only
+  (`dts-hdma/src/dcaxll_enc.c:41-52`). Only `units_sent` and `packets_seen` are reset (§2.8).
+- **Release.** `releaseContext` calls `dcaxll_enc_destroy`.
 
 ### 2.4 The PCM the XLL gets is the PCM the core gets
 
@@ -207,7 +208,7 @@ st->units_sent++;
 - **No lower clamp is needed:** (−2^31 + 128) >> 8 = −8388608. The arithmetic shift of a negative
   `int64_t` is implementation-defined in C17. clang on ARM and x86 shifts arithmetically, and the host
   test (§6.3) checks it.
-- **Why round:** the CLI truncates (`dts-hdma/tools/dtshdma_encode.c:136`), but its input is already 24-bit
+- **Why round:** the CLI truncates (`dts-hdma/tools/dcaxll_encode.c:140`), but its input is already 24-bit
   WAV. Here the S32 comes from swresample's float conversion, so rounding avoids a −0.5 LSB bias. The
   difference is below −140 dBFS. What matters is that both encoders get the same value, and they do.
 - **No dither:** the 24-bit noise floor is below anything the AAC source carries, and the output must be
@@ -249,13 +250,13 @@ carries the audio of frame p−1:
 long p = st->packets_seen++;
 if (p == 0) return 0;                                  /* pre-roll: dropped, not counted */
 const int32_t *pcm[2] = { st->pcm[(p - 1) & 1][0], st->pcm[(p - 1) & 1][1] };
-return dtshdma_enc_encode_unit(st->writer, pcm, core, core_size, out, cap, NULL);
+return dcaxll_enc_encode_unit(st->writer, pcm, core, core_size, out, cap, NULL);
 ```
 
 - **Ring size:** two slots are enough. When packet p arrives, frame p is in slot p & 1 and the unit it is
   paired with is in slot (p−1) & 1. No copying is needed.
 - **`receiveEncoderPackets` (`:556-586`), HD branch:**
-  - Before each call, make sure `outputSize - outSize >= DTSHDMA_MAX_UNIT_BYTES(2, packetSize)`, else call
+  - Before each call, make sure `outputSize - outSize >= DCAXLL_MAX_UNIT_BYTES(2, packetSize)`, else call
     `growBuffer(outSize + bound)`, the same pattern as `:570-579`.
   - Write the unit straight into `*outputBuffer`; there is no scratch copy.
   - Add 512 to `encoded_samples` only when a unit was written (a return > 0), not per packet as at `:583`.
@@ -265,8 +266,8 @@ return dtshdma_enc_encode_unit(st->writer, pcm, core, core_size, out, cap, NULL)
   - The current bound is 8332 B per unit (F8: in practice ≤ 5.30 KB), so 7 × 8332 = 58 KB.
   - `INITIAL_OUTPUT_BUFFER_SIZE` is 131070 (`FfmpegAudioDecoder.java:44`), so the grow path should never
     run. It stays as the safety net.
-- **Sanity checks per packet:** `packetSize == dtshdma_core_frame_size(...)` (2012 at 1509 kbps). The
-  writer also checks sync, 48 kHz, NBLKS, AMODE 2 and no LFE (`DTSHDMA_ERR_CORE_FMT`).
+- **Sanity checks per packet:** `packetSize == dcaxll_core_frame_size(...)` (2012 at 1509 kbps). The
+  writer also checks sync, 48 kHz, NBLKS, AMODE 2 and no LFE (`DCAXLL_ERR_CORE_FMT`).
 - **Writer error policy:**
   - On a negative return, log the first error with its code and unit index, write the core packet alone
     for that unit, and count it.
@@ -717,7 +718,7 @@ objects across calls, flushes and resets. Counting is stateless, and the IEC sin
 - **Build:**
   - a host n7.0.2 libavcodec, libswresample and libavutil, configured as in DESIGN.md §8 with
     `--enable-encoder=dca --enable-decoder=dca,aac --enable-swresample`;
-  - link `dtshd_stage.c`, `dtshdma_enc.c`, and a driver that copies the JNI's order of calls: decode AAC,
+  - link `dtshd_stage.c`, `dcaxll_enc.c`, and a driver that copies the JNI's order of calls: decode AAC,
     resample, FIFO, `take_frame`, send to dcaenc, `core_packet`, end-of-stream zero frame.
 - **Checks:**
   1. **n7.0.2 facts:** FSIZE is 2012 at 1509 kbps, and the dcaenc delay is 512 (impulse at 10000:
@@ -753,7 +754,7 @@ objects across calls, flushes and resets. Counting is stateless, and the IEC sin
    §7.3. Stop if FSIZE or the delay differ from 2012 and 512.
 2. **dts-hdma upstream** (that repository):
    - a licence file (F10);
-   - a `DTSHDMA_MAX_UNIT_BYTES_24`-style tight bound derived as in F8, with a unit test over the
+   - a `DCAXLL_MAX_UNIT_BYTES_24`-style tight bound derived as in F8, with a unit test over the
      adversarial set;
    - tag the commit. Then copy it (D4).
 3. **Vendor the library** into the JNI folder: `PROVENANCE.md`, NOTICE, CMake `C_STANDARD 17` and
@@ -802,7 +803,7 @@ objects across calls, flushes and resets. Counting is stateless, and the IEC sin
 |---|---|---|
 | R1 | The HT-A9 accepts our 2-channel MA from the test player but not from one of Nuvio's routes (the platform HAL's DTS-HD packing, or the own IEC 2-channel period) | step 0 before any JNI work; the 8-channel IEC period as a lever; D5 covers refusals, not silent core fallback |
 | R2 | Silent failure (the AVR shows DTS or plays nothing) is not an AudioTrack refusal, so D5 never fires | the D6 `core` switch; the HUD shows the target; the issue report line carries `aacToDtsOut` |
-| R3 | n7.0.2 dcaenc differs from 9.0.2 (FSIZE, delay, header) | step 1 host check; the writer refuses a wrong core (`DTSHDMA_ERR_CORE_FMT`) and the JNI logs it |
+| R3 | n7.0.2 dcaenc differs from 9.0.2 (FSIZE, delay, header) | step 1 host check; the writer refuses a wrong core (`DCAXLL_ERR_CORE_FMT`) and the JNI logs it |
 | R4 | F1 not fixed: units cut off and bursts mistimed on the own IEC route | step 7 before step 8; packer overflow counter |
 | R5 | F5 not fixed first: one refused HD transcode teaches the route that real DTS-HD is denied | step order (7 before 8); test |
 | R6 | CPU on the Cortex-A57: dcaenc (unmeasured), the 144-tap resampler (4.1× default), the writer (about 15-19 µs per unit on M-series, so maybe 10× that) | Q6.5 measurement; the writer is under 2 % even at 10× |
@@ -846,7 +847,7 @@ Each Codex point was checked against the code before it was designed for:
 
 | # | Design | Built | Why |
 |---|---|---|---|
-| 1 | Step 2: licence file in dts-hdma (F10) | No licence change. dts-hdma commit `991777a` adds only the tight bound `DTSHDMA_MAX_UNIT_BYTES_24` (5369 B for stereo, measured worst 5284) with unit tests; the copy is from `991777a`, not `567cde0`. | Owner decision: no licence change. The copied library has no licence grant yet (risk). |
+| 1 | Step 2: licence file in dts-hdma (F10) | No licence change. dts-hdma commit `991777a` adds only the tight bound `DCAXLL_MAX_UNIT_BYTES_24` (5369 B for stereo, measured worst 5284) with unit tests; the copy is from `991777a`, not `567cde0`. | Owner decision: no licence change. The copied library has no licence grant yet (risk). Resolved 2026-10-22 (§13): LGPL-2.1-or-later. |
 | 2 | Step 6: CI AAR in `app/libs` before the app steps | Not built; `app/libs` keeps AAR `a1152a6d…`. The app reaches `setTranscodeAacToDtsHd`, `setDtsTranscodeTargetOverride` and `getDtsTranscodeTarget` by reflection (`FfmpegRendererDtsHd`). Without them (`rendererWritesHd = false`) the app never allows HD. | The session may not push, so CI cannot run. Reflection lets the app build and run with both the old AAR and the module (R13), and the gate tests run against `app/libs`. Replace with direct calls once the CI AAR lands. With the old AAR the core transcode is still the unaligned one. |
 | 3 | §3.1: TranscodeClock does not change | `setPrimingTrim` (C5): the discontinuity check takes the scheduled priming trim off the input time until a reset or a real re-anchor. `peekOutputTimeUs` for C6. Module JUnit tests added (§7.2 called them optional). | C5, C6. |
 | 4 | §4.2/§6.1: `hdDirect = getSinkFormatSupport(DTS-HD) == DIRECTLY` | The DTS-HD query uses a marked format (`Format.id = nuvio:aac-dts-hd-transcode`, `dtsHdOutputFormat()` / `AacToDtsRouting.DTS_HD_OUTPUT_FORMAT`). `PlaybackSpeedAwareAudioSink.getFormatSupport` answers it as supported only when the pinned capabilities list `ENCODING_DTS_HD`, on both routes (as built, the own IEC engine's `claimsHbr` was also enough; the review in §12 removed that, finding APP-DTSHD-1). Real DTS-HD tracks are not marked and keep Media3's core fallback. Without pinned capabilities (phones, the live receiver) the transcode stays on the core. | C1. One check in the sink keeps the renderer and the sink in step. |
@@ -854,7 +855,7 @@ Each Codex point was checked against the code before it was designed for:
 | 6 | §5.4: split every DTS-HD buffer by `DtsHdAccessUnits` | Split only when the walker finds 2 or more units, each led by a core, at least one with an ExSS, covering the whole buffer. Anything else keeps the one-burst path. `packDtsHdInto` returns whether the unit fitted; overflows are counted (`iec_dtshd_overflow`, `dtshdOverflows=` in the health line). | C4. |
 | 7 | (not in the design) | Seek discard: `ffmpegDecode` takes `skipUnits`. For the DTS targets the decoder counts the units whose TranscodeClock stamp is before the output start (`unitsBefore`, one sample of slack, at most 64) and the JNI drops them, still counting them as encoded samples. AC-3 is unchanged. | C6. |
 | 8 | §2.3: `units_sent` and `packets_seen` in the stage, shared with the core | The JNI keeps `dts_packets_seen` and `dts_frames_sent` for both DTS targets; the stage keeps `units_taken`, `writer_errors`, `first_error`, `clipped` and `max_unit`. The EOS zero frame is sent when `dts_frames_sent > 0`. | The core target needs the counters without the stage. |
-| 9 | §2.6: grow by `DTSHDMA_MAX_UNIT_BYTES(2, packetSize)` | As designed (8332 B per unit); the tight bound is checked by the host test, the IEC overflow counter and dts-hdma's unit tests. | The loose bound is the library's documented contract for `out_cap`. |
+| 9 | §2.6: grow by `DCAXLL_MAX_UNIT_BYTES(2, packetSize)` | As designed (8332 B per unit); the tight bound is checked by the host test, the IEC overflow counter and dts-hdma's unit tests. | The loose bound is the library's documented contract for `out_cap`. |
 | 10 | §6.1: sink parameter `transcodeAacToDtsHd = true` by default | Default `false`; the build passes `aacToDtsHdAllowed` explicitly, which also needs `rendererWritesHd`. | A sink built without the flag must not ask for HD that the renderer may not write (the re-creation check would loop). |
 | 11 | §7.3: driver that copies the JNI's order of calls, linked with the stage and the library | The driver compiles `ffmpeg_jni.cc` itself (#include, unchanged) and calls its JNI entry points through a fake JNIEnv; `avcodec_send_frame` is renamed for that translation unit to record the oracle. AAC comes from ADTS with the AudioSpecificConfig as extra data. Oracles: Homebrew FFmpeg 9.0.2 with `-xerror -err_detect crccheck+explode` (XLL and `-core_only 1`). dcadec and hdmaxdec were not used. | Tests the real JNI code, including the AAC decode, trim, resampler and EOS paths. |
 | 12 | §7.2 fixture: first units of `dts-hdma/out/smoke/st.dts` | `app/src/test/resources/dtshd/transcode_4units.dts`, the first four units of the host test's `hd_48000_2ch` output. | `out/` is not versioned in dts-hdma; the host output is reproducible from this repository. |
@@ -877,7 +878,7 @@ guard, `2ae980d80` labels and setting text, then the docs commit.
 - Steps 0 and 12 on the Shield and the HT-A9 (both routes, mono, 44.1 kHz, HE-AACv2, seek, lip sync,
   CPU, the D5 walk with `nuvio_fault_reject_mime`).
 - The CI AAR (deviation 2) and its `app/libs/README.md` entry.
-- The licence grant for dts-hdma (deviation 1).
+- ~~The licence grant for dts-hdma (deviation 1).~~ Done 2026-10-22, §13.
 
 ### Risks found while building it
 
@@ -929,3 +930,26 @@ Changed or new risks:
   passthrough off, `aacToDtsOut=hd` in the issue report; if it is `core`, the pinned set lacks DTS-HD.
 - The forced-HD switch still writes DTS-HD MA on a DTS-only output, through the IEC engine when it is
   on (test use only, as before).
+
+## 13. Licence and rename to dcaxll (2026-10-22)
+
+Owner decisions: the library is licensed LGPL-2.1-or-later (copyright 2026 tinof), and its name no
+longer uses the DTS trademark. It is now **dcaxll**, after the ETSI TS 102 114 terms (DCA core, XLL
+lossless extension). This document uses the new names throughout; sections 0 to 12 were written when
+the library was called dtshdma (`dtshdma_enc.{c,h}`, prefix `dtshdma_`, macros `DTSHDMA_`, folder
+`jni/dtshdma/`). The line numbers into the library refer to the new files.
+
+- dts-hdma commits: `537a0ed` (COPYING with the LGPL v2.1 text, SPDX headers), `c4866a4` (rename, no
+  code change), `f8df9b3` (README: provenance, notice, licence). The repository folder keeps its name.
+- Module: `src/main/jni/dtshdma/` is now `src/main/jni/dcaxll/` with `dcaxll_enc.{c,h}` copied
+  byte-identically from `f8df9b3`; `PROVENANCE.md` has the new commit, hashes and licence.
+  `dtshd_stage.{c,h}` keep their names (they are the DTS-HD MA output stage, GPL-3.0-only fork glue).
+  CMakeLists.txt, `ffmpeg_jni.cc`, the host test and the docs follow.
+- `ffmpeg-decoder-downmix/NOTICE.md` and the fork README's list of parts from other projects name the
+  dcaxll writer as LGPL-2.1-or-later. User-facing text ("DTS-HD MA transcode") is unchanged; it
+  describes the output format.
+
+Results: dts-hdma `make && tests/run.sh` ends with ALL TESTS PASSED; host native test 173 checks pass
+(ASan + UBSan, no reports); module release build for all four ABIs and the module JVM tests (21) pass;
+the `.shield` debug APK with the local module builds.
+
