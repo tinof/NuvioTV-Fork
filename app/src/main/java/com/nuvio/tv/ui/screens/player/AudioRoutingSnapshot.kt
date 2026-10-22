@@ -134,6 +134,11 @@ internal fun PlayerRuntimeController.getAudioRoutingSnapshot(isTunnelled: Boolea
     )
 }
 
-/** A DTS sink format for a source that is not DTS: the FFmpeg AAC-to-DTS transcode. */
+/**
+ * A DTS or DTS-HD sink format for a source that is not DTS: the FFmpeg AAC-to-DTS transcode. The
+ * prefix test keeps every real DTS source out (DTS, DTS-HD, DTS Express, DTS:X).
+ */
 internal fun isDtsTranscode(sourceMime: String?, sinkMime: String?): Boolean =
-    sourceMime != null && sinkMime == MimeTypes.AUDIO_DTS && !sourceMime.startsWith(MimeTypes.AUDIO_DTS)
+    sourceMime != null &&
+        (sinkMime == MimeTypes.AUDIO_DTS || sinkMime == MimeTypes.AUDIO_DTS_HD) &&
+        !sourceMime.startsWith(MimeTypes.AUDIO_DTS)
