@@ -117,6 +117,18 @@ class AudioRoutingSnapshotTest {
     }
 
     @Test
+    fun audioPathFallbackRow_namesTheTranscodeBeforeTheIecPath() {
+        assertEquals("DTS-HD MA transcode, IEC", transcodeSinkPathLabelForMime(MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_AAC, iecActive = true))
+        assertEquals("DTS-HD MA transcode", transcodeSinkPathLabelForMime(MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_AAC, iecActive = false))
+        assertEquals("DTS transcode", transcodeSinkPathLabelForMime(MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_AAC, iecActive = false))
+        assertEquals("AC-3 transcode", transcodeSinkPathLabelForMime(MimeTypes.AUDIO_AC3, MimeTypes.AUDIO_TRUEHD, iecActive = false))
+        // Real DTS-HD through the own IEC engine stays a passthrough.
+        assertNull(transcodeSinkPathLabelForMime(MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_HD, iecActive = true))
+        assertNull(transcodeSinkPathLabelForMime(MimeTypes.AUDIO_TRUEHD, MimeTypes.AUDIO_TRUEHD, iecActive = true))
+        assertNull(transcodeSinkPathLabelForMime(MimeTypes.AUDIO_RAW, MimeTypes.AUDIO_AAC, iecActive = false))
+    }
+
+    @Test
     fun dtsHdTranscode_isADtsHdSinkForANonDtsSource() {
         assertTrue(isDtsTranscode(MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_DTS_HD))
         assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_HD))
