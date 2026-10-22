@@ -4,7 +4,8 @@ The module source now has the DTS-HD MA transcode target and fixes to the DTS co
 the last frame, the priming trim in `TranscodeClock`, the seek discard); see
 `docs/aac-to-dts/DTSHD_PORT.md` §11. The AAR below predates them. The app reaches the new renderer API
 by reflection (`FfmpegRendererDtsHd`), so with this AAR it builds, runs and transcodes to the DTS core as
-before. Build the next AAR through `ci/Q6-ffmpeg-aar` (`docs/aac-to-dts/DESIGN.md` §8) and record it here.
+before. Since 2026-10-22 AARs are built locally only and no AAR with the DTS-HD MA writer is committed
+here; builds with DTS-HD MA use the local module (`docs/aac-to-dts/DESIGN.md` §8).
 
 ## Current FFmpeg AAR (module build with the DTS target, 2026-10-21)
 

@@ -28,7 +28,9 @@ today's branch.
 
 **Status (2026-10-22):** implemented on the branch (steps 1 to 11 and 13, without the CI AAR of step 6),
 amended by a Codex review of this design (C1 to C6). What was built differently from the text below,
-and why, is in §11. Steps 0 and 12 (hardware) are open.
+and why, is in §11. Steps 0 and 12 (hardware) are open. Since 2026-10-22 there is no CI AAR at all:
+binaries are built locally only (DESIGN.md §8), so deviation 2 is permanent for now. First device run
+2026-10-22: DTS-HD MA on the HT-A9 from 48 kHz AAC 2.0 (DESIGN.md §10).
 
 ## 1. Findings that shape the port
 
