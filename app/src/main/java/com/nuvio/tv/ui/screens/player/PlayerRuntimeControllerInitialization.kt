@@ -4266,6 +4266,52 @@ private fun promotePassthroughAudioWhenRendererAlive(
     }
 }
 
+/**
+ * Why tunnelling must be cleared for an audio track, or null. The FFmpeg renderer writes PCM,
+ * except when it transcodes AAC to DTS or DTS-HD MA: then the transcode's output format is judged
+ * like a real bitstream track of that format (an HBR format through the own IEC engine, an HBR
+ * format the platform may not tunnel, a dead tunnel clock recorded for its class).
+ */
+internal fun audioTunnelClearReason(
+    format: Format,
+    isFfmpegRenderer: Boolean,
+    audioSink: PlaybackSpeedAwareAudioSink?,
+    deadClockAudioClasses: Set<String>,
+    tunnelVideoDecoderNames: Set<String>?,
+    hbrTunnelAllowed: Boolean
+): String? {
+    val judged = if (isFfmpegRenderer) {
+        audioSink?.dtsTranscodeOutputFormat(format) ?: return if (
+            PlayerTunnelAvSyncPolicy.ledgerMatches(
+                deadClockAudioClasses,
+                PlaybackSpeedAwareAudioSink.TUNNEL_AUDIO_CLASS_PCM,
+                tunnelVideoDecoderNames
+            )
+        ) {
+            "dead-tunnel-clock"
+        } else {
+            null
+        }
+    } else {
+        format
+    }
+    return when {
+        audioSink == null -> null
+        audioSink.demandsNonTunnelledVideo(judged) -> "iec-hbr"
+        // hbrTunnelAllowed (Nvidia default, debug.nuvio.hbr_tunnel): let the platform sink try TrueHD/DTS-HD bitstream tunnelled.
+        audioSink.hbrDemandsNonTunnelledVideo(judged) &&
+            !(hbrTunnelAllowed &&
+                audioSink.getFormatSupport(judged) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY) -> "hbr-format"
+        deadClockAudioClasses.isNotEmpty() &&
+            PlayerTunnelAvSyncPolicy.ledgerMatches(
+                deadClockAudioClasses,
+                audioSink.tunnelAudioClass(judged),
+                tunnelVideoDecoderNames
+            ) -> "dead-tunnel-clock"
+        else -> null
+    }
+}
+
 private fun demoteAudioTunnelingWhereItCannotBeClocked(
     mappedTrackInfo: androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo,
     rendererFormatSupports: Array<out Array<out IntArray>>,
@@ -4285,32 +4331,14 @@ private fun demoteAudioTunnelingWhereItCannotBeClocked(
             val group = trackGroups[groupIndex]
             for (trackIndex in 0 until group.length) {
                 val format = group.getFormat(trackIndex)
-                val reason = when {
-                    isFfmpegRenderer ->
-                        if (PlayerTunnelAvSyncPolicy.ledgerMatches(
-                                deadClockAudioClasses,
-                                PlaybackSpeedAwareAudioSink.TUNNEL_AUDIO_CLASS_PCM,
-                                tunnelVideoDecoderNames
-                            )
-                        ) {
-                            "dead-tunnel-clock"
-                        } else {
-                            null
-                        }
-                    audioSink == null -> null
-                    audioSink.demandsNonTunnelledVideo(format) -> "iec-hbr"
-                    // hbrTunnelAllowed (Nvidia default, debug.nuvio.hbr_tunnel): let the platform sink try TrueHD/DTS-HD bitstream tunnelled.
-                    audioSink.hbrDemandsNonTunnelledVideo(format) &&
-                        !(hbrTunnelAllowed &&
-                            audioSink.getFormatSupport(format) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY) -> "hbr-format"
-                    deadClockAudioClasses.isNotEmpty() &&
-                        PlayerTunnelAvSyncPolicy.ledgerMatches(
-                            deadClockAudioClasses,
-                            audioSink.tunnelAudioClass(format),
-                            tunnelVideoDecoderNames
-                        ) -> "dead-tunnel-clock"
-                    else -> null
-                } ?: continue
+                val reason = audioTunnelClearReason(
+                    format,
+                    isFfmpegRenderer,
+                    audioSink,
+                    deadClockAudioClasses,
+                    tunnelVideoDecoderNames,
+                    hbrTunnelAllowed
+                ) ?: continue
                 val current = supports[groupIndex][trackIndex]
                 if (RendererCapabilities.getTunnelingSupport(current) ==
                     RendererCapabilities.TUNNELING_NOT_SUPPORTED
