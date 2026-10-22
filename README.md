@@ -181,6 +181,9 @@ Parts from other projects keep their own licences:
   `ffmpeg-decoder-downmix/NOTICE.md`.
 - Audio passthrough engine: official pull request 3107 by halibiram, with ram130. Media servers:
   official pull request 3728 by tapframe.
+- dcaxll writer (LGPL-2.1-or-later) by tinof: the DCA core + XLL writer behind the DTS-HD MA
+  transcode, copied from the owner's `dts-hdma` repository, see
+  `ffmpeg-decoder-downmix/src/main/jni/dcaxll/PROVENANCE.md`.
 - FFmpeg (LGPL-2.1-or-later): audio decoder built from FFmpeg 7.0.2, recipe in
   `.github/workflows/build-ffmpeg-decoder.yml`; headers only under `app/src/main/cpp/third_party/`.
 - dav1d by VideoLAN and the dav1d authors (BSD-2-Clause) for software AV1 decoding, with
