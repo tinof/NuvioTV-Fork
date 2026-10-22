@@ -3,6 +3,8 @@ package com.nuvio.tv.ui.screens.player.iec
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -77,6 +79,25 @@ class Iec61937PackerTest {
         val type = header.short.toInt() and 0xFFFF
         assertEquals(Iec61937Packer.TYPE_DTSHD, type and 0xFF)
         assertEquals(4, type shr 8)
+    }
+
+    @Test
+    fun packDtsHdInto_stereoBurstCarriesTheLargestTranscodeUnit() {
+        val period = Iec61937Packer.dtsHdIecPeriod(2, 512)
+        assertEquals(8172, Iec61937Packer.dtsHdPayloadCapacity(period))
+        // DTSHDMA_MAX_UNIT_BYTES_24(2, 2012): the largest unit the transcode can write.
+        val out = ByteArray(period shl 2)
+        assertTrue(Iec61937Packer.packDtsHdInto(java.nio.ByteBuffer.wrap(ByteArray(5369)), period, out))
+        assertTrue(Iec61937Packer.packDtsHdInto(java.nio.ByteBuffer.wrap(ByteArray(8172)), period, out))
+    }
+
+    @Test
+    fun packDtsHdInto_reportsAUnitThatDoesNotFit() {
+        val period = Iec61937Packer.dtsHdIecPeriod(2, 512)
+        val out = ByteArray(period shl 2)
+        val unit = java.nio.ByteBuffer.wrap(ByteArray(8173))
+        assertFalse(Iec61937Packer.packDtsHdInto(unit, period, out))
+        assertEquals(unit.limit(), unit.position())
     }
 
     @Test
