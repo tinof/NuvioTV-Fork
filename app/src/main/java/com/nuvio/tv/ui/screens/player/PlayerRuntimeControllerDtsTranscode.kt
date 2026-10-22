@@ -4,8 +4,54 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.media3.common.C
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+
+/** One step down the AAC-to-DTS fallback chain (D5): DTS-HD MA, then the DTS core, then PCM. */
+internal enum class AacToDtsStepDown {
+    /** DTS-HD MA refused: the stream transcodes to the DTS core. */
+    HD_OFF,
+    /** DTS core refused: the stream plays the AAC as PCM. */
+    ALL_OFF
+}
+
+/**
+ * The step for a refused AudioTrack of [sinkMime] fed from [sourceMime], or null when it is not
+ * a transcode (a real DTS or DTS-HD track is learned as before) or a same-configuration retry is
+ * scheduled (a transient refusal is retried with the same target first).
+ */
+internal fun aacToDtsStepDown(sourceMime: String?, sinkMime: String?, retryScheduled: Boolean = false): AacToDtsStepDown? =
+    when {
+        retryScheduled || !isDtsTranscode(sourceMime, sinkMime) -> null
+        sinkMime == MimeTypes.AUDIO_DTS_HD -> AacToDtsStepDown.HD_OFF
+        else -> AacToDtsStepDown.ALL_OFF
+    }
+
+/**
+ * Steps the stream down after a refused transcode AudioTrack and rebuilds the player at the
+ * current position, before the generic recovery that forces PCM for everything. Runs only when
+ * no same-configuration retry was scheduled for this error. A step that was taken already falls
+ * through to the generic recovery, so the chain cannot loop.
+ */
+internal fun PlayerRuntimeController.tryAacToDtsStepDown(error: PlaybackException): Boolean {
+    if (!error.isAudioTrackFailure()) return false
+    val mime = failedAudioTrackInputFormat(error)?.sampleMimeType
+    val sourceMime = lastAudioInputMime?.takeIf { it.first === _exoPlayer }?.second
+    val step = aacToDtsStepDown(sourceMime, mime) ?: return false
+    val url = currentStreamUrl
+    val taken = when (step) {
+        AacToDtsStepDown.HD_OFF -> aacToDtsHdOffStreamUrls.add(url)
+        AacToDtsStepDown.ALL_OFF -> aacToDtsOffStreamUrls.add(url)
+    }
+    if (!taken) return false
+    val player = _exoPlayer ?: return false
+    Log.w(PlayerRuntimeController.TAG, "AAC_DTS_STEP_DOWN $step after a refused $mime AudioTrack (source $sourceMime)")
+    queuePlaybackRawEventLine("aac_dts_step_down step=$step refused=$mime source=$sourceMime")
+    scheduleOwnedPlaybackRecovery(player.currentPosition, 0L)
+    return true
+}
 
 /**
  * Whether the FFmpeg renderer's decoder must be re-created because its output (DTS or PCM) no
