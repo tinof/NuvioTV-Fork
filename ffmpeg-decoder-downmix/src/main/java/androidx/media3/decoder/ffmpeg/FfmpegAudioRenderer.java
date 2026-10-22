@@ -57,8 +57,15 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   /** The default input buffer size. */
   private static final int DEFAULT_INPUT_BUFFER_SIZE = 960 * 6;
 
-  /** DTS core output of "Transcode AAC to DTS": always 48 kHz. */
+  /** DTS core and DTS-HD MA output of "Transcode AAC to DTS": always 48 kHz. */
   public static final int DTS_SAMPLE_RATE = 48_000;
+
+  /**
+   * {@link Format#id} of {@link #dtsHdOutputFormat()}. Media3 says a sink plays DTS-HD directly
+   * when the output takes only DTS (it then opens the core); the app's sink recognises this id
+   * and answers for DTS-HD itself, so the transcode never writes DTS-HD that plays as its core.
+   */
+  public static final String DTS_HD_TRANSCODE_FORMAT_ID = "nuvio:aac-dts-hd-transcode";
 
   // xHE-AAC (USAC). FFmpeg 7.0 has no decoder for it.
   private static final String XHE_AAC_CODECS_PREFIX = "mp4a.40.42";
@@ -73,6 +80,9 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   private volatile boolean forceOpticalPassthrough;
   private volatile Set<String> deniedTranscodeMimes = Collections.emptySet();
   private volatile boolean transcodeAacToDts;
+  // Off by default: an app that does not know about DTS-HD MA gets today's DTS core transcode.
+  private volatile boolean transcodeAacToDtsHd;
+  private volatile int dtsTranscodeTargetOverride = DtsTranscodeTargets.AUTO;
 
   public FfmpegAudioRenderer() {
     this(/* eventHandler= */ null, /* eventListener= */ null);
@@ -146,7 +156,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     if (forceOpticalPassthrough && MimeTypes.AUDIO_AC3.equals(mimeType)) {
       return C.FORMAT_UNSUPPORTED_SUBTYPE;
     }
-    boolean transcodeToDts = shouldTranscodeToDts(format);
+    boolean transcodeToDts = dtsTranscodeTarget(format) != DtsTranscodeTargets.NONE;
     boolean transcodeToAc3 = !transcodeToDts && shouldTranscodeToAc3(format, mimeType);
 
     if (!transcodeToDts && !transcodeToAc3
@@ -186,7 +196,8 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
       throws FfmpegDecoderException {
     TraceUtil.beginSection("createFfmpegAudioDecoder");
     String mimeType = checkNotNull(format.sampleMimeType);
-    boolean transcodeToDts = shouldTranscodeToDts(format);
+    int dtsTarget = dtsTranscodeTarget(format);
+    boolean transcodeToDts = dtsTarget != DtsTranscodeTargets.NONE;
     boolean transcodeToAc3 = !transcodeToDts && shouldTranscodeToAc3(format, mimeType);
     int initialInputBufferSize =
         format.maxInputSize != Format.NO_VALUE ? format.maxInputSize : DEFAULT_INPUT_BUFFER_SIZE;
@@ -194,7 +205,8 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     int nativeOutputChannelCount;
     @Nullable String outputLayoutName;
     if (transcodeToDts) {
-      outputEncoding = C.ENCODING_DTS;
+      outputEncoding =
+          dtsTarget == DtsTranscodeTargets.HD ? C.ENCODING_DTS_HD : C.ENCODING_DTS;
       nativeOutputChannelCount = 0;
       outputLayoutName = null;
       downmixActive = false;
@@ -232,6 +244,15 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   protected Format getOutputFormat(FfmpegAudioDecoder decoder) {
     checkNotNull(decoder);
     int encoding = decoder.getEncoding();
+    if (encoding == C.ENCODING_DTS_HD) {
+      // Always stereo: a mono source is written as dual mono. No codecs string: Media3 maps
+      // audio/vnd.dts.hd to ENCODING_DTS_HD whatever it says.
+      return new Format.Builder()
+          .setSampleMimeType(MimeTypes.AUDIO_DTS_HD)
+          .setChannelCount(2)
+          .setSampleRate(decoder.getSampleRate())
+          .build();
+    }
     if (encoding == C.ENCODING_DTS) {
       // A mono DTS bitstream still opens a stereo AudioTrack: passthrough bytes are opaque to the
       // track, and a stereo mask is one every HDMI DTS profile lists.
@@ -299,11 +320,30 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   }
 
   /**
-   * Sets whether mono and stereo AAC is encoded to DTS core (48 kHz, 1509 kbit/s) when the sink
-   * can play DTS.
+   * Sets whether mono and stereo AAC is encoded to DTS (48 kHz) when the sink can play DTS: DTS-HD
+   * Master Audio when {@link #setTranscodeAacToDtsHd} allows it and the sink plays DTS-HD, else
+   * the DTS core at 1509 kbit/s.
    */
   public void setTranscodeAacToDts(boolean enabled) {
     this.transcodeAacToDts = enabled;
+  }
+
+  /**
+   * Sets whether the transcode may write DTS-HD Master Audio (the DTS core plus a lossless 24-bit
+   * XLL; mono as dual mono). Off by default. The app turns it off for a stream whose DTS-HD
+   * output was refused, so the next attempt writes the core.
+   */
+  public void setTranscodeAacToDtsHd(boolean allowed) {
+    this.transcodeAacToDtsHd = allowed;
+  }
+
+  /**
+   * Forces the transcode target for testing: {@link DtsTranscodeTargets#CORE}, {@link
+   * DtsTranscodeTargets#HD} (skips the DTS-HD capability check, still needs DTS), or {@link
+   * DtsTranscodeTargets#AUTO}.
+   */
+  public void setDtsTranscodeTargetOverride(int target) {
+    this.dtsTranscodeTargetOverride = target;
   }
 
   public void setDeniedTranscodeMimes(@Nullable Set<String> mimeTypes) {
@@ -329,15 +369,42 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     return rendererEnabled && decoder != null && decoder.getEncoding() == C.ENCODING_AC3;
   }
 
+  /** Whether the active decoder transcodes to DTS: the core or DTS-HD MA. */
   public boolean isTranscodingToDts() {
-    @Nullable FfmpegAudioDecoder decoder = activeDecoder;
-    return rendererEnabled && decoder != null && decoder.getEncoding() == C.ENCODING_DTS;
+    return getDtsTranscodeTarget() != DtsTranscodeTargets.NONE;
   }
 
-  /** Channels in the DTS bitstream being written (1 or 2), or 0 when not transcoding to DTS. */
+  public boolean isTranscodingToDtsHd() {
+    return getDtsTranscodeTarget() == DtsTranscodeTargets.HD;
+  }
+
+  /** The active decoder's {@link DtsTranscodeTargets} value. */
+  public int getDtsTranscodeTarget() {
+    @Nullable FfmpegAudioDecoder decoder = activeDecoder;
+    if (!rendererEnabled || decoder == null) {
+      return DtsTranscodeTargets.NONE;
+    }
+    switch (decoder.getEncoding()) {
+      case C.ENCODING_DTS_HD:
+        return DtsTranscodeTargets.HD;
+      case C.ENCODING_DTS:
+        return DtsTranscodeTargets.CORE;
+      default:
+        return DtsTranscodeTargets.NONE;
+    }
+  }
+
+  /**
+   * Channels in the DTS bitstream being written: 1 or 2 for the core, 2 for DTS-HD MA (dual mono
+   * for a mono source), 0 when not transcoding to DTS.
+   */
   public int getDtsTranscodeChannelCount() {
     @Nullable FfmpegAudioDecoder decoder = activeDecoder;
-    return rendererEnabled && decoder != null && decoder.getEncoding() == C.ENCODING_DTS
+    if (!rendererEnabled || decoder == null) {
+      return 0;
+    }
+    int encoding = decoder.getEncoding();
+    return encoding == C.ENCODING_DTS || encoding == C.ENCODING_DTS_HD
         ? decoder.getChannelCount()
         : 0;
   }
@@ -360,6 +427,16 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
         .build();
   }
 
+  /** The sink format of the DTS-HD MA transcode, marked with {@link #DTS_HD_TRANSCODE_FORMAT_ID}. */
+  public static Format dtsHdOutputFormat() {
+    return new Format.Builder()
+        .setId(DTS_HD_TRANSCODE_FORMAT_ID)
+        .setSampleMimeType(MimeTypes.AUDIO_DTS_HD)
+        .setChannelCount(2)
+        .setSampleRate(DTS_SAMPLE_RATE)
+        .build();
+  }
+
   /**
    * Returns whether the renderer's {@link AudioSink} supports the PCM format that will be output
    * from the decoder for the given input format and requested output encoding.
@@ -374,10 +451,14 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
 
   // getSinkFormatSupport, not sinkSupportsFormat: the app's sink applies Bluetooth, speed and the
   // passthrough policy in getFormatSupport only, and MediaCodec's decline asks the same question.
-  private boolean shouldTranscodeToDts(Format format) {
-    return transcodeAacToDts
-        && isDtsTranscodeSource(format)
-        && getSinkFormatSupport(dtsOutputFormat()) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY;
+  private int dtsTranscodeTarget(Format format) {
+    return DtsTranscodeTargets.choose(
+        transcodeAacToDts,
+        isDtsTranscodeSource(format),
+        transcodeAacToDtsHd,
+        dtsTranscodeTargetOverride,
+        () -> getSinkFormatSupport(dtsHdOutputFormat()) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY,
+        () -> getSinkFormatSupport(dtsOutputFormat()) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY);
   }
 
   private boolean shouldTranscodeToAc3(Format format, String mimeType) {
