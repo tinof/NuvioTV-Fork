@@ -47,7 +47,13 @@ DTS core target (`TRANSCODE_TARGET_DTS`), 48 kHz stereo and mono, 44.1 kHz stere
 - end of stream with the last-sample flag: every input sample is in the output; without the flag the
   loss stays within 1131 samples (FIFO remainder, resampler, held frame);
 - reset (a seek): the frame held before the reset is dropped, and after it the pre-roll is dropped
-  again, so both halves decode aligned.
+  again, so both halves decode aligned;
+- seek discard: the driver plays FfmpegAudioDecoder's part (SimpleDecoder's skip by input time, the
+  TranscodeClock stamps, `unitsBefore`) and passes the count to `ffmpegDecode`. With the target on a
+  packet boundary the accepted packet's first unit (held from the packet before, 10.67 ms early) is
+  dropped; with the target inside a unit the straddling unit goes too. Either way the output starts
+  with the first unit at or after the target, the dropped units still count as encoded samples, and
+  the cut stream decodes aligned (bit-exact XLL for DTS-HD MA).
 
 DTS-HD MA target (`TRANSCODE_TARGET_DTS_HD`), 48 kHz stereo and mono, 44.1 kHz stereo, and full-scale
 square waves whose AAC decode clips:
