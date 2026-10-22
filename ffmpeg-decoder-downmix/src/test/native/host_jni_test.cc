@@ -151,6 +151,8 @@ struct AdtsStream {
   int channels;
 };
 
+const int AAC_FRAME_SAMPLES = 1024;
+
 const int kAdtsRates[] = {96000, 88200, 64000, 48000, 44100, 32000, 24000,
                           22050, 16000, 12000, 11025, 8000,  7350};
 
@@ -250,13 +252,14 @@ struct Options {
   const char* oracle = nullptr;
   const char* outAfterReset = nullptr;
   const char* oracleAfterReset = nullptr;
+  long long startUs = -1;  // the seek target after the reset (SimpleDecoder's output start time)
 };
 
 void usage() {
   fprintf(stderr,
           "usage: host_jni_test --in in.aac --target N --out out.dts --oracle oracle.s32\n"
           "       [--trim samples] [--no-eos-flag] [--reset-at P --resume-from Q\n"
-          "        --out-after-reset f --oracle-after-reset f] [--stop-at P]\n");
+          "        --out-after-reset f --oracle-after-reset f [--start-us S]] [--stop-at P]\n");
   exit(2);
 }
 
@@ -279,6 +282,7 @@ Options parse(int argc, char** argv) {
     else if (a == "--oracle") o.oracle = next();
     else if (a == "--out-after-reset") o.outAfterReset = next();
     else if (a == "--oracle-after-reset") o.oracleAfterReset = next();
+    else if (a == "--start-us") o.startUs = atoll(next());
     else usage();
   }
   if (!o.input || !o.out || !o.oracle) usage();
@@ -321,6 +325,13 @@ int main(int argc, char** argv) {
   bool startTrimPending = true;
   long end = opt.stopAt >= 0 ? opt.stopAt : (long)stream.packets.size();
   int channelCount = 0, sampleRate = 0;
+  // FfmpegAudioDecoder's side of the seek: SimpleDecoder skips a packet's output when its input
+  // time is before the start; for an accepted packet the decoder asks the JNI to drop the units
+  // that its TranscodeClock stamps before the start (FfmpegAudioDecoder.unitsBefore).
+  bool anchorSet = false;
+  long long anchorUs = 0, anchorSamples = 0;
+  long long firstWrittenUs = -1, firstWrittenUnit = -1, skippedByInput = 0, droppedByOutput = 0;
+  const long long unitUs = 512LL * 1000000 / 48000;
 
   for (long i = 0; i < end; i++) {
     if (i == opt.resetAt) {
@@ -337,9 +348,12 @@ int main(int argc, char** argv) {
         return 1;
       }
       startTrimPending = true;
+      anchorSet = false;
       segment = 1;
       i = opt.resumeFrom;
     }
+    long long inputUs = (long long)i * AAC_FRAME_SAMPLES * 1000000 / stream.sampleRate;
+    bool seeking = segment == 1 && opt.startUs >= 0;
     if (startTrimPending) {
       startTrimPending = false;
       // TranscodeClock.startsStream: only a decode that starts at the stream start trims.
@@ -354,13 +368,28 @@ int main(int argc, char** argv) {
     memset(g_input.data + packet.size(), 0, AV_INPUT_BUFFER_PADDING_SIZE);
     ensureOutputCapacity(g_output_buffer_size);
     jlong samplesBefore = DECODER_FUNC(ffmpegGetEncodedSamples)(env, thiz, context);
+    if (!anchorSet) {
+      anchorSet = true;
+      anchorUs = inputUs;
+      anchorSamples = samplesBefore;
+    }
+    long long firstUnitUs = anchorUs + (samplesBefore - anchorSamples) * 1000000 / 48000;
+    bool skipByInput = seeking && inputUs < opt.startUs;
+    int skipUnits = 0;
+    if (seeking && !skipByInput) {
+      while (skipUnits < 64 &&
+             !(firstUnitUs + (long long)skipUnits * 512 * 1000000 / 48000 + 20 >= opt.startUs)) {
+        skipUnits++;
+      }
+    }
     bool endOfStream = opt.eosFlag && i == end - 1;
     jint result = DECODER_FUNC(ffmpegDecode)(
         env, thiz, context, reinterpret_cast<jobject>(&g_input), (jint)packet.size(),
         /* decoderOutputBuffer= */ reinterpret_cast<jobject>(&g_decoderOutputBuffer),
         reinterpret_cast<jobject>(&g_output),
         g_output_buffer_size, /* userCenterMixLevelDb= */ 0,
-        /* downmixNormalizationEnabled= */ JNI_FALSE, endOfStream ? JNI_TRUE : JNI_FALSE);
+        /* downmixNormalizationEnabled= */ JNI_FALSE, endOfStream ? JNI_TRUE : JNI_FALSE,
+        skipUnits);
     decodeCalls++;
     if (result < 0) {
       fprintf(stderr, "ffmpegDecode failed at packet %ld: %d\n", i, result);
@@ -368,10 +397,21 @@ int main(int argc, char** argv) {
       continue;
     }
     jlong samplesAfter = DECODER_FUNC(ffmpegGetEncodedSamples)(env, thiz, context);
+    long long emitted = (samplesAfter - samplesBefore) / 512;
+    long long dropped = skipUnits < emitted ? skipUnits : emitted;
+    droppedByOutput += dropped;
+    if (skipByInput) {
+      skippedByInput += emitted;
+      continue;
+    }
     if (result == 0) {
       emptyCalls++;
-      if (samplesAfter != samplesBefore) frameMismatch++;
+      if (samplesAfter - samplesBefore != dropped * 512) frameMismatch++;
       continue;
+    }
+    if (seeking && firstWrittenUs < 0) {
+      firstWrittenUnit = (samplesBefore - anchorSamples) / 512 + dropped;
+      firstWrittenUs = firstUnitUs + dropped * unitUs;
     }
     if (!channelCount) {
       channelCount = DECODER_FUNC(ffmpegGetChannelCount)(env, thiz, context);
@@ -381,7 +421,9 @@ int main(int argc, char** argv) {
     long unitsBefore = stats[segment].units;
     splitUnits(g_output.data, result, &stats[segment]);
     // Every emitted unit, and nothing else, advances the encoded-sample count by 512.
-    if (samplesAfter - samplesBefore != (stats[segment].units - unitsBefore) * 512) frameMismatch++;
+    if (samplesAfter - samplesBefore != (stats[segment].units - unitsBefore + dropped) * 512) {
+      frameMismatch++;
+    }
   }
   fclose(out);
   fclose(g_oracle);
@@ -399,6 +441,11 @@ int main(int argc, char** argv) {
            "max_unit=%ld bad_core_size=%ld unparsed=%ld\n",
            s, framesBefore[s], stats[s].units, stats[s].hdUnits, stats[s].coreOnlyUnits,
            stats[s].maxUnit, stats[s].badCoreSize, stats[s].unparsed);
+  }
+  if (opt.startUs >= 0) {
+    printf("seek_start_us=%lld seek_skipped_by_input=%lld seek_dropped_by_output=%lld "
+           "seek_first_unit=%lld seek_first_unit_us=%lld\n",
+           opt.startUs, skippedByInput, droppedByOutput, firstWrittenUnit, firstWrittenUs);
   }
   printf("hd_writer_errors=%ld hd_clipped=%ld hd_max_unit=%zu hd_unit_bound=%zu\n",
          decoderContext->hd.writer_errors, decoderContext->hd.clipped, decoderContext->hd.max_unit,
