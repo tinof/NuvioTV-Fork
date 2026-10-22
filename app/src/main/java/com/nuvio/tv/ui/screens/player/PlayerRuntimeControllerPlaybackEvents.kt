@@ -687,6 +687,8 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
                     "iecActive=${playbackSpeedAwareAudioSink?.isIecHbrActive()} " +
                     "forceOptical=${currentPlayerSettingsForReport.forceOpticalPassthrough} " +
                     "aacToDts=${currentPlayerSettingsForReport.transcodeAacToDts} " +
+                    "aacToDtsOut=${ffmpegAudioRenderer?.let { FfmpegRendererDtsHd.target(it).name.lowercase() } ?: "none"} " +
+                    "aacToDtsHdOff=${currentStreamUrl in aacToDtsHdOffStreamUrls} " +
                     "tunnelingEffective=${state.tunnelingApplied}"
             )
         )

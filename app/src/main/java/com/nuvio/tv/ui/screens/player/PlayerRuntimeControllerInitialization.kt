@@ -2770,24 +2770,10 @@ internal fun PlayerRuntimeController.initializePlayer(
                         // or transcoded, for the Audio Path row.
                         val sourceMime = this@apply.audioFormat?.sampleMimeType
                         val sourceCodec = describeAudioMime(sourceMime)
-                        // The only transcode this app performs is
-                        // x -> AC-3 (denied-codec handling / Force AC-3). When the
-                        // sink opened AC-3 for a non-AC-3 source, "Passthrough (AC-3)"
-                        // is true at the sink layer but hides the conversion - name it.
-                        val sinkPath = if (
-                            audioTrackConfig.encoding == C.ENCODING_AC3 &&
-                            sourceMime != null &&
-                            sourceMime != MimeTypes.AUDIO_AC3
-                        ) {
-                            "AC-3 transcode"
-                        } else if (
-                            audioTrackConfig.encoding == C.ENCODING_DTS &&
-                            isDtsTranscode(sourceMime, MimeTypes.AUDIO_DTS)
-                        ) {
-                            "DTS transcode"
-                        } else {
-                            describeAudioEncoding(audioTrackConfig.encoding)
-                        }
+                        // A transcode opens a bitstream sink for another codec: "Passthrough
+                        // (AC-3)" would be true at the sink layer but hide the conversion.
+                        val sinkPath = transcodeSinkPathLabel(audioTrackConfig.encoding, sourceMime)
+                            ?: describeAudioEncoding(audioTrackConfig.encoding)
                         val detail = buildString {
                             append(sinkPath)
                             append(" (")
