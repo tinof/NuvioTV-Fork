@@ -29,7 +29,12 @@ class AacToDtsTunnelGuardTest {
     @Test
     fun hdTranscodeThroughTheOwnIec_dropsTunnelling() {
         val iec = IecPassthroughAudioSink(sink = FakeSink(), trackFactory = ReadyIec)
-        val sink = PlaybackSpeedAwareAudioSink(sink = iec, transcodeAacToDts = true, transcodeAacToDtsHd = true)
+        val sink = PlaybackSpeedAwareAudioSink(
+            sink = iec,
+            transcodeAacToDts = true,
+            transcodeAacToDtsHd = true,
+            pinnedOutputEncodings = both
+        )
         assertEquals("iec-hbr", reason(sink))
     }
 
