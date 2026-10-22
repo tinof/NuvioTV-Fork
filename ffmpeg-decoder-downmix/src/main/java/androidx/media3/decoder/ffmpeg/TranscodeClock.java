@@ -17,6 +17,11 @@ import androidx.media3.common.C;
  * where the anchor is the first input packet after a reset. An input packet more than {@link
  * #DISCONTINUITY_THRESHOLD_US} away from that clock is a real stream discontinuity and becomes the
  * new anchor.
+ *
+ * <p>A priming trim shortens the output timeline against the input: after trimming {@code T}
+ * samples, input packets run {@code T / rate} ahead of the clock for good. The comparison takes
+ * that trim off the input time, so a long trim (2112 samples at 8 kHz is 264 ms) is not mistaken
+ * for a discontinuity once output starts.
  */
 public final class TranscodeClock {
 
@@ -27,11 +32,22 @@ public final class TranscodeClock {
 
   private long anchorTimeUs = C.TIME_UNSET;
   private long anchorSamples;
+  private long primingTrimUs;
 
-  /** Forgets the anchor; the next input packet sets a new one. */
+  /** Forgets the anchor and the priming trim; the next input packet sets a new anchor. */
   public void reset() {
     anchorTimeUs = C.TIME_UNSET;
     anchorSamples = 0;
+    primingTrimUs = 0;
+  }
+
+  /**
+   * Notes the priming the decoder drops at the start of the timeline that begins with the next
+   * anchor: {@code samples} decoded samples at {@code sampleRate}.
+   */
+  public void setPrimingTrim(int samples, int sampleRate) {
+    primingTrimUs =
+        samples > 0 && sampleRate > 0 ? samples * C.MICROS_PER_SECOND / sampleRate : 0;
   }
 
   /**
@@ -54,9 +70,11 @@ public final class TranscodeClock {
     // Until the first output after the anchor (a long priming trim produces none), the input
     // runs ahead of the clock by design and is not a discontinuity.
     if (samplesBefore != anchorSamples
-        && Math.abs(inputTimeUs - timeUs) > DISCONTINUITY_THRESHOLD_US) {
+        && Math.abs(inputTimeUs - primingTrimUs - timeUs) > DISCONTINUITY_THRESHOLD_US) {
       anchorTimeUs = inputTimeUs;
       anchorSamples = samplesBefore;
+      // The new timeline starts at its input packet; the trim belonged to the old one.
+      primingTrimUs = 0;
       timeUs = inputTimeUs;
     }
     return timeUs;
