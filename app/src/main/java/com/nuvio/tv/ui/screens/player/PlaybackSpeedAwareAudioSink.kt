@@ -269,8 +269,14 @@ internal class PlaybackSpeedAwareAudioSink(
     }
 
     override fun setPlaybackParameters(playbackParameters: PlaybackParameters) {
+        val wasAt1x = playbackSpeed == 1f
         playbackSpeed = normalizeSpeed(playbackParameters.speed)
         var shouldNotify = markPcmFallbackIfNeeded(currentInputFormat, playbackSpeed)
+        // An AAC-to-DTS transcode that started at a saved speed writes PCM, so no session latch is
+        // set; crossing 1x must still let the renderers pick DTS or PCM again.
+        if (transcodeAacToDts && wasAt1x != (playbackSpeed == 1f)) {
+            shouldNotify = true
+        }
         // Going above 1x latches forcePcm for the session. Clear it when back at 1.0x
         // so passthrough can recover (unless recovery built us with forcePcm).
         if (playbackSpeed == 1f && forcePcmForCurrentSession && !startedWithForcedPcm) {
