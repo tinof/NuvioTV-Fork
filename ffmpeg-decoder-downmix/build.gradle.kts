@@ -64,4 +64,5 @@ dependencies {
     compileOnly(files("../app/libs/lib-exoplayer-release.aar"))
     implementation("androidx.annotation:annotation:1.9.1")
     compileOnly("org.checkerframework:checker-qual:3.48.4")
+    testImplementation("junit:junit:4.13.2")
 }

@@ -156,6 +156,7 @@ import java.util.List;
         if (encoderDelay > 0
             && TranscodeClock.startsStream(inputBuffer.timeUs, streamOffsetUs, inputSampleRate)) {
           ffmpegSetStartTrim(nativeContext, encoderDelay);
+          transcodeClock.setPrimingTrim(encoderDelay, inputSampleRate);
         }
       }
       encodedSamplesBefore = ffmpegGetEncodedSamples(nativeContext);
