@@ -1399,8 +1399,18 @@ internal fun PlayerRuntimeController.initializePlayer(
             val isTranscodeAacToDtsActive = playerSettings.transcodeAacToDts &&
                 playerSettings.decoderPriority != 0 &&
                 url !in aacToDtsOffStreamUrls
-            // D5: a refused DTS-HD MA transcode leaves this stream on the DTS core.
-            val aacToDtsHdAllowed = url !in aacToDtsHdOffStreamUrls
+            // D6 switch, and whether DTS-HD MA may be written: not after a refused DTS-HD
+            // transcode on this stream (D5), not when the switch forces the core, and only with an
+            // FFmpeg renderer that writes it.
+            val dtsTargetOverride = aacToDtsTargetOverride()
+            val dtsHdAllowed = aacToDtsHdAllowed(url, dtsTargetOverride)
+            if (isTranscodeAacToDtsActive) {
+                Log.i(
+                    PlayerRuntimeController.TAG,
+                    "AAC_TO_DTS: hdAllowed=$dtsHdAllowed hdSteppedDown=${url in aacToDtsHdOffStreamUrls} " +
+                        "override=$dtsTargetOverride rendererWritesHd=${FfmpegRendererDtsHd.writesHd}"
+                )
+            }
             // Force-AC3 does not escalate the *global* extension mode to
             // PREFER (that would put software AV1 video decode ahead of
             // MediaCodec). The FFmpeg audio renderer is instead reordered
@@ -1551,6 +1561,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                 forceOpticalPassthrough = isForcePassthroughActive,
                 transcodeAacToDts = isTranscodeAacToDtsActive,
+                transcodeAacToDtsHd = dtsHdAllowed,
+                aacToDtsTargetOverride = dtsTargetOverride,
                 useSystemPassthrough = playerSettings.useSystemPassthrough,
                 dtsHdTvPassthrough = dtsHdTvPassthroughActive,
                 iecOff = iecOffStreamUrls.contains(url),
@@ -1588,7 +1600,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                         downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                         forceOpticalPassthrough = isForcePassthroughActive,
                         deniedTranscodeMimes = deniedTranscodeMimes,
-                        transcodeAacToDts = isTranscodeAacToDtsActive
+                        transcodeAacToDts = isTranscodeAacToDtsActive,
+                        transcodeAacToDtsHd = dtsHdAllowed,
+                        aacToDtsTargetOverride = dtsTargetOverride
                     )
                     applyCenterMixLevel(_uiState.value.centerMixLevelDb)
                     updateAudioControlAvailability()
@@ -1689,7 +1703,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 maintainOriginalAudioOnDownmix = playerSettings.maintainOriginalAudioOnDownmix,
                 forceOpticalPassthroughActive = isForcePassthroughActive,
                 transcodeAacToDtsActive = isTranscodeAacToDtsActive,
-                aacToDtsHdAllowed = aacToDtsHdAllowed,
+                aacToDtsHdAllowed = dtsHdAllowed,
+                aacToDtsTargetOverride = dtsTargetOverride?.name,
                 useSystemPassthrough = playerSettings.useSystemPassthrough,
                 dtsHdTvPassthrough = dtsHdTvPassthroughActive,
                 iecOff = iecOffStreamUrls.contains(url),
@@ -3535,6 +3550,8 @@ private class SubtitleOffsetRenderersFactory(
     private val downmixNormalizationEnabled: Boolean,
     private val forceOpticalPassthrough: Boolean,
     private val transcodeAacToDts: Boolean = false,
+    private val transcodeAacToDtsHd: Boolean = false,
+    private val aacToDtsTargetOverride: com.nuvio.tv.core.player.AacToDtsRouting.Target? = null,
     private val useSystemPassthrough: Boolean,
     private val dtsHdTvPassthrough: Boolean = false,
     private val iecOff: Boolean = false,
@@ -3737,6 +3754,8 @@ private class SubtitleOffsetRenderersFactory(
             onDiagnosticEvent = onAudioDiagnosticEvent,
             forceAc3Support = forceOpticalPassthrough || deniedTranscodeMimes.isNotEmpty(),
             transcodeAacToDts = transcodeAacToDts,
+            transcodeAacToDtsHd = transcodeAacToDtsHd,
+            dtsTargetOverride = aacToDtsTargetOverride,
             faultInjectRejectMime = faultInjectRejectMime,
             reducedStartThresholdFrames = reducedStartThresholdFrames,
             platformSink = baseAudioSink,
@@ -3848,7 +3867,9 @@ private class SubtitleOffsetRenderersFactory(
                 downmixNormalizationEnabled = downmixNormalizationEnabled,
                 forceOpticalPassthrough = forceOpticalPassthrough,
                 deniedTranscodeMimes = deniedTranscodeMimes,
-                transcodeAacToDts = transcodeAacToDts
+                transcodeAacToDts = transcodeAacToDts,
+                transcodeAacToDtsHd = transcodeAacToDtsHd,
+                aacToDtsTargetOverride = aacToDtsTargetOverride
             )
         }
         onFfmpegAudioRendererChanged(ffmpegRenderers.firstOrNull())
@@ -3860,11 +3881,14 @@ internal fun FfmpegAudioRenderer.applyDownmixSettings(
     downmixNormalizationEnabled: Boolean,
     forceOpticalPassthrough: Boolean,
     deniedTranscodeMimes: Set<String>,
-    transcodeAacToDts: Boolean
+    transcodeAacToDts: Boolean,
+    transcodeAacToDtsHd: Boolean,
+    aacToDtsTargetOverride: com.nuvio.tv.core.player.AacToDtsRouting.Target?
 ) {
     setForceOpticalPassthrough(forceOpticalPassthrough)
     setDeniedTranscodeMimes(deniedTranscodeMimes)
     setTranscodeAacToDts(transcodeAacToDts)
+    FfmpegRendererDtsHd.apply(this, transcodeAacToDtsHd, aacToDtsTargetOverride)
     if (downmixEnabled) {
         setAudioOutputChannels(
             audioOutputChannels.ffmpegLayoutName,
