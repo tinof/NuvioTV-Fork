@@ -289,11 +289,12 @@ internal class PlaybackSpeedAwareAudioSink(
         }
         val support = super.getFormatSupport(format)
         // Media3 says DTS-HD plays directly when the output takes only DTS, and then opens the
-        // core. For the transcode's own DTS-HD query that would write DTS-HD MA that plays as
-        // its core, so it counts only when DTS-HD itself opens.
+        // core; the own IEC engine says yes whenever its probe passed. For the transcode's own
+        // DTS-HD query that would write DTS-HD MA to a receiver that may not decode it, so it
+        // counts only when the output lists DTS-HD.
         if (support == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY &&
             AacToDtsRouting.isDtsHdTranscodeOutput(format) &&
-            !dtsHdOpensAsItself(format)
+            !outputListsDtsHd()
         ) {
             return AudioSink.SINK_FORMAT_UNSUPPORTED
         }
@@ -338,17 +339,18 @@ internal class PlaybackSpeedAwareAudioSink(
     }
 
     /**
-     * Whether DTS-HD would open as DTS-HD: through the own IEC engine, which packs DTS-HD itself,
-     * or on a platform output whose pinned capabilities list DTS-HD. With live capabilities
-     * (phones, tablets) that is not known here, so the transcode stays on the core there.
+     * Whether the output decodes DTS-HD: its pinned capabilities list DTS-HD. That holds for both
+     * routes. The own IEC engine can pack DTS-HD for any output with an IEC61937 path, and the
+     * passthrough policy lets DTS-HD through on a DTS-only output so that Media3 can play the core
+     * of a real DTS-HD track; neither says the receiver decodes DTS-HD MA bursts. With live
+     * capabilities (phones, tablets) it is not known here, so the transcode stays on the core.
      */
-    private fun dtsHdOpensAsItself(format: Format): Boolean =
-        iecSink?.claimsHbr(format) == true || pinnedOutputEncodings?.contains(C.ENCODING_DTS_HD) == true
+    private fun outputListsDtsHd(): Boolean = pinnedOutputEncodings?.contains(C.ENCODING_DTS_HD) == true
 
     /**
      * The DTS target for [format]: DTS-HD MA, the DTS core or none (PCM). The checks go through
      * [getFormatSupport], so Bluetooth, speed != 1x, the session PCM latch and the passthrough
-     * policy all turn it off, and DTS-HD counts only when it opens as itself. The FFmpeg renderer
+     * policy all turn it off, and DTS-HD counts only when the output lists it. The FFmpeg renderer
      * asks the same sink the same questions, so both renderers agree.
      */
     fun dtsTranscodeTarget(format: Format): AacToDtsRouting.Target = AacToDtsRouting.chooseTarget(
