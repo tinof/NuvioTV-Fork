@@ -166,6 +166,10 @@ struct DecoderContext {
   // packet with the XLL of its frame (dtshdma/dtshd_stage.h).
   dtshd_stage hd;
   bool hd_error_logged;
+  // DTS: units still to drop in the current decode call. After a seek the first packet at or
+  // after the start position can still bring out units that belong before it; the decoder
+  // knows their times and asks for them to be dropped. They still count as encoded samples.
+  int skip_units;
   AVCodecContext* encoder_context;
   AVAudioFifo* fifo;
   AVFrame* encoder_frame;
@@ -208,7 +212,8 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                  uint8_t* outputBuffer, int outputSize,
                  jint userCenterMixLevelDb,
                  jboolean downmixNormalizationEnabled,
-                 GrowOutputBufferCallback growBuffer, jboolean endOfStream);
+                 GrowOutputBufferCallback growBuffer, jboolean endOfStream,
+                 jint skipUnits);
 
 int ac3TrailingSilenceSamples(int queuedSamples, int frameSize);
 
@@ -343,7 +348,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
                    jobject outputData, jint outputSize,
                    jint userCenterMixLevelDb,
                    jboolean downmixNormalizationEnabled,
-                   jboolean endOfStream) {
+                   jboolean endOfStream, jint skipUnits) {
   if (!context) {
     LOGE("Context must be non-NULL.");
     return -1;
@@ -374,7 +379,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
                    userCenterMixLevelDb,
                    downmixNormalizationEnabled,
                    GrowOutputBufferCallback{env, thiz, decoderOutputBuffer},
-                   endOfStream);
+                   endOfStream, skipUnits);
   av_packet_free(&packet);
   return ret;
 }
@@ -648,6 +653,12 @@ int receiveEncoderPackets(DecoderContext* decoderContext, uint8_t** outputBuffer
         av_packet_unref(decoderContext->encoder_packet);
         continue;
       }
+      if (decoderContext->skip_units > 0) {
+        decoderContext->skip_units--;
+        decoderContext->encoded_samples += decoderContext->encoder_context->frame_size;
+        av_packet_unref(decoderContext->encoder_packet);
+        continue;
+      }
     }
     int packetSize = decoderContext->encoder_packet->size;
     if (isDtsHdTarget(decoderContext)) {
@@ -819,8 +830,10 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                  uint8_t* outputBuffer, int outputSize,
                  jint userCenterMixLevelDb,
                  jboolean downmixNormalizationEnabled,
-                 GrowOutputBufferCallback growBuffer, jboolean endOfStream) {
+                 GrowOutputBufferCallback growBuffer, jboolean endOfStream,
+                 jint skipUnits) {
   AVCodecContext* codecContext = decoderContext->codec_context;
+  decoderContext->skip_units = isDtsTarget(decoderContext) && skipUnits > 0 ? skipUnits : 0;
   bool deliverInput = packet->size > 0 || !endOfStream;
   if (deliverInput) {
     int result = avcodec_send_packet(codecContext, packet);
