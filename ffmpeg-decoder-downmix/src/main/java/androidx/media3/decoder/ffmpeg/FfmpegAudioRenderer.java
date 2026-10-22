@@ -246,12 +246,9 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     int encoding = decoder.getEncoding();
     if (encoding == C.ENCODING_DTS_HD) {
       // Always stereo: a mono source is written as dual mono. No codecs string: Media3 maps
-      // audio/vnd.dts.hd to ENCODING_DTS_HD whatever it says.
-      return new Format.Builder()
-          .setSampleMimeType(MimeTypes.AUDIO_DTS_HD)
-          .setChannelCount(2)
-          .setSampleRate(decoder.getSampleRate())
-          .build();
+      // audio/vnd.dts.hd to ENCODING_DTS_HD whatever it says. Marked like the query, so the
+      // app's sink knows the transcode from a real DTS-HD track when it configures.
+      return dtsHdOutputFormat().buildUpon().setSampleRate(decoder.getSampleRate()).build();
     }
     if (encoding == C.ENCODING_DTS) {
       // A mono DTS bitstream still opens a stereo AudioTrack: passthrough bytes are opaque to the
