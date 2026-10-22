@@ -45,6 +45,8 @@ extern "C" {
 #include <libavutil/audio_fifo.h>
 }
 
+#include "dtshdma/dtshd_stage.h"
+
 #define LOG_TAG "ffmpeg_jni"
 #define LOGE(...) \
   ((void)__android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__))
@@ -97,6 +99,7 @@ static const int AUDIO_DECODER_ERROR_OTHER = -2;
 static const int TRANSCODE_TARGET_NONE = 0;
 static const int TRANSCODE_TARGET_AC3 = 1;
 static const int TRANSCODE_TARGET_DTS = 2;
+static const int TRANSCODE_TARGET_DTS_HD = 3;
 // LINT.ThenChange(../java/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder.java)
 
 static const int64_t AC3_BIT_RATE = 640000;
@@ -159,6 +162,10 @@ struct DecoderContext {
   // brings out the last real frame.
   int64_t dts_packets_seen;
   int64_t dts_frames_sent;
+  // DTS-HD MA: the 24-bit PCM of the frames sent to dcaenc and the writer that pairs each core
+  // packet with the XLL of its frame (dtshdma/dtshd_stage.h).
+  dtshd_stage hd;
+  bool hd_error_logged;
   AVCodecContext* encoder_context;
   AVAudioFifo* fifo;
   AVFrame* encoder_frame;
@@ -389,6 +396,11 @@ AUDIO_DECODER_FUNC(jint, ffmpegGetChannelCount, jlong context) {
     return -1;
   }
   DecoderContext* decoderContext = (DecoderContext*)context;
+  // A transcode reports the encoded channels (DTS-HD MA: always 2, also for mono).
+  if (decoderContext->transcode_target != TRANSCODE_TARGET_NONE &&
+      decoderContext->encoder_context) {
+    return decoderContext->encoder_context->ch_layout.nb_channels;
+  }
   if (decoderContext->has_output_layout) {
     return decoderContext->output_layout.nb_channels;
   }
@@ -505,11 +517,16 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
   }
   decoderContext->transcode_target = transcodeTarget;
   resetLimiter(&decoderContext->limiter);
+  if (transcodeTarget == TRANSCODE_TARGET_DTS_HD && dtshd_stage_init(&decoderContext->hd) < 0) {
+    LOGE("Failed to create the DTS-HD MA writer.");
+    free(decoderContext);
+    return NULL;
+  }
 
   AVCodecContext* codecContext = avcodec_alloc_context3(codec);
   if (!codecContext) {
     LOGE("Failed to allocate codec context.");
-    free(decoderContext);
+    releaseContext(decoderContext);
     return NULL;
   }
 
@@ -552,8 +569,20 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
   return decoderContext;
 }
 
+// Both DTS targets: the DTS-HD MA units carry a DTS core.
 static bool isDtsTarget(const DecoderContext* decoderContext) {
-  return decoderContext->transcode_target == TRANSCODE_TARGET_DTS;
+  return decoderContext->transcode_target == TRANSCODE_TARGET_DTS ||
+         decoderContext->transcode_target == TRANSCODE_TARGET_DTS_HD;
+}
+
+static bool isDtsHdTarget(const DecoderContext* decoderContext) {
+  return decoderContext->transcode_target == TRANSCODE_TARGET_DTS_HD;
+}
+
+// DTS-HD MA encodes dual mono for a mono source: the resampler keeps the source's channel
+// count and this copies mono S32 to both channels of the stereo FIFO.
+static bool expandsMono(const DecoderContext* decoderContext) {
+  return isDtsHdTarget(decoderContext) && decoderContext->output_layout.nb_channels == 1;
 }
 
 int ac3TrailingSilenceSamples(int queuedSamples, int frameSize) {
@@ -565,6 +594,38 @@ int ac3TrailingSilenceSamples(int queuedSamples, int frameSize) {
     return 0;
   }
   return frameSize - remainder;
+}
+
+// Writes core packet `packetIndex` with the XLL of the frame before it as one DTS-HD MA unit.
+static int writeDtsHdUnit(DecoderContext* decoderContext, int64_t packetIndex,
+                          uint8_t** outputBuffer, int* outSize, int* outputSize,
+                          GrowOutputBufferCallback growBuffer) {
+  AVPacket* packet = decoderContext->encoder_packet;
+  int bound = (int)DTSHD_STAGE_MAX_UNIT_BYTES(packet->size);
+  if (*outSize + bound > *outputSize) {
+    *outputSize = *outSize + bound;
+    uint8_t* newBase = growBuffer(*outputSize);
+    if (!newBase) {
+      LOGE("Failed to grow output buffer during encoding.");
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    *outputBuffer = newBase + *outSize;
+  }
+  dtshd_stage* hd = &decoderContext->hd;
+  long written = dtshd_stage_pair(hd, packetIndex, packet->data, (size_t)packet->size,
+                                  *outputBuffer, (size_t)(*outputSize - *outSize));
+  if (written < 0) {
+    LOGE("DTS-HD MA: no frame for core packet %lld.", (long long)packetIndex);
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  if (hd->writer_errors && !decoderContext->hd_error_logged) {
+    decoderContext->hd_error_logged = true;
+    LOGE("DTS-HD MA writer error %ld at unit %lld: the unit goes out as a DTS core only.",
+         hd->first_error, (long long)hd->first_error_unit);
+  }
+  *outputBuffer += written;
+  *outSize += (int)written;
+  return 0;
 }
 
 int receiveEncoderPackets(DecoderContext* decoderContext, uint8_t** outputBuffer,
@@ -580,11 +641,25 @@ int receiveEncoderPackets(DecoderContext* decoderContext, uint8_t** outputBuffer
       logError("avcodec_receive_packet", ret);
       return AUDIO_DECODER_ERROR_OTHER;
     }
-    if (isDtsTarget(decoderContext) && decoderContext->dts_packets_seen++ == 0) {
-      av_packet_unref(decoderContext->encoder_packet);
-      continue;
+    int64_t packetIndex = -1;
+    if (isDtsTarget(decoderContext)) {
+      packetIndex = decoderContext->dts_packets_seen++;
+      if (packetIndex == 0) {
+        av_packet_unref(decoderContext->encoder_packet);
+        continue;
+      }
     }
     int packetSize = decoderContext->encoder_packet->size;
+    if (isDtsHdTarget(decoderContext)) {
+      int ret = writeDtsHdUnit(decoderContext, packetIndex, outputBuffer, outSize, outputSize,
+                               growBuffer);
+      av_packet_unref(decoderContext->encoder_packet);
+      if (ret < 0) {
+        return ret;
+      }
+      decoderContext->encoded_samples += decoderContext->encoder_context->frame_size;
+      continue;
+    }
     if (*outSize + packetSize > *outputSize) {
       *outputSize = *outSize + packetSize;
       uint8_t* newBase = growBuffer(*outputSize);
@@ -603,10 +678,15 @@ int receiveEncoderPackets(DecoderContext* decoderContext, uint8_t** outputBuffer
   }
 }
 
-// Sends encoder_frame to the encoder and receives what it gives back.
+// Sends encoder_frame to the encoder and receives what it gives back. For DTS-HD MA a frame
+// with audio (`keepForXll`) is first rounded to 24 bits and kept for its XLL.
 static int sendEncoderFrame(DecoderContext* decoderContext, uint8_t** outputBuffer,
                             int* outSize, int* outputSize,
-                            GrowOutputBufferCallback growBuffer) {
+                            GrowOutputBufferCallback growBuffer, bool keepForXll) {
+  if (keepForXll && isDtsHdTarget(decoderContext)) {
+    dtshd_stage_take_frame(&decoderContext->hd,
+                           reinterpret_cast<int32_t*>(decoderContext->encoder_frame->data[0]));
+  }
   int ret = avcodec_send_frame(decoderContext->encoder_context,
                                decoderContext->encoder_frame);
   if (ret < 0) {
@@ -632,7 +712,7 @@ int encodeFullFrames(DecoderContext* decoderContext, uint8_t** outputBuffer,
                        (void**)decoderContext->encoder_frame->data, frameSize);
     decoderContext->encoder_frame->nb_samples = frameSize;
     int ret = sendEncoderFrame(decoderContext, outputBuffer, outSize, outputSize,
-                               growBuffer);
+                               growBuffer, /* keepForXll= */ true);
     if (ret < 0) {
       return ret;
     }
@@ -657,13 +737,18 @@ int flushResamplerToFifo(DecoderContext* decoderContext) {
   if (outCapacity == 0) {
     return 0;
   }
+  bool expand = expandsMono(decoderContext);
   uint8_t** convertedData = NULL;
-  if (av_samples_alloc_array_and_samples(&convertedData, NULL, nbChannels, outCapacity,
-                                         decoderContext->output_sample_format, 0) < 0) {
+  if (av_samples_alloc_array_and_samples(&convertedData, NULL, expand ? 2 : nbChannels,
+                                         outCapacity, decoderContext->output_sample_format,
+                                         0) < 0) {
     return AUDIO_DECODER_ERROR_OTHER;
   }
   int converted = swr_convert(decoderContext->resample_context, convertedData,
                               outCapacity, NULL, 0);
+  if (converted > 0 && expand) {
+    dtshd_expand_mono_s32(reinterpret_cast<int32_t*>(convertedData[0]), converted);
+  }
   if (converted > 0) {
     av_audio_fifo_write(decoderContext->fifo, (void**)convertedData, converted);
   }
@@ -703,7 +788,7 @@ int flushEncoder(DecoderContext* decoderContext, uint8_t** outputBuffer,
                            (AVSampleFormat)decoderContext->encoder_frame->format);
     decoderContext->encoder_frame->nb_samples = frameSize;
     int ret = sendEncoderFrame(decoderContext, outputBuffer, outSize, outputSize,
-                               growBuffer);
+                               growBuffer, /* keepForXll= */ true);
     if (ret < 0) {
       return ret;
     }
@@ -716,7 +801,7 @@ int flushEncoder(DecoderContext* decoderContext, uint8_t** outputBuffer,
                            (AVSampleFormat)decoderContext->encoder_frame->format);
     decoderContext->encoder_frame->nb_samples = frameSize;
     int ret = sendEncoderFrame(decoderContext, outputBuffer, outSize, outputSize,
-                               growBuffer);
+                               growBuffer, /* keepForXll= */ false);
     if (ret < 0) {
       return ret;
     }
@@ -796,9 +881,10 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
     if (decoderContext->transcode_target != TRANSCODE_TARGET_NONE) {
       int outSamples = swr_get_out_samples(decoderContext->resample_context, frame->nb_samples);
       int nb_channels = decoderContext->output_layout.nb_channels;
+      bool expand = expandsMono(decoderContext);
       uint8_t** converted_data = NULL;
       if (outSamples < 0 ||
-          av_samples_alloc_array_and_samples(&converted_data, NULL, nb_channels,
+          av_samples_alloc_array_and_samples(&converted_data, NULL, expand ? 2 : nb_channels,
                                              outSamples > 0 ? outSamples : 1,
                                              decoderContext->output_sample_format, 0) < 0) {
         LOGE("Failed to allocate transcode buffer.");
@@ -816,6 +902,10 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
         av_freep(&converted_data[0]);
         av_freep(&converted_data);
         return AUDIO_DECODER_ERROR_INVALID_DATA;
+      }
+
+      if (expand && convertedSamples > 0) {
+        dtshd_expand_mono_s32(reinterpret_cast<int32_t*>(converted_data[0]), convertedSamples);
       }
 
       // The limiter works on planar float; the DTS path (packed S32) never
@@ -908,6 +998,10 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   if (decoderContext->transcode_target == TRANSCODE_TARGET_AC3) {
     av_channel_layout_default(&outputLayout, 6);
     decoderContext->output_sample_format = AV_SAMPLE_FMT_FLTP;
+  } else if (isDtsHdTarget(decoderContext)) {
+    // The encoder is always stereo; a mono source stays mono up to the dual-mono copy.
+    av_channel_layout_default(&outputLayout, inputLayout.nb_channels >= 2 ? 2 : 1);
+    decoderContext->output_sample_format = AV_SAMPLE_FMT_S32;
   } else if (decoderContext->transcode_target == TRANSCODE_TARGET_DTS) {
     if (decoderContext->dts_channels == 0) {
       decoderContext->dts_channels = inputLayout.nb_channels >= 2 ? 2 : 1;
@@ -931,7 +1025,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   if (decoderContext->transcode_target != TRANSCODE_TARGET_NONE) {
     if (decoderContext->encoder_initialized) {
       outputSampleRate = decoderContext->encoder_context->sample_rate;
-    } else if (decoderContext->transcode_target == TRANSCODE_TARGET_DTS) {
+    } else if (isDtsTarget(decoderContext)) {
       outputSampleRate = DTS_SAMPLE_RATE;
     } else {
       outputSampleRate = ac3TargetSampleRate(inputSampleRate);
@@ -987,7 +1081,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     return result;
   }
 
-  if (decoderContext->transcode_target == TRANSCODE_TARGET_DTS &&
+  if (isDtsTarget(decoderContext) &&
       inputSampleRate > 0 && inputSampleRate != outputSampleRate) {
     double cutoff = DTS_RESAMPLER_CUTOFF;
     if (inputSampleRate < 44100) {
@@ -1041,7 +1135,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
 
   if (decoderContext->transcode_target != TRANSCODE_TARGET_NONE &&
       !decoderContext->encoder_initialized) {
-    bool dts = decoderContext->transcode_target == TRANSCODE_TARGET_DTS;
+    bool dts = isDtsTarget(decoderContext);
     const AVCodec* encoder = avcodec_find_encoder(dts ? AV_CODEC_ID_DTS : AV_CODEC_ID_AC3);
     if (!encoder) {
       LOGE("%s encoder not found. Check FFmpeg build options.", dts ? "DTS" : "AC3");
@@ -1058,7 +1152,11 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     }
     enc_ctx->sample_fmt = decoderContext->output_sample_format;
     enc_ctx->sample_rate = outputSampleRate;
-    av_channel_layout_copy(&enc_ctx->ch_layout, &outputLayout);
+    if (isDtsHdTarget(decoderContext)) {
+      av_channel_layout_default(&enc_ctx->ch_layout, 2);
+    } else {
+      av_channel_layout_copy(&enc_ctx->ch_layout, &outputLayout);
+    }
     enc_ctx->bit_rate = dts ? DTS_BIT_RATE : AC3_BIT_RATE;
     if (dts) {
       // FFmpeg flags its DTS encoder experimental; avcodec_open2 refuses it
@@ -1114,7 +1212,13 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       return AUDIO_DECODER_ERROR_OTHER;
     }
     decoderContext->encoder_initialized = true;
-    if (dts) {
+    if (isDtsHdTarget(decoderContext)) {
+      LOGI("DTS-HD MA transcode: %d Hz %d ch -> %d Hz 2 ch (%s), core %lld bit/s, XLL 24-bit, "
+           "unit %d samples, lookahead 1 unit",
+           inputSampleRate, inputLayout.nb_channels, enc_ctx->sample_rate,
+           outputLayout.nb_channels == 1 ? "dual mono" : "stereo", (long long)enc_ctx->bit_rate,
+           enc_ctx->frame_size);
+    } else if (dts) {
       LOGI("DTS transcode: %d Hz %d ch -> %d Hz %d ch, %lld bit/s, frame %d samples, aligned",
            inputSampleRate, inputLayout.nb_channels, enc_ctx->sample_rate,
            enc_ctx->ch_layout.nb_channels, (long long)enc_ctx->bit_rate,
@@ -1186,6 +1290,8 @@ void clearEncoder(DecoderContext* decoderContext) {
   decoderContext->encoded_samples = 0;
   decoderContext->dts_packets_seen = 0;
   decoderContext->dts_frames_sent = 0;
+  // A seek drops the frame held for the next core packet with the rest of the FIFO.
+  dtshd_stage_reset(&decoderContext->hd);
 }
 
 // Drops decoded samples from the start of the frame while start_trim_samples
@@ -1312,6 +1418,7 @@ void releaseContext(DecoderContext* decoderContext) {
   if (decoderContext->codec_context) {
     avcodec_free_context(&decoderContext->codec_context);
   }
+  dtshd_stage_free(&decoderContext->hd);
   free(decoderContext);
 }
 
