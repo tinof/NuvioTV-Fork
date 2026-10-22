@@ -25,15 +25,15 @@ FRAMEWORKS := -framework CoreFoundation -framework CoreVideo -framework CoreMedi
               -framework VideoToolbox -framework CoreServices -liconv -lm -lpthread
 
 BUILD := build
-C_SOURCES := $(wildcard $(JNI_DIR)/dtshdma/*.c)
-C_OBJECTS := $(patsubst $(JNI_DIR)/dtshdma/%.c,$(BUILD)/%.o,$(C_SOURCES))
+C_SOURCES := $(wildcard $(JNI_DIR)/dcaxll/*.c)
+C_OBJECTS := $(patsubst $(JNI_DIR)/dcaxll/%.c,$(BUILD)/%.o,$(C_SOURCES))
 
 all: $(BUILD)/host_jni_test
 
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/%.o: $(JNI_DIR)/dtshdma/%.c $(wildcard $(JNI_DIR)/dtshdma/*.h) | $(BUILD)
+$(BUILD)/%.o: $(JNI_DIR)/dcaxll/%.c $(wildcard $(JNI_DIR)/dcaxll/*.h) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/host_jni_test: host_jni_test.cc $(JNI_DIR)/ffmpeg_jni.cc $(C_OBJECTS) | $(BUILD)
