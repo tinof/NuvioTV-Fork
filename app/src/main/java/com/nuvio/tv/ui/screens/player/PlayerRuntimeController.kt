@@ -919,6 +919,8 @@ class PlayerRuntimeController(
     internal val iecOffStreamUrls: MutableSet<String> = mutableSetOf()
     /** Streams whose AAC-to-DTS AudioTrack was refused; they play the AAC as PCM. */
     internal val aacToDtsOffStreamUrls: MutableSet<String> = mutableSetOf()
+    /** Streams whose AAC-to-DTS-HD MA AudioTrack was refused; they transcode to the DTS core. */
+    internal val aacToDtsHdOffStreamUrls: MutableSet<String> = mutableSetOf()
     /** The player and the MIME type of its latest audio input format. */
     internal var lastAudioInputMime: Pair<ExoPlayer, String?>? = null
     internal val audioDisabledForcedStreamUrls: MutableSet<String> = mutableSetOf()
