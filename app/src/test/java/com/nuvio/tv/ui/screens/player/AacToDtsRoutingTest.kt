@@ -190,6 +190,16 @@ class AacToDtsRoutingTest {
         assertNull(sink(transcodeAacToDts = false).dtsTranscodeOutputFormat(aac(2)))
     }
 
+    @Test
+    fun rendererFlags_followTheSinkNotTheLiveValues() {
+        // A debug switch set mid-playback (or a latched step-down) must not split the renderer
+        // from the sink: the in-place resolve gives the renderer the sink's build-time values.
+        val built = sink(hdAllowed = true, pinned = setOf(C.ENCODING_DTS, C.ENCODING_DTS_HD))
+        val live = AacToDtsRendererFlags(transcode = true, hdAllowed = false, override = Target.CORE)
+        assertEquals(AacToDtsRendererFlags(true, true, null), aacToDtsRendererFlags(built) { live })
+        assertEquals(live, aacToDtsRendererFlags(null) { live })
+    }
+
     private object ReadyIecFactory : com.nuvio.tv.ui.screens.player.iec.IecAudioTrackFactory {
         override fun open(sampleRate: Int, channelCount: Int, bufferSizeBytes: Int, sessionId: Int) = null
         override fun iec61937Ready(): Boolean = true
