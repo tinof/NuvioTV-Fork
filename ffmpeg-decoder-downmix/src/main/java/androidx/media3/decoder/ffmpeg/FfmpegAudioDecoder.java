@@ -305,6 +305,8 @@ import java.util.function.LongPredicate;
         return TRANSCODE_TARGET_AC3;
       case C.ENCODING_DTS:
         return TRANSCODE_TARGET_DTS;
+      case C.ENCODING_DTS_HD:
+        return TRANSCODE_TARGET_DTS_HD;
       default:
         return TRANSCODE_TARGET_NONE;
     }
