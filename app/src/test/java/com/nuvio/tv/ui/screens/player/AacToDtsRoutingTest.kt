@@ -150,18 +150,20 @@ class AacToDtsRoutingTest {
     }
 
     @Test
-    fun sinkTarget_ownIecRoute_isDtsHdItself() {
-        val iec = com.nuvio.tv.ui.screens.player.iec.IecPassthroughAudioSink(
-            sink = DtsCapableSink(true),
-            trackFactory = ReadyIecFactory
-        )
-        val sink = PlaybackSpeedAwareAudioSink(
-            sink = iec,
+    fun sinkTarget_ownIecRoute_needsAnOutputThatListsDtsHd() {
+        fun viaIec(pinned: Set<Int>?) = PlaybackSpeedAwareAudioSink(
+            sink = com.nuvio.tv.ui.screens.player.iec.IecPassthroughAudioSink(
+                sink = DtsCapableSink(true),
+                trackFactory = ReadyIecFactory
+            ),
             transcodeAacToDts = true,
             transcodeAacToDtsHd = true,
-            pinnedOutputEncodings = setOf(C.ENCODING_DTS)
+            pinnedOutputEncodings = pinned
         )
-        assertEquals(Target.HD, sink.dtsTranscodeTarget(aac(2)))
+        assertEquals(Target.HD, viaIec(setOf(C.ENCODING_DTS, C.ENCODING_DTS_HD)).dtsTranscodeTarget(aac(2)))
+        // The IEC engine would pack DTS-HD MA bursts for a receiver that lists only DTS: the core.
+        assertEquals(Target.CORE, viaIec(setOf(C.ENCODING_DTS)).dtsTranscodeTarget(aac(2)))
+        assertEquals(Target.CORE, viaIec(null).dtsTranscodeTarget(aac(1)))
     }
 
     @Test
