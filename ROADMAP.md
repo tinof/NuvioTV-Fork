@@ -360,21 +360,30 @@ because a wrong passthrough path is invisible until measured.
 
 ### Q6: Transcode AAC to DTS
 
-- **Status:** Partial. Branch `feat/Q6-aac-dts` (not merged; the owner keeps developing it before the
-  merge). Per-profile setting, default off, that sends mono and stereo AAC to the AVR as DTS core (FFmpeg
-  `dca`, 48 kHz, 1509 kbit/s) for the owner's Sony HT-A9 and its Neural:X upmixer, with the settings of the
-  owner's offline `docs/todts`. Design, evidence, measurements, review findings and build steps:
-  [`docs/aac-to-dts/DESIGN.md`](docs/aac-to-dts/DESIGN.md).
+- **Status:** Partial. Branch `feat/Q6-aac-dts`. Per-profile setting, default off, that sends mono and
+  stereo AAC to the AVR as DTS for the owner's Sony HT-A9 and its Neural:X upmixer: DTS-HD Master Audio
+  (DTS core + lossless XLL) when the output lists DTS-HD, else the DTS core (FFmpeg `dca`, 48 kHz,
+  1509 kbit/s), else PCM. Design, evidence, measurements, review findings and build steps:
+  [`docs/aac-to-dts/DESIGN.md`](docs/aac-to-dts/DESIGN.md) and, for DTS-HD MA,
+  [`docs/aac-to-dts/DTSHD_PORT.md`](docs/aac-to-dts/DTSHD_PORT.md).
   - MediaCodec declines such tracks while the sink can play DTS, so the FFmpeg renderer takes them.
   - The resampler (44.1 → 48 kHz) is tuned against soxr precision 28 (images ≤ −130 dB, 4.1× default CPU).
-  - The branch ships the first decoder AARs built from `ffmpeg-decoder-downmix`, and AC-3 transcode fixes
-    (frame count per buffer, end-of-stream flush, output timestamps, priming).
-  - 2026-10-21: the owner heard DTS 2.0 on the HT-A9 from a 48 kHz AAC 2.0 title; logs and AudioFlinger
-    agree (DIRECT `AUDIO_FORMAT_DTS`, no sink errors).
-  - After the merge, delete the CI-only branch `ci/Q6-ffmpeg-aar` on the fork.
-- [Q6.1][desk] CI build of the decoder AAR with the DTS target, replace it in `app/libs`, update the SHA.
-  Gate: `:app:testFullDebugUnitTest` green with the shipped AAR. Done on the branch 2026-10-21: AAR
-  `a1152a6d…` (run 39594133508), 6569 tests, 0 failures; the step leaves the roadmap when the branch ships.
+  - The lossless layer comes from our own XLL writer `dcaxll` (LGPL-2.1-or-later, `~/Documents/GitHub/dts-hdma`),
+    vendored in `ffmpeg-decoder-downmix/src/main/jni/dcaxll/`. Mono goes out as dual-mono stereo. The core
+    is aligned to its input (one 512-sample unit of lookahead); a refused DTS-HD track steps down to the
+    core, then to PCM, and is never learned as a denial of real DTS.
+  - The branch also carries AC-3 transcode fixes (frame count per buffer, end-of-stream flush, output
+    timestamps, priming) and the first decoder AAR built from `ffmpeg-decoder-downmix`.
+  - Since 2026-10-22 APKs and AARs are built locally only (PR #11). `app/libs` keeps the DTS-core AAR of
+    2026-10-21; DTS-HD MA needs a build with the local module (DESIGN.md §8). The app reaches the new
+    renderer API by reflection, so it runs on the core with the committed AAR.
+  - 2026-10-21: the owner heard DTS 2.0 on the HT-A9 from a 48 kHz AAC 2.0 title (DIRECT `AUDIO_FORMAT_DTS`).
+  - 2026-10-22: the HT-A9 shows DTS-HD MA for a 48 kHz AAC 2.0 title; the log and AudioFlinger agree
+    (stereo kept, DIRECT `AUDIO_FORMAT_DTS_HD`, 2 channels; decoder thread about 20 % of one core).
+  - After the merge, delete the CI-only branch `ci/Q6-ffmpeg-aar` on the fork (it holds no DTS-HD code).
+- [Q6.1][desk] Decoder AAR with the DTS target in `app/libs`. Done 2026-10-21 (CI run 39594133508, AAR
+  `a1152a6d…`, 6569 tests). No later AAR is committed: binaries are local only since 2026-10-22, and an
+  AAR with the DTS-HD MA writer stays off GitHub. The step leaves the roadmap when the branch ships.
 - [Q6.2][device][owner][new-build] Toggle on; play AAC 2.0 at 48 kHz and at 44.1 kHz, a mono title and an
   HE-AACv2 title. Gate: logcat `DTS transcode:` line, `dumpsys media.audio_flinger` shows a DIRECT DTS
   output at 48 kHz, the HUD shows "DTS transcode", and the HT-A9 shows DTS with Neural:X.
@@ -396,6 +405,19 @@ because a wrong passthrough path is invisible until measured.
 - [Q6.8][desk] Extend the FFmpeg-first decoder re-creation (`PlayerRuntimeControllerDtsTranscode.kt`) to
   Force AC-3 and denied-codec AC-3. Gate: unit test of the decision helper.
 - [Q6.9][desk] `ffmpeg_jni.cc` compiles without warnings at `-Wall -Wextra`. Gate: build log.
+- [Q6.10][desk] DTS-HD MA transcode target: the `dcaxll` writer in the JNI, target choice (DTS-HD MA only
+  when the output lists DTS-HD, on both routes), step-down HD → core → PCM, frame counting and IEC bursts
+  for core+ExSS units, core alignment, the seek discard by output time, the priming-trim clock fix, labels.
+  Gate: host native test (`ffmpeg-decoder-downmix/src/test/native`, bit-exact XLL decode), module and app
+  unit tests. Done on the branch 2026-10-22.
+- [Q6.11][device][owner][new-build] DTS-HD MA on both routes (System passthrough on and off) for 48 kHz and
+  44.1 kHz AAC 2.0, mono (dual mono, level against the old mono core) and HE-AACv2; seeks, pause, the end
+  of a title, HDMI replug. Gate: log `DTS-HD MA transcode:` line, DIRECT `AUDIO_FORMAT_DTS_HD`, the HUD
+  names the DTS-HD MA transcode, the HT-A9 shows DTS-HD MA. 48 kHz AAC 2.0 on the platform route confirmed
+  2026-10-22. Needs: Q6.10.
+- [Q6.12][device][new-build] Fallback chain: `settings put global nuvio_fault_reject_mime audio/vnd.dts.hd`
+  gives `aac_dts_step_down step=HD_OFF` and the core; rejecting `audio/vnd.dts` too gives PCM; delete the
+  setting after. Gate: the log lines. Needs: Q6.10.
 
 ## Snappiness
 
