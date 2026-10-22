@@ -43,8 +43,9 @@ class Env:
     def path(self, name):
         return os.path.join(self.work, name)
 
-    def make_aac(self, name, rate, channels, seconds=2.5):
-        """A low tone per channel plus an impulse at 48 kHz sample 10000 (opposite signs L/R)."""
+    def make_aac(self, name, rate, channels, seconds=2.5, loud=False):
+        """A low tone per channel plus an impulse at 48 kHz sample 10000 (opposite signs L/R).
+        loud: full-scale square waves instead, whose AAC decode overshoots and clips."""
         out = self.path(name)
         if os.path.exists(out):
             return out
@@ -53,6 +54,8 @@ class Env:
             "0.05*sin(2*PI*440*t)+if(eq(n\\,%d)\\,0.9\\,0)" % n,
             "0.04*sin(2*PI*660*t)+if(eq(n\\,%d)\\,-0.8\\,0)" % n,
         ][:channels]
+        if loud:
+            exprs = ["0.999*sgn(sin(2*PI*1000*t))", "0.999*sgn(sin(2*PI*1500*t))"][:channels]
         subprocess.run([self.ffmpeg, "-nostdin", "-hide_banner", "-v", "error", "-y",
                         "-filter_complex", "aevalsrc=exprs='%s':s=%d:d=%s" % ("|".join(exprs), rate, seconds),
                         "-c:a", "aac", "-b:a", "256k", "-f", "adts", out], check=True)
@@ -69,7 +72,10 @@ class Env:
         stats = {}
         for line in p.stdout.splitlines():
             fields = dict(kv.split("=", 1) for kv in line.split())
-            key = "segment%s" % fields["segment"] if "segment" in fields else "run"
+            if "segment" in fields:
+                key = "segment%s" % fields["segment"]
+            else:
+                key = "hd" if line.startswith("hd_") else "run"
             stats[key] = {k: int(v) for k, v in fields.items()}
         return out, oracle, stats, p.stderr
 
@@ -87,7 +93,7 @@ class Env:
         p = subprocess.run([self.ffprobe, "-v", "error", "-f", "dts", "-show_entries",
                             "stream=profile,channels,sample_rate", "-of", "default=nw=1", dts],
                            capture_output=True, text=True)
-        return dict(line.split("=", 1) for line in p.stdout.split())
+        return dict(line.split("=", 1) for line in p.stdout.splitlines() if "=" in line)
 
 
 def s32(data):
@@ -228,7 +234,7 @@ def main():
     ap.add_argument("--driver", required=True)
     ap.add_argument("--work", required=True)
     ap.add_argument("--ffmpeg", default="/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg")
-    ap.add_argument("--targets", default="core")
+    ap.add_argument("--targets", default="core,hd")
     args = ap.parse_args()
     env = Env(args)
     targets = args.targets.split(",")
@@ -241,7 +247,40 @@ def main():
 
 
 def run_hd(env):
-    raise SystemExit("the DTS-HD target is not built yet")
+    for rate, nch, loud in ((48000, 2, False), (48000, 1, False), (44100, 2, False), (48000, 2, True)):
+        tag = "hd_%d_%dch%s" % (rate, nch, "_loud" if loud else "")
+        aac = env.make_aac("in_%d_%d%s.aac" % (rate, nch, "_loud" if loud else ""), rate, nch, loud=loud)
+        packets = count_adts(aac)
+        out, oracle, st = case_eos(env, TARGET_DTS_HD, aac, rate, nch, packets, tag)
+        seg, hd, run = st["segment0"], st["hd"], st["run"]
+        check(run["channel_count"] == 2 and run["sample_rate"] == 48000,
+              "%s: decoder reports 48000 Hz 2 ch" % tag)
+        check(seg["hd_units"] == seg["units"] and seg["core_only_units"] == 0,
+              "%s: every unit is core + ExSS" % tag)
+        check(hd["hd_writer_errors"] == 0 and hd["hd_clipped"] == 0,
+              "%s: no writer errors, nothing clipped by the writer" % tag)
+        check(seg["max_unit"] <= MAX_UNIT_BYTES and hd["hd_max_unit"] == seg["max_unit"],
+              "%s: largest unit %d <= tight bound %d" % (tag, seg["max_unit"], MAX_UNIT_BYTES))
+        info = env.probe(out)
+        check(info.get("profile") == "DTS-HD MA" and info.get("channels") == "2",
+              "%s: probes as %s %s ch" % (tag, info.get("profile"), info.get("channels")))
+        rc, dec, err = env.decode(out)
+        check(rc == 0 and "XLL" not in err, "%s: strict XLL decode ok %s" % (tag, err.strip()[:200]))
+        check(len(dec) == len(oracle) - UNIT * 2 and dec == oracle[: len(dec)],
+              "%s: XLL decodes bit-exactly to the PCM sent to the core encoder" % tag)
+        check(all(v & 0xFF == 0 for v in oracle), "%s: the core encoder got the 24-bit values" % tag)
+        if nch == 1:
+            check(channel(oracle, 0, 2) == channel(oracle, 1, 2) and channel(dec, 0, 2) == channel(dec, 1, 2),
+                  "%s: dual mono, L == R bit for bit" % tag)
+        else:
+            check(channel(dec, 0, 2) != channel(dec, 1, 2), "%s: L and R stay apart" % tag)
+        if not loud:
+            rc, core, err = env.decode(out, core_only=True)
+            check(rc == 0 and len(core) == len(dec), "%s: the core alone decodes to the same length" % tag)
+            check_alignment(tag + " core", oracle, core, 2)
+        if rate == 48000 and nch == 2 and not loud:
+            case_unflagged(env, TARGET_DTS_HD, aac, nch, packets, "hd_noflag")
+            case_reset(env, TARGET_DTS_HD, aac, nch, "hd_reset")
 
 
 if __name__ == "__main__":

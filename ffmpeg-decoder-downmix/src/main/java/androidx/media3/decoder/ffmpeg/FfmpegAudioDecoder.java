@@ -49,6 +49,7 @@ import java.util.List;
   private static final int TRANSCODE_TARGET_NONE = 0;
   private static final int TRANSCODE_TARGET_AC3 = 1;
   private static final int TRANSCODE_TARGET_DTS = 2;
+  private static final int TRANSCODE_TARGET_DTS_HD = 3;
   // LINT.ThenChange(../../../../../jni/ffmpeg_jni.cc)
 
   // FLAC parsing constants
