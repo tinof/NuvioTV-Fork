@@ -35,11 +35,13 @@ internal class PlaybackSpeedAwareAudioSink(
     // denied formats that are transcoded.
     private val forceAc3Support: Boolean = false,
     // "Transcode AAC to DTS": mono and stereo AAC go to the FFmpeg renderer while DTS can play.
-    private val transcodeAacToDts: Boolean = false,
+    // This and the next two are fixed for the player's life; the FFmpeg renderer is given the
+    // same values, so both pick the same target (see commitSurroundResolution).
+    val transcodeAacToDts: Boolean = false,
     // DTS-HD MA may be written for this stream (D5 step-down, debug switch, the renderer's AAR).
-    private val transcodeAacToDtsHd: Boolean = false,
+    val transcodeAacToDtsHd: Boolean = false,
     // debug.nuvio.aac_dts_target (D6), null for automatic.
-    private val dtsTargetOverride: AacToDtsRouting.Target? = null,
+    val dtsTargetOverride: AacToDtsRouting.Target? = null,
     // Test harness: refuses the first passthrough buffer of this MIME as a failed open.
     private val faultInjectRejectMime: String? = null,
     reducedStartThresholdFrames: Int = 0,
