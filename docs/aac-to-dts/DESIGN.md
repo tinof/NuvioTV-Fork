@@ -9,6 +9,9 @@ keeps what the first session (2026-10-21) established, so later sessions do not 
 - the review findings and the device result;
 - how to build and test it.
 
+The DTS-HD Master Audio target (2026-10-22) has its own design and implementation record in
+[DTSHD_PORT.md](DTSHD_PORT.md); §10 below summarizes what it changed here.
+
 Work branch: `feat/Q6-aac-dts` (based on `perf/shield-pass`, not merged). Paths are relative to this
 repository. FFmpeg citations are to tag n7.0.2 and Media3 citations to tag 1.8.0, the versions the app links.
 
@@ -132,8 +135,19 @@ All of these are from `libavcodec/dcaenc.c` and `dcaenc.h`:
   anchor (a long priming trim).
 - The priming trim (`Format.encoderDelay`) runs only when the first input after a reset is at media time
   ≤ one AAC frame, using `getStreamOffsetUs` and `onStreamChanged`. A resume or a track switch trims nothing.
-- The end-of-stream flush runs with the packet flagged `BUFFER_FLAG_LAST_SAMPLE`. When that flag is
-  missing, up to 511 + 108 samples (12.9 ms) at the very end are not played.
+- The end-of-stream flush runs with the packet flagged `BUFFER_FLAG_LAST_SAMPLE`.
+- **Corrected 2026-10-22 (DTSHD_PORT.md F3, §3.4).** dcaenc's output lags its input by one frame (512
+  samples, measured on n7.0.2) and it has no delay capability. Until commit `799767060` every DTS unit
+  played 10.67 ms late and the last frame sent to dcaenc was never emitted, even with the flag, so the
+  "511 + 108 samples (12.9 ms)" given here before understated the loss by 512 samples. Now the
+  pre-roll packet is dropped and a zero frame flushes the last real frame:
+
+  | end of stream | lost at the end |
+  |---|---|
+  | flagged | nothing; the last unit is padded with up to 511 samples of silence |
+  | flag missing | FIFO remainder (≤ 511) + resampler (about 82, ≤ 108) + the held frame (512): ≤ 1131 samples, 23.6 ms |
+
+  The host test (`ffmpeg-decoder-downmix/src/test/native`) checks both rows.
 
 **Resampler (DTS target only, when the input is not 48 kHz)**
 - `filter_size` 144, `cutoff` 0.875 (× in_rate / 44100 below 44.1 kHz) and `kaiser_beta` 13. See §5.
@@ -268,6 +282,10 @@ SHA-256 and the run ID in `app/libs/README.md`.
 2. Use the `ffmpeg-build-static-libs` artifact of a CI run (it already has `dca`).
 3. Build:
 
+Gradle needs JDK 17 and the Android SDK: `JAVA_HOME=$(/usr/libexec/java_home -v 17)` and
+`ANDROID_HOME=$HOME/Library/Android/sdk` (or `sdk.dir` in `local.properties`). Without the SDK the
+build stops before compiling anything.
+
 ```sh
 export USE_LOCAL_FFMPEG_DECODER=true FFMPEG_SOURCE_DIR=<configured tree> FFMPEG_BUILD_DIR=<static libs>
 ./gradlew :ffmpeg-decoder-downmix:assembleRelease      # module only
@@ -276,6 +294,12 @@ scripts/shield_build_install.sh                        # .shield APK with the lo
 
 The env variables also switch the app to the local module. Unset them for the gate, which must run against
 the AAR in `app/libs`.
+
+**Tests.**
+- Module JVM tests: `./gradlew :ffmpeg-decoder-downmix:testDebugUnitTest` (no env needed).
+- App: `./gradlew :app:testFullDebugUnitTest`, once without and once with the env above.
+- Host test of the JNI transcode path: `ffmpeg-decoder-downmix/src/test/native/README.md` (a host FFmpeg
+  n7.0.2 tree with the `dca` encoder and decoder and the `aac` decoder, Homebrew `ffmpeg-full`).
 
 **Shield.**
 - Claude's sandboxed Bash cannot reach the Shield ("No route to host"); run adb with the sandbox
@@ -309,3 +333,21 @@ adb shell dumpsys media.audio_flinger | rg -A12 "type 1 \(DIRECT\)"
 - **Mono:** the HT-A9 behaviour with mono DTS (a stereo AudioTrack carrying a 1-channel bitstream) is
   untested.
 - **Compiler warnings:** a warning-clean native compile was not checked (the builds ran with `-q`).
+
+## 10. DTS-HD MA target (2026-10-22)
+
+Summary; the details, the Codex review and every deviation from the port design are in
+[DTSHD_PORT.md](DTSHD_PORT.md) §11.
+
+- **Target per stream:** DTS-HD MA when the output plays DTS-HD as itself (the own IEC engine, or pinned
+  capabilities that list DTS-HD), else the DTS core, else PCM. A refused DTS-HD AudioTrack steps the
+  stream to the core, a refused core to PCM, never learned as a denial of real DTS (D5).
+  `debug.nuvio.aac_dts_target=hd|core` forces the target (D6).
+- **JNI:** `TRANSCODE_TARGET_DTS_HD`; the vendored dtshdma writer pairs core packet p with the 24-bit PCM
+  of frame p − 1; mono is dual mono at unity.
+- **Fixes to the core target that came with it:** alignment and the last frame (§4), the priming trim in
+  `TranscodeClock`, the discard of pre-target units after a seek, the step-down before the PCM recovery,
+  no latch change while a same-configuration retry is scheduled, the tunnel guard.
+- **Not yet:** the CI AAR (the app reaches the DTS-HD API by reflection and stays on the core with the
+  current AAR), the device run.
+

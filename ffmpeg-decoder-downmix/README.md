@@ -45,13 +45,32 @@ core with FFmpeg's `dca` encoder: 48 kHz, 1509 kbit/s (2012-byte frames, inside 
 burst), packed S32 input, opened with `strict_std_compliance` set to experimental. The DTS path resamples
 with `filter_size` 144, `cutoff` 0.875 (scaled down below 44.1 kHz input) and `kaiser_beta` 13.
 
-Both targets:
+With `setTranscodeAacToDtsHd(true)` (off by default) and a sink that plays the DTS-HD transcode format
+(`dtsHdOutputFormat()`, marked with `DTS_HD_TRANSCODE_FORMAT_ID`) directly, it writes DTS-HD Master Audio
+instead: each 512-sample unit is the aligned DTS core plus an ExSS and a lossless 24-bit XLL, written by
+the vendored dtshdma library (`src/main/jni/dtshdma/`, see `PROVENANCE.md`). The PCM is rounded to 24
+bits before dcaenc, so the core and the XLL code the same samples; a mono source goes out as dual mono.
+`DtsTranscodeTargets.choose` picks the target; `setDtsTranscodeTargetOverride` forces one for testing.
+
+All targets:
 
 - report every encoded frame of a buffer to the sink through the app's `EncodedFrameCountingAudioSink`
   (Media3's `DecoderAudioRenderer` passes an access-unit count of 1);
-- stamp output buffers from an anchored clock (`TranscodeClock`), not from the packet that completed them;
+- stamp output buffers from an anchored clock (`TranscodeClock`), not from the packet that completed them,
+  taking a priming trim into account when looking for discontinuities;
 - drop the AAC priming (`Format.encoderDelay`) only when decoding starts at the stream start;
 - flush the decoder, resampler and encoder FIFO with the packet flagged as the last sample, since
-  `SimpleDecoder` never hands the end-of-stream buffer to `decode()`. When that flag is missing, up to
-  511 + 108 samples (12.9 ms at 48 kHz) at the very end are not played.
+  `SimpleDecoder` never hands the end-of-stream buffer to `decode()`.
 
+The DTS targets also:
+
+- drop dcaenc's pre-roll packet and flush its last frame with one zero frame at the end of stream, so
+  the core is aligned with its input (dcaenc's output lags one 512-sample frame);
+- drop, after a seek, the units an accepted packet brings out from before the seek target.
+
+At the end of stream with the last-sample flag nothing is lost (the last unit is padded with silence).
+Without the flag, up to 511 (FIFO) + about 108 (resampler) + 512 (the frame dcaenc holds) samples,
+23.6 ms at 48 kHz, are not played.
+
+`src/test/native` is a host test of the JNI transcode path against FFmpeg n7.0.2 (`README.md` there);
+`src/test/java` holds the module's JVM unit tests (`./gradlew :ffmpeg-decoder-downmix:testDebugUnitTest`).
