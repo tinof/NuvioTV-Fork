@@ -54,13 +54,15 @@ internal fun PlayerRuntimeController.tryAacToDtsStepDown(error: PlaybackExceptio
     val mime = failedAudioTrackInputFormat(error)?.sampleMimeType
     val sourceMime = lastAudioInputMime?.takeIf { it.first === _exoPlayer }?.second
     val step = aacToDtsStepDown(sourceMime, mime) ?: return false
+    // Latched only with a player to rebuild: a latch without its rebuild would leave the live
+    // renderer and sink on the old target while the next in-place resolve reads the new one.
+    val player = _exoPlayer ?: return false
     val url = currentStreamUrl
     val taken = when (step) {
         AacToDtsStepDown.HD_OFF -> aacToDtsHdOffStreamUrls.add(url)
         AacToDtsStepDown.ALL_OFF -> aacToDtsOffStreamUrls.add(url)
     }
     if (!taken) return false
-    val player = _exoPlayer ?: return false
     Log.w(PlayerRuntimeController.TAG, "AAC_DTS_STEP_DOWN $step after a refused $mime AudioTrack (source $sourceMime)")
     queuePlaybackRawEventLine("aac_dts_step_down step=$step refused=$mime source=$sourceMime")
     scheduleOwnedPlaybackRecovery(player.currentPosition, 0L)
