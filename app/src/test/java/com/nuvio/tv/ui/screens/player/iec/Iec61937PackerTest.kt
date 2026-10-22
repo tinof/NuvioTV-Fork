@@ -85,7 +85,7 @@ class Iec61937PackerTest {
     fun packDtsHdInto_stereoBurstCarriesTheLargestTranscodeUnit() {
         val period = Iec61937Packer.dtsHdIecPeriod(2, 512)
         assertEquals(8172, Iec61937Packer.dtsHdPayloadCapacity(period))
-        // DTSHDMA_MAX_UNIT_BYTES_24(2, 2012): the largest unit the transcode can write.
+        // DCAXLL_MAX_UNIT_BYTES_24(2, 2012): the largest unit the transcode can write.
         val out = ByteArray(period shl 2)
         assertTrue(Iec61937Packer.packDtsHdInto(java.nio.ByteBuffer.wrap(ByteArray(5369)), period, out))
         assertTrue(Iec61937Packer.packDtsHdInto(java.nio.ByteBuffer.wrap(ByteArray(8172)), period, out))

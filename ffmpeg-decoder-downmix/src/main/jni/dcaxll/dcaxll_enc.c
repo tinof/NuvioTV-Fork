@@ -1,9 +1,12 @@
 /*
- * dtshdma_enc: DTS-HD Master Audio access-unit writer (core + ExSS + XLL).
- * See dtshdma_enc.h for the API and docs/WRITER_SPEC.md for every field.
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ * Copyright (C) 2026 tinof
+ *
+ * dcaxll_enc: DCA core + ExSS + XLL access-unit writer (ETSI TS 102 114).
+ * See dcaxll_enc.h for the API and docs/WRITER_SPEC.md for every field.
  * Section numbers (§) below refer to docs/WRITER_SPEC.md.
  */
-#include "dtshdma_enc.h"
+#include "dcaxll_enc.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -33,17 +36,17 @@ typedef struct segcode {
 
 /* worst case per segment: 2 flag bits + per channel (params + iso list +
  * 256 samples * 32 bits), rounded up generously */
-#define SEGBUF_BYTES (8 + DTSHDMA_MAX_CHANNELS * (8 + MAX_ISO + 1 + SEG_SAMPLES * 4))
+#define SEGBUF_BYTES (8 + DCAXLL_MAX_CHANNELS * (8 + MAX_ISO + 1 + SEG_SAMPLES * 4))
 
-struct dtshdma_enc {
-    dtshdma_config cfg;
-    int32_t x[DTSHDMA_MAX_CHANNELS][DTSHDMA_UNIT_SAMPLES];
-    int32_t res[MAX_ORDER + 1][DTSHDMA_UNIT_SAMPLES];
-    uint32_t u[DTSHDMA_UNIT_SAMPLES];
+struct dcaxll_enc {
+    dcaxll_config cfg;
+    int32_t x[DCAXLL_MAX_CHANNELS][DCAXLL_UNIT_SAMPLES];
+    int32_t res[MAX_ORDER + 1][DCAXLL_UNIT_SAMPLES];
+    uint32_t u[DCAXLL_UNIT_SAMPLES];
     segcode cand[NSEG];                         /* scratch for one order */
-    segcode code[DTSHDMA_MAX_CHANNELS][NSEG];   /* chosen codes */
-    int32_t best_res[DTSHDMA_MAX_CHANNELS][DTSHDMA_UNIT_SAMPLES];
-    int order[DTSHDMA_MAX_CHANNELS];
+    segcode code[DCAXLL_MAX_CHANNELS][NSEG];   /* chosen codes */
+    int32_t best_res[DCAXLL_MAX_CHANNELS][DCAXLL_UNIT_SAMPLES];
+    int order[DCAXLL_MAX_CHANNELS];
     uint8_t seg[NSEG][SEGBUF_BYTES];
     size_t seg_bytes[NSEG];
 };
@@ -122,7 +125,7 @@ static uint32_t read_bits(const uint8_t *buf, size_t pos, unsigned n)
 /* ------------------------------------------------------------------ */
 /* CRC-16/CCITT-FALSE (§0)                                             */
 
-uint16_t dtshdma_crc16(const uint8_t *data, size_t len)
+uint16_t dcaxll_crc16(const uint8_t *data, size_t len)
 {
     uint16_t crc = 0xFFFF;
     for (size_t i = 0; i < len; i++) {
@@ -153,13 +156,13 @@ static uint32_t zigzag(int32_t v)
     return ((uint32_t)v << 1) ^ (v < 0 ? 0xFFFFFFFFu : 0u);
 }
 
-void dtshdma_config_default(dtshdma_config *cfg, int channels)
+void dcaxll_config_default(dcaxll_config *cfg, int channels)
 {
     memset(cfg, 0, sizeof(*cfg));
     cfg->channels = channels;
     cfg->sample_rate = 48000;
     cfg->pcm_bits = 24;
-    cfg->exss_profile = DTSHDMA_EXSS_OFFICIAL;
+    cfg->exss_profile = DCAXLL_EXSS_OFFICIAL;
     /* Swift-like delivery grammar (Swift notes section 7, rows 5-6): fixed
      * orders 0/1, Rice for every active segment, no hybrid Rice. */
     cfg->max_fixed_order = 1;
@@ -170,22 +173,22 @@ void dtshdma_config_default(dtshdma_config *cfg, int channels)
     cfg->patch_core_header = 1;
 }
 
-dtshdma_enc *dtshdma_enc_create(const dtshdma_config *cfg)
+dcaxll_enc *dcaxll_enc_create(const dcaxll_config *cfg)
 {
-    if (!cfg || cfg->channels < 1 || cfg->channels > DTSHDMA_MAX_CHANNELS ||
+    if (!cfg || cfg->channels < 1 || cfg->channels > DCAXLL_MAX_CHANNELS ||
         cfg->sample_rate != 48000 || cfg->pcm_bits != 24 ||
-        (cfg->exss_profile != DTSHDMA_EXSS_OFFICIAL &&
-         cfg->exss_profile != DTSHDMA_EXSS_MINIMAL) ||
+        (cfg->exss_profile != DCAXLL_EXSS_OFFICIAL &&
+         cfg->exss_profile != DCAXLL_EXSS_MINIMAL) ||
         cfg->max_fixed_order < 0 || cfg->max_fixed_order > MAX_ORDER ||
         cfg->max_unary < 0 || cfg->max_unary > 32 || cfg->min_size_bits < 1 || cfg->min_size_bits > 16)
         return NULL;
-    dtshdma_enc *e = calloc(1, sizeof(*e));
+    dcaxll_enc *e = calloc(1, sizeof(*e));
     if (e)
         e->cfg = *cfg;
     return e;
 }
 
-void dtshdma_enc_destroy(dtshdma_enc *enc)
+void dcaxll_enc_destroy(dcaxll_enc *enc)
 {
     free(enc);
 }
@@ -193,7 +196,7 @@ void dtshdma_enc_destroy(dtshdma_enc *enc)
 /* ------------------------------------------------------------------ */
 /* Entropy code choice for one channel in one segment (§4.6)          */
 
-static void choose_code(const dtshdma_config *cfg, const uint32_t *u, int seg, segcode *sc)
+static void choose_code(const dcaxll_config *cfg, const uint32_t *u, int seg, segcode *sc)
 {
     const uint32_t alloc_bits = seg == 0 ? 2 * NABITS : NABITS; /* part A + part B */
     const uint32_t cap = (uint32_t)cfg->max_unary;
@@ -310,7 +313,7 @@ static int write_samples(bw *b, const uint32_t *u, const segcode *sc, uint32_t c
 }
 
 /* Chooses the fixed predictor order and the entropy codes of channel c. */
-static void analyse_channel(dtshdma_enc *e, int c)
+static void analyse_channel(dcaxll_enc *e, int c)
 {
     const int maxo = e->cfg.max_fixed_order;
     uint64_t best = UINT64_MAX;
@@ -318,7 +321,7 @@ static void analyse_channel(dtshdma_enc *e, int c)
     memcpy(e->res[0], e->x[c], sizeof(e->res[0]));
     for (int o = 1; o <= maxo; o++) {
         e->res[o][0] = e->res[o - 1][0];
-        for (int k = 1; k < DTSHDMA_UNIT_SAMPLES; k++)
+        for (int k = 1; k < DCAXLL_UNIT_SAMPLES; k++)
             e->res[o][k] = e->res[o - 1][k] - e->res[o - 1][k - 1];
     }
     for (int o = 0; o <= maxo; o++) {
@@ -328,7 +331,7 @@ static void analyse_channel(dtshdma_enc *e, int c)
          * 0 always fits, because the input is clamped to 24 bits. */
         if (o > 0) {
             int wide = 0;
-            for (int k = 0; k < DTSHDMA_UNIT_SAMPLES && !wide; k++)
+            for (int k = 0; k < DCAXLL_UNIT_SAMPLES && !wide; k++)
                 wide = bitlen(zigzag(e->res[o][k])) > 24;
             if (wide)
                 continue;
@@ -349,7 +352,7 @@ static void analyse_channel(dtshdma_enc *e, int c)
     }
 }
 
-static int write_segment(dtshdma_enc *e, int s)
+static int write_segment(dcaxll_enc *e, int s)
 {
     const int nch = e->cfg.channels;
     bw b;
@@ -382,17 +385,17 @@ static int write_segment(dtshdma_enc *e, int s)
         for (int i = 0; i < SEG_SAMPLES; i++)
             e->u[i] = zigzag(e->best_res[c][s * SEG_SAMPLES + i]);
         if (write_samples(&b, e->u, &e->code[c][s], (uint32_t)e->cfg.max_unary) < 0)
-            return DTSHDMA_ERR_INTERNAL;
+            return DCAXLL_ERR_INTERNAL;
     }
     bw_align(&b);
     if (b.err)
-        return DTSHDMA_ERR_INTERNAL;
+        return DCAXLL_ERR_INTERNAL;
     /* cross-check against the cost model */
     size_t expect = (s ? 2 : 1);
     for (int c = 0; c < nch; c++)
         expect += e->code[c][s].bits;
     if (b.pos != (expect + 7) / 8)
-        return DTSHDMA_ERR_INTERNAL;
+        return DCAXLL_ERR_INTERNAL;
     e->seg_bytes[s] = b.pos;
     return 0;
 }
@@ -401,7 +404,7 @@ static int write_segment(dtshdma_enc *e, int s)
 /* Headers                                                             */
 
 /* XLL channel-set sub-header (§4.2). Returns its size B. */
-static size_t write_subheader(const dtshdma_enc *e, uint8_t *dst, size_t cap)
+static size_t write_subheader(const dcaxll_enc *e, uint8_t *dst, size_t cap)
 {
     const int nch = e->cfg.channels;
     bw b;
@@ -429,12 +432,12 @@ static size_t write_subheader(const dtshdma_enc *e, uint8_t *dst, size_t cap)
     if (b.err || size > cap)
         return 0;
     patch_bits(dst, 0, 10, (uint32_t)(size - 1));
-    put_crc(dst + b.pos, dtshdma_crc16(dst, b.pos));
+    put_crc(dst + b.pos, dcaxll_crc16(dst, b.pos));
     return size;
 }
 
 /* NAVI (§4.3). Returns its size N. */
-static size_t write_navi(const dtshdma_enc *e, unsigned sbits, uint8_t *dst, size_t cap)
+static size_t write_navi(const dcaxll_enc *e, unsigned sbits, uint8_t *dst, size_t cap)
 {
     bw b;
     bw_init(&b, dst, cap);
@@ -443,7 +446,7 @@ static size_t write_navi(const dtshdma_enc *e, unsigned sbits, uint8_t *dst, siz
     bw_align(&b);
     if (b.err || b.pos + 2 > cap)
         return 0;
-    put_crc(dst + b.pos, dtshdma_crc16(dst, b.pos));
+    put_crc(dst + b.pos, dcaxll_crc16(dst, b.pos));
     return b.pos + 2;
 }
 
@@ -470,14 +473,14 @@ static size_t write_common(unsigned fbits, size_t frame_size, unsigned sbits,
     if (b.err || size > cap)
         return 0;
     patch_bits(dst, 36, 8, (uint32_t)(size - 1));
-    put_crc(dst + b.pos, dtshdma_crc16(dst + 4, b.pos - 4));
+    put_crc(dst + b.pos, dcaxll_crc16(dst + 4, b.pos - 4));
     return size;
 }
 
 /* ExSS header with one asset descriptor (§3). Returns its size H. */
-static size_t write_exss(const dtshdma_config *cfg, size_t xll_size, uint8_t *dst, size_t cap)
+static size_t write_exss(const dcaxll_config *cfg, size_t xll_size, uint8_t *dst, size_t cap)
 {
-    const int official = cfg->exss_profile == DTSHDMA_EXSS_OFFICIAL;
+    const int official = cfg->exss_profile == DCAXLL_EXSS_OFFICIAL;
     const int nch = cfg->channels;
     bw b;
     bw_init(&b, dst, cap);
@@ -549,51 +552,51 @@ static size_t write_exss(const dtshdma_config *cfg, size_t xll_size, uint8_t *ds
     patch_bits(dst, dpos, 9, (uint32_t)(dbytes - 1));
     patch_bits(dst, 43, 8, (uint32_t)(size - 1));
     patch_bits(dst, 51, 16, (uint32_t)(size + xll_size - 1));
-    put_crc(dst + b.pos, dtshdma_crc16(dst + 5, b.pos - 5));
+    put_crc(dst + b.pos, dcaxll_crc16(dst + 5, b.pos - 5));
     return size;
 }
 
-long dtshdma_core_frame_size(const uint8_t *core, size_t core_size)
+long dcaxll_core_frame_size(const uint8_t *core, size_t core_size)
 {
     if (!core || core_size < 16)
-        return DTSHDMA_ERR_CORE;
+        return DCAXLL_ERR_CORE;
     if (read_bits(core, 0, 32) != SYNC_CORE)
-        return DTSHDMA_ERR_CORE;
+        return DCAXLL_ERR_CORE;
     long fsize = (long)read_bits(core, 46, 14) + 1;
     if (fsize < 96 || (size_t)fsize > core_size)
-        return DTSHDMA_ERR_CORE;
+        return DCAXLL_ERR_CORE;
     return fsize;
 }
 
 /* ------------------------------------------------------------------ */
 
-long dtshdma_enc_encode_unit(dtshdma_enc *e, const int32_t *const pcm[],
+long dcaxll_enc_encode_unit(dcaxll_enc *e, const int32_t *const pcm[],
                              const uint8_t *core, size_t core_size,
                              uint8_t *out, size_t out_cap,
-                             dtshdma_unit_info *info)
+                             dcaxll_unit_info *info)
 {
     if (!e || !pcm || !out)
-        return DTSHDMA_ERR_ARG;
+        return DCAXLL_ERR_ARG;
     const int nch = e->cfg.channels;
     for (int c = 0; c < nch; c++)
         if (!pcm[c])
-            return DTSHDMA_ERR_ARG;
+            return DCAXLL_ERR_ARG;
 
     /* core frame (§2) */
-    long fsize = dtshdma_core_frame_size(core, core_size);
+    long fsize = dcaxll_core_frame_size(core, core_size);
     if (fsize < 0)
         return fsize;
     uint32_t amode = read_bits(core, 60, 6), sfreq = read_bits(core, 66, 4);
     uint32_t nblks = read_bits(core, 39, 7), lff = read_bits(core, 85, 2);
     /* 48 kHz, matching channel mode, 512 samples ((NBLKS + 1) * 32), no LFE */
     if (sfreq != 13 || amode != (nch == 1 ? 0u : 2u) || nblks != 15 || lff != 0)
-        return DTSHDMA_ERR_CORE_FMT;
+        return DCAXLL_ERR_CORE_FMT;
     const size_t core_out = ((size_t)fsize + 3) & ~(size_t)3;
 
     /* input, clamped to 24 bits (T15) */
     int clipped = 0;
     for (int c = 0; c < nch; c++) {
-        for (int i = 0; i < DTSHDMA_UNIT_SAMPLES; i++) {
+        for (int i = 0; i < DCAXLL_UNIT_SAMPLES; i++) {
             int32_t v = pcm[c][i];
             if (v > 8388607) { v = 8388607; clipped++; }
             else if (v < -8388608) { v = -8388608; clipped++; }
@@ -620,7 +623,7 @@ long dtshdma_enc_encode_unit(dtshdma_enc *e, const int32_t *const pcm[],
     size_t B = write_subheader(e, sub, sizeof(sub));
     size_t N = write_navi(e, sbits, navi, sizeof(navi));
     if (!B || !N)
-        return DTSHDMA_ERR_INTERNAL;
+        return DCAXLL_ERR_INTERNAL;
     const size_t body = B + N + e->seg_bytes[0] + e->seg_bytes[1];
 
     unsigned fbits = minbits;
@@ -628,7 +631,7 @@ long dtshdma_enc_encode_unit(dtshdma_enc *e, const int32_t *const pcm[],
     for (;;) {
         C = write_common(fbits, 1, sbits, hdr, sizeof(hdr));
         if (!C)
-            return DTSHDMA_ERR_INTERNAL;
+            return DCAXLL_ERR_INTERNAL;
         L = (C + body + 3) & ~(size_t)3;
         unsigned need = bitlen((uint32_t)(L - 1));
         if (need <= fbits)
@@ -636,17 +639,17 @@ long dtshdma_enc_encode_unit(dtshdma_enc *e, const int32_t *const pcm[],
         fbits = need;
     }
     if (L > 65535 - 64)
-        return DTSHDMA_ERR_INTERNAL;
+        return DCAXLL_ERR_INTERNAL;
     C = write_common(fbits, L, sbits, hdr, sizeof(hdr));
 
     /* assemble */
     uint8_t exss[64];
     size_t H = write_exss(&e->cfg, L, exss, sizeof(exss));
     if (!H)
-        return DTSHDMA_ERR_INTERNAL;
+        return DCAXLL_ERR_INTERNAL;
     const size_t total = core_out + H + L;
     if (total > out_cap)
-        return DTSHDMA_ERR_SPACE;
+        return DCAXLL_ERR_SPACE;
 
     uint8_t *p = out;
     memcpy(p, core, (size_t)fsize);
