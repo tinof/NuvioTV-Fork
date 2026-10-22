@@ -75,7 +75,7 @@ class Env:
             if "segment" in fields:
                 key = "segment%s" % fields["segment"]
             else:
-                key = "hd" if line.startswith("hd_") else "run"
+                key = line.split("_", 1)[0] if line.startswith(("hd_", "seek_")) else "run"
             stats[key] = {k: int(v) for k, v in fields.items()}
         return out, oracle, stats, p.stderr
 
@@ -183,6 +183,9 @@ def run_core(env):
         if rate == 48000 and nch == 2:
             case_unflagged(env, TARGET_DTS, aac, nch, packets, "core_noflag")
             case_reset(env, TARGET_DTS, aac, nch, "core_reset")
+            for name, start, drop in (("core_seek_mid", 80 * 21333 + 5000, False),
+                                      ("core_seek_on", 81 * 64000 // 3, True)):
+                case_seek(env, TARGET_DTS, aac, nch, start, name, drop)
 
 
 def case_unflagged(env, target, aac, nch, packets, tag):
@@ -217,6 +220,41 @@ def case_reset(env, target, aac, nch, tag):
             rc, dec, err = env.decode(env.path(tag + name + ".dts"))
             check(rc == 0 and dec == oracle[: len(dec)] and len(dec) == len(oracle) - UNIT * n,
                   "%s%s: XLL bit-exact against the PCM sent after the reset" % (tag, name))
+
+
+def case_seek(env, target, aac, nch, start_us, tag, expect_drop):
+    """A seek that resumes at packet 70 with a later target: the input-time skip and the
+    output-time discard together make the output start at the first unit at or after the target."""
+    out, oracle_path, st, _ = env.run(aac, target, tag, [
+        "--reset-at", "50", "--resume-from", "70", "--start-us", str(start_us),
+        "--out-after-reset", env.path(tag + "_after.dts"),
+        "--oracle-after-reset", env.path(tag + "_after.s32")])
+    seek, after, run = st["seek"], st["segment1"], st["run"]
+    unit_us = UNIT * 1000000 // 48000
+    first_us, first = seek["seek_first_unit_us"], seek["seek_first_unit"]
+    check(run["frame_mismatch"] == 0, "%s: dropped units still count as encoded samples" % tag)
+    if expect_drop:
+        # The target on a packet: that packet is accepted, and its first unit is the one held
+        # back from the packet before, 10.67 ms early.
+        check(seek["seek_dropped_by_output"] >= 1,
+              "%s: %d units of an accepted packet dropped by their output time" % (tag, seek["seek_dropped_by_output"]))
+    check(first_us + 20 >= start_us and first_us - unit_us + 20 < start_us,
+          "%s: first unit out at %d us, the first one at or after the target %d" % (tag, first_us, start_us))
+    n = nch_out(target, nch)
+    oracle = read_s32(env.path(tag + "_after.s32"))
+    expected = oracle[first * UNIT * n: len(oracle) - UNIT * n]
+    check(after["units"] * UNIT * n == len(expected),
+          "%s: %d units out from unit %d to the end" % (tag, after["units"], first))
+    rc, core, err = env.decode(env.path(tag + "_after.dts"), core_only=True)
+    check(rc == 0 and len(core) == len(expected), "%s: the cut stream decodes" % tag)
+    for ch in range(n):
+        o, d = channel(expected, ch, n), channel(core, ch, n)
+        aligned, late = snr_db(o, d, 0), snr_db(o, d, UNIT)
+        check(aligned > 20 and aligned > late + 10,
+              "%s: ch%d the cut lands on a unit boundary (SNR %.1f dB vs %.1f)" % (tag, ch, aligned, late))
+    if target == TARGET_DTS_HD:
+        rc, dec, err = env.decode(env.path(tag + "_after.dts"))
+        check(rc == 0 and dec == expected, "%s: XLL bit-exact from the first unit kept" % tag)
 
 
 def count_adts(path):
@@ -281,6 +319,9 @@ def run_hd(env):
         if rate == 48000 and nch == 2 and not loud:
             case_unflagged(env, TARGET_DTS_HD, aac, nch, packets, "hd_noflag")
             case_reset(env, TARGET_DTS_HD, aac, nch, "hd_reset")
+            for name, start, drop in (("hd_seek_mid", 80 * 21333 + 5000, False),
+                                      ("hd_seek_on", 81 * 64000 // 3, True)):
+                case_seek(env, TARGET_DTS_HD, aac, nch, start, name, drop)
 
 
 if __name__ == "__main__":
