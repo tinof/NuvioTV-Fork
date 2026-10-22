@@ -343,7 +343,7 @@ Summary; the details, the Codex review and every deviation from the port design 
   platform sink and the own IEC engine), else the DTS core, else PCM. A refused DTS-HD AudioTrack steps the
   stream to the core, a refused core to PCM, never learned as a denial of real DTS (D5).
   `debug.nuvio.aac_dts_target=hd|core` forces the target (D6).
-- **JNI:** `TRANSCODE_TARGET_DTS_HD`; the vendored dtshdma writer pairs core packet p with the 24-bit PCM
+- **JNI:** `TRANSCODE_TARGET_DTS_HD`; the vendored dcaxll writer pairs core packet p with the 24-bit PCM
   of frame p − 1; mono is dual mono at unity.
 - **Fixes to the core target that came with it:** alignment and the last frame (§4), the priming trim in
   `TranscodeClock`, the discard of pre-target units after a seek, the step-down before the PCM recovery,

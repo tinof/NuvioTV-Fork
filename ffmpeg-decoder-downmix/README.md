@@ -48,7 +48,7 @@ with `filter_size` 144, `cutoff` 0.875 (scaled down below 44.1 kHz input) and `k
 With `setTranscodeAacToDtsHd(true)` (off by default) and a sink that plays the DTS-HD transcode format
 (`dtsHdOutputFormat()`, marked with `DTS_HD_TRANSCODE_FORMAT_ID`) directly, it writes DTS-HD Master Audio
 instead: each 512-sample unit is the aligned DTS core plus an ExSS and a lossless 24-bit XLL, written by
-the vendored dtshdma library (`src/main/jni/dtshdma/`, see `PROVENANCE.md`). The PCM is rounded to 24
+the vendored dcaxll library (`src/main/jni/dcaxll/`, see `PROVENANCE.md`). The PCM is rounded to 24
 bits before dcaenc, so the core and the XLL code the same samples; a mono source goes out as dual mono.
 `DtsTranscodeTargets.choose` picks the target; `setDtsTranscodeTargetOverride` forces one for testing.
 
