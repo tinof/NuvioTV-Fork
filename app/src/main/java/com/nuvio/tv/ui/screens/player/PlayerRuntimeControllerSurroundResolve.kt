@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.player
 import android.content.Context
 import android.util.Log
 import androidx.media3.common.Player
+import com.nuvio.tv.core.player.AacToDtsRouting
 import com.nuvio.tv.core.player.DeniedTranscodePlanner
 import com.nuvio.tv.core.player.SurroundFormatResolver
 import com.nuvio.tv.core.util.DebugSwitches
@@ -210,6 +211,36 @@ private fun PlayerRuntimeController.readSurroundInPlace(
     inputs.copy(routeKey = currentAudioOutputRoute?.key ?: inputs.routeKey)
 )
 
+/** The AAC-to-DTS flags given to the FFmpeg renderer. */
+internal data class AacToDtsRendererFlags(
+    val transcode: Boolean,
+    val hdAllowed: Boolean,
+    val override: AacToDtsRouting.Target?
+)
+
+/**
+ * The values the player's sink was built with, so the renderer and the sink pick the same DTS
+ * target. Re-reading them live (the debug switch, a step-down latched before its rebuild) would
+ * split the two, and each capability notice would then re-create the decoder again. The [live]
+ * values apply only when there is no sink yet; a changed setting applies with the next player.
+ */
+internal fun aacToDtsRendererFlags(
+    sink: PlaybackSpeedAwareAudioSink?,
+    live: () -> AacToDtsRendererFlags
+): AacToDtsRendererFlags =
+    sink?.let { AacToDtsRendererFlags(it.transcodeAacToDts, it.transcodeAacToDtsHd, it.dtsTargetOverride) }
+        ?: live()
+
+private fun PlayerRuntimeController.liveAacToDtsRendererFlags(settings: PlayerSettings): AacToDtsRendererFlags {
+    val override = aacToDtsTargetOverride()
+    return AacToDtsRendererFlags(
+        transcode = settings.transcodeAacToDts && settings.decoderPriority != 0 &&
+            currentStreamUrl !in aacToDtsOffStreamUrls,
+        hdAllowed = aacToDtsHdAllowed(currentStreamUrl, override),
+        override = override
+    )
+}
+
 private fun PlayerRuntimeController.commitSurroundResolution(
     reason: String,
     surround: SurroundResolveResult,
@@ -218,18 +249,19 @@ private fun PlayerRuntimeController.commitSurroundResolution(
 ) {
     val routeKey = currentAudioOutputRoute?.key ?: inputs.routeKey
     val policy = surround.resolution.policy
-    val policyChanged = playbackSpeedAwareAudioSink?.setPassthroughPolicy(policy) == true
+    val sink = playbackSpeedAwareAudioSink
+    val policyChanged = sink?.setPassthroughPolicy(policy) == true
     currentAudioPassthroughPolicy = policy
+    val dts = aacToDtsRendererFlags(sink) { liveAacToDtsRendererFlags(settings) }
     ffmpegAudioRenderer?.applyDownmixSettings(
         downmixEnabled = surround.downmixEnabled,
         audioOutputChannels = surround.audioOutputChannels,
         downmixNormalizationEnabled = !settings.maintainOriginalAudioOnDownmix,
         forceOpticalPassthrough = inputs.forceOpticalActive,
         deniedTranscodeMimes = surround.deniedTranscodeMimes,
-        transcodeAacToDts = settings.transcodeAacToDts && settings.decoderPriority != 0 &&
-            currentStreamUrl !in aacToDtsOffStreamUrls,
-        transcodeAacToDtsHd = aacToDtsHdAllowed(currentStreamUrl, aacToDtsTargetOverride()),
-        aacToDtsTargetOverride = aacToDtsTargetOverride()
+        transcodeAacToDts = dts.transcode,
+        transcodeAacToDtsHd = dts.hdAllowed,
+        aacToDtsTargetOverride = dts.override
     )
     val changed = surroundResolveNeedsReselect(lastAppliedSurroundResolve, surround) || policyChanged
     lastAppliedSurroundResolve = surround
