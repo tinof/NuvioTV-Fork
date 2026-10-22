@@ -72,6 +72,51 @@ class AudioRoutingSnapshotTest {
     }
 
     @Test
+    fun aacToDtsHd_resolvesTranscodeDtsHdMa() {
+        val routing = resolveAudioRoutingSnapshot(
+            sourceMime = MimeTypes.AUDIO_AAC,
+            sourceChannelCount = 1,
+            isIecActive = false,
+            isTranscodingAc3 = false,
+            isAudioPathActive = true,
+            sinkMime = MimeTypes.AUDIO_DTS_HD,
+            sinkChannelCount = 2,
+            isTranscodingDts = true
+        )
+        assertEquals(AudioRoutingMode.TRANSCODE_DTS, routing?.mode)
+        assertEquals("transcode DTS-HD MA", routing?.outputFormat)
+        assertFalse(routing!!.isFallback)
+    }
+
+    @Test
+    fun aacToDtsHd_throughTheOwnIec_isStillATranscode() {
+        val routing = resolveAudioRoutingSnapshot(
+            sourceMime = MimeTypes.AUDIO_AAC,
+            sourceChannelCount = 2,
+            isIecActive = true,
+            isTranscodingAc3 = false,
+            isAudioPathActive = true,
+            sinkMime = MimeTypes.AUDIO_DTS_HD,
+            sinkChannelCount = 2,
+            isTranscodingDts = true
+        )
+        assertEquals(AudioRoutingMode.TRANSCODE_DTS, routing?.mode)
+        assertEquals("transcode DTS-HD MA (IEC)", routing?.outputFormat)
+    }
+
+    @Test
+    fun audioPathRow_namesEachTranscode() {
+        assertEquals("DTS-HD MA transcode", transcodeSinkPathLabel(androidx.media3.common.C.ENCODING_DTS_HD, MimeTypes.AUDIO_AAC))
+        assertEquals("DTS transcode", transcodeSinkPathLabel(androidx.media3.common.C.ENCODING_DTS, MimeTypes.AUDIO_AAC))
+        assertEquals("AC-3 transcode", transcodeSinkPathLabel(androidx.media3.common.C.ENCODING_AC3, MimeTypes.AUDIO_TRUEHD))
+        assertNull(transcodeSinkPathLabel(androidx.media3.common.C.ENCODING_DTS_HD, MimeTypes.AUDIO_DTS_HD))
+        assertNull(transcodeSinkPathLabel(androidx.media3.common.C.ENCODING_DTS, MimeTypes.AUDIO_DTS))
+        assertNull(transcodeSinkPathLabel(androidx.media3.common.C.ENCODING_AC3, MimeTypes.AUDIO_AC3))
+        assertNull(transcodeSinkPathLabel(androidx.media3.common.C.ENCODING_PCM_16BIT, MimeTypes.AUDIO_AAC))
+        assertNull(transcodeSinkPathLabel(androidx.media3.common.C.ENCODING_DTS, null))
+    }
+
+    @Test
     fun dtsHdTranscode_isADtsHdSinkForANonDtsSource() {
         assertTrue(isDtsTranscode(MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_DTS_HD))
         assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_HD))

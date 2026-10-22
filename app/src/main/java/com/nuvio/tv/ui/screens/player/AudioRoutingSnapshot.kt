@@ -47,6 +47,16 @@ internal fun resolveAudioRoutingSnapshot(
     val isSourceSurroundOrHbr = isSurroundOrHbrMime(sourceMime, sourceChannelCount)
 
     val snapshot = when {
+        // Chosen by the "Transcode AAC to DTS" setting, so not a fallback. Checked before the
+        // own IEC engine, which also carries a DTS-HD MA transcode: that is not passthrough.
+        isTranscodingDts -> {
+            val target = if (sinkMime == MimeTypes.AUDIO_DTS_HD) "transcode DTS-HD MA" else "transcode DTS"
+            AudioRoutingSnapshot(
+                mode = AudioRoutingMode.TRANSCODE_DTS,
+                outputFormat = if (isIecActive) "$target (IEC)" else target,
+                isFallback = false
+            )
+        }
         isIecActive -> {
             AudioRoutingSnapshot(
                 mode = AudioRoutingMode.PASSTHROUGH_IEC,
@@ -59,14 +69,6 @@ internal fun resolveAudioRoutingSnapshot(
                 mode = AudioRoutingMode.TRANSCODE_AC3,
                 outputFormat = "transcode AC-3 5.1",
                 isFallback = true
-            )
-        }
-        // Chosen by the "Transcode AAC to DTS" setting, so not a fallback.
-        isTranscodingDts -> {
-            AudioRoutingSnapshot(
-                mode = AudioRoutingMode.TRANSCODE_DTS,
-                outputFormat = "transcode DTS",
-                isFallback = false
             )
         }
         sinkMime != null && sinkMime != MimeTypes.AUDIO_RAW && PassthroughWaterLevelPacer.isPassthroughMime(sinkMime) -> {
@@ -132,6 +134,20 @@ internal fun PlayerRuntimeController.getAudioRoutingSnapshot(isTunnelled: Boolea
         isTunnelled = isTunnelled,
         isTranscodingDts = isTranscodingDts
     )
+}
+
+/**
+ * The Audio path row's name for a transcode: the sink opened [encoding] for a source of another
+ * codec. Null when it is not a transcode.
+ */
+internal fun transcodeSinkPathLabel(encoding: Int, sourceMime: String?): String? = when {
+    sourceMime == null -> null
+    encoding == androidx.media3.common.C.ENCODING_AC3 && sourceMime != MimeTypes.AUDIO_AC3 -> "AC-3 transcode"
+    encoding == androidx.media3.common.C.ENCODING_DTS_HD && isDtsTranscode(sourceMime, MimeTypes.AUDIO_DTS_HD) ->
+        "DTS-HD MA transcode"
+    encoding == androidx.media3.common.C.ENCODING_DTS && isDtsTranscode(sourceMime, MimeTypes.AUDIO_DTS) ->
+        "DTS transcode"
+    else -> null
 }
 
 /**
