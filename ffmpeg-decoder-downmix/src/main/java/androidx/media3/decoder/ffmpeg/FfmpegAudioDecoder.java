@@ -36,12 +36,19 @@ import androidx.media3.decoder.SimpleDecoder;
 import androidx.media3.decoder.SimpleDecoderOutputBuffer;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.function.LongPredicate;
 
 /** FFmpeg audio decoder with optional float output for active FFmpeg downmixing. */
 /* package */ final class FfmpegAudioDecoder
     extends SimpleDecoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException> {
 
   private static final int INITIAL_OUTPUT_BUFFER_SIZE = 65535 * 2;
+  /** Samples per DTS (and DTS-HD MA) unit of the transcode, at 48 kHz. */
+  private static final int DTS_UNIT_SAMPLES = 512;
+  /** Rounding slack when comparing unit times with the output start: under one 48 kHz sample. */
+  private static final long ONE_SAMPLE_US = 20;
+  /** More units than one decode call can bring out; the input itself is skipped beyond that. */
+  private static final int MAX_SKIPPED_UNITS = 64;
 
   // LINT.IfChange
   private static final int AUDIO_DECODER_ERROR_INVALID_DATA = -1;
@@ -62,6 +69,7 @@ import java.util.List;
   @Nullable private final byte[] extraData;
   private final @C.Encoding int outputEncoding;
   private final boolean transcoding;
+  private final boolean transcodingDts;
   private final int encoderDelay;
   private final int inputSampleRate;
   private final TranscodeClock transcodeClock = new TranscodeClock();
@@ -93,7 +101,8 @@ import java.util.List;
     codecName = checkNotNull(FfmpegLibrary.getCodecName(format.sampleMimeType));
     extraData = getExtraData(format.sampleMimeType, format.initializationData);
     this.outputEncoding = outputEncoding;
-    transcoding = outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_DTS;
+    transcodingDts = outputEncoding == C.ENCODING_DTS || outputEncoding == C.ENCODING_DTS_HD;
+    transcoding = outputEncoding == C.ENCODING_AC3 || transcodingDts;
     encoderDelay = format.encoderDelay;
     inputSampleRate = format.sampleRate;
     outputBufferSize = INITIAL_OUTPUT_BUFFER_SIZE;
@@ -161,6 +170,17 @@ import java.util.List;
       }
       encodedSamplesBefore = ffmpegGetEncodedSamples(nativeContext);
     }
+    int skipUnits = 0;
+    if (transcodingDts && !outputBuffer.shouldBeSkipped) {
+      // SimpleDecoder skips output by the input time, but a transcode buffer starts with audio
+      // that waited in the FIFO and the lookahead. After a seek the first packet at or after the
+      // start position can still bring out units from before it, so they are dropped by their own
+      // time on the output timeline.
+      skipUnits =
+          unitsBeforeOutputStart(
+              transcodeClock.peekOutputTimeUs(
+                  inputBuffer.timeUs, encodedSamplesBefore, FfmpegAudioRenderer.DTS_SAMPLE_RATE));
+    }
     ByteBuffer inputData = Util.castNonNull(inputBuffer.data);
     int inputSize = inputData.limit();
     ByteBuffer outputData = outputBuffer.init(inputBuffer.timeUs, outputBufferSize);
@@ -178,11 +198,16 @@ import java.util.List;
             outputBufferSize,
             userCenterMixLevelDb,
             downmixNormalizationEnabled,
-            endOfStream);
+            endOfStream,
+            skipUnits);
     if (transcoding) {
       outputBuffer.timeUs =
           transcodeClock.getOutputTimeUs(
               inputBuffer.timeUs, encodedSamplesBefore, ffmpegGetSampleRate(nativeContext));
+      if (skipUnits > 0) {
+        long emitted = (ffmpegGetEncodedSamples(nativeContext) - encodedSamplesBefore) / DTS_UNIT_SAMPLES;
+        outputBuffer.timeUs += unitTimeUs(Math.min(skipUnits, emitted));
+      }
     }
     if (result == AUDIO_DECODER_ERROR_OTHER) {
       return new FfmpegDecoderException("Error decoding (see logcat).");
@@ -216,6 +241,27 @@ import java.util.List;
     outputData.position(0);
     outputData.limit(result);
     return null;
+  }
+
+  /**
+   * Returns how many units, the first starting at {@code firstUnitTimeUs}, start before the output
+   * start time (a seek target). A unit less than one sample early counts as on time.
+   */
+  private int unitsBeforeOutputStart(long firstUnitTimeUs) {
+    return unitsBefore(firstUnitTimeUs, this::isAtLeastOutputStartTimeUs);
+  }
+
+  /* package */ static int unitsBefore(long firstUnitTimeUs, LongPredicate atLeastOutputStart) {
+    int units = 0;
+    while (units < MAX_SKIPPED_UNITS
+        && !atLeastOutputStart.test(firstUnitTimeUs + unitTimeUs(units) + ONE_SAMPLE_US)) {
+      units++;
+    }
+    return units;
+  }
+
+  /* package */ static long unitTimeUs(long units) {
+    return units * DTS_UNIT_SAMPLES * C.MICROS_PER_SECOND / FfmpegAudioRenderer.DTS_SAMPLE_RATE;
   }
 
   // Called from native code
@@ -406,7 +452,8 @@ import java.util.List;
       int outputSize,
       int userCenterMixLevelDb,
       boolean downmixNormalizationEnabled,
-      boolean endOfStream);
+      boolean endOfStream,
+      int skipUnits);
 
   private native int ffmpegGetChannelCount(long context);
 
