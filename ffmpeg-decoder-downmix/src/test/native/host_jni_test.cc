@@ -449,7 +449,7 @@ int main(int argc, char** argv) {
   }
   printf("hd_writer_errors=%ld hd_clipped=%ld hd_max_unit=%zu hd_unit_bound=%zu\n",
          decoderContext->hd.writer_errors, decoderContext->hd.clipped, decoderContext->hd.max_unit,
-         (size_t)DTSHDMA_MAX_UNIT_BYTES_24(2, 2012));
+         (size_t)DCAXLL_MAX_UNIT_BYTES_24(2, 2012));
   DECODER_FUNC(ffmpegRelease)(env, thiz, context);
   free(g_input.data);
   free(g_output.data);
