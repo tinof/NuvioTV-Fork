@@ -48,7 +48,11 @@ internal object Iec61937Packer {
         return out
     }
 
-    fun packDtsHdInto(accessUnit: ByteBuffer, iecPeriod: Int, out: ByteArray) {
+    /**
+     * Packs one DTS-HD access unit into a burst of [iecPeriod] frames. Returns false when the
+     * unit does not fit the burst's payload and was cut short (the caller counts it).
+     */
+    fun packDtsHdInto(accessUnit: ByteBuffer, iecPeriod: Int, out: ByteArray): Boolean {
         val burstSize = iecPeriod shl 2
         require(out.size == burstSize) {
             "DTS-HD burst must be $burstSize bytes, was ${out.size}"
@@ -76,7 +80,12 @@ internal object Iec61937Packer {
         accessUnit.get(out, DATA_OFFSET + DTSHD_START_CODE_SIZE, accessUnitCopy)
         accessUnit.position(accessUnit.limit())
         swapEndian16(out, DATA_OFFSET, copy)
+        return payloadBytes <= burstSize - DATA_OFFSET
     }
+
+    /** The largest access unit a DTS-HD burst of [iecPeriod] frames carries whole. */
+    fun dtsHdPayloadCapacity(iecPeriod: Int): Int =
+        ((iecPeriod shl 2) - DATA_OFFSET - DTSHD_START_CODE_SIZE) and 1.inv()
 
     fun dtsHdIecPeriod(channelCount: Int, coreSampleCount: Int): Int {
         val samples = if (coreSampleCount > 0) coreSampleCount else 512

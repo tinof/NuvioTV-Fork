@@ -72,6 +72,16 @@ class AudioRoutingSnapshotTest {
     }
 
     @Test
+    fun dtsHdTranscode_isADtsHdSinkForANonDtsSource() {
+        assertTrue(isDtsTranscode(MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_DTS_HD))
+        assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_HD))
+        assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD))
+        assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS_EXPRESS, MimeTypes.AUDIO_DTS_HD))
+        assertFalse(isDtsTranscode(MimeTypes.AUDIO_DTS_X, MimeTypes.AUDIO_DTS_HD))
+        assertFalse(isDtsTranscode(null, MimeTypes.AUDIO_DTS_HD))
+    }
+
+    @Test
     fun directPassthrough_resolvesDirectPassthrough() {
         val routing = resolveAudioRoutingSnapshot(
             sourceMime = MimeTypes.AUDIO_AC3,
