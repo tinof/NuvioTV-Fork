@@ -226,7 +226,9 @@ private fun PlayerRuntimeController.commitSurroundResolution(
         forceOpticalPassthrough = inputs.forceOpticalActive,
         deniedTranscodeMimes = surround.deniedTranscodeMimes,
         transcodeAacToDts = settings.transcodeAacToDts && settings.decoderPriority != 0 &&
-            currentStreamUrl !in aacToDtsOffStreamUrls
+            currentStreamUrl !in aacToDtsOffStreamUrls,
+        transcodeAacToDtsHd = aacToDtsHdAllowed(currentStreamUrl, aacToDtsTargetOverride()),
+        aacToDtsTargetOverride = aacToDtsTargetOverride()
     )
     val changed = surroundResolveNeedsReselect(lastAppliedSurroundResolve, surround) || policyChanged
     lastAppliedSurroundResolve = surround
