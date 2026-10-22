@@ -127,8 +127,8 @@ none
 
 - Codex's sandbox cannot reach the Shield, the gitignored `docs/nvidia-shield.md` or `.local/`; device
   state and build freshness come from the probes, not from Codex.
-- The full native build (libdovi, FFmpeg decoder) runs only in CI; a missing native artifact in a local
-  checkout is not a finding.
+- The full native build (libdovi, FFmpeg decoder) runs only locally since 2026-10-22, never in CI; a
+  missing native artifact in a checkout is not a finding.
 
 ## Reminders
 
