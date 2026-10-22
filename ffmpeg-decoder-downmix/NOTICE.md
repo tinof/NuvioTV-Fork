@@ -25,7 +25,10 @@ distributed with this project under GPL-3.0-only, while preserving the
 original AndroidX Media3 Apache-2.0 notices for the upstream base code.
 Kodi code available under `GPL-2.0-or-later` is compatible with GPL-3.0.
 
-The DTS-HD Master Audio access-unit writer in `src/main/jni/dtshdma/`
-(`dtshdma_enc.c`, `dtshdma_enc.h`) is a verbatim copy of the owner's own
-`dts-hdma` library. Its source commit, file hashes and copy rule are in
-`src/main/jni/dtshdma/PROVENANCE.md`. It contains no third-party code.
+The dcaxll writer in `src/main/jni/dcaxll/` (`dcaxll_enc.c`, `dcaxll_enc.h`), a
+DCA core + ExSS + XLL access-unit writer whose output is compatible with DTS-HD
+Master Audio decoders, is a verbatim copy of the owner's own `dts-hdma`
+repository (renamed from dtshdma on 2026-10-22). It is licensed
+`LGPL-2.1-or-later`, which is compatible with GPL-3.0, and keeps its own
+licence headers. Its source commit, file hashes and copy rule are in
+`src/main/jni/dcaxll/PROVENANCE.md`. It contains no third-party code.
