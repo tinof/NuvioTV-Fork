@@ -51,6 +51,19 @@ public final class TranscodeClock {
   }
 
   /**
+   * Returns the time the next output unit will be stamped with, if decoding the packet at {@code
+   * inputTimeUs} brings out any, and sets the anchor as {@link #getOutputTimeUs} would. It does not
+   * look for discontinuities.
+   */
+  public long peekOutputTimeUs(long inputTimeUs, long samplesBefore, int sampleRate) {
+    if (anchorTimeUs == C.TIME_UNSET) {
+      anchorTimeUs = inputTimeUs;
+      anchorSamples = samplesBefore;
+    }
+    return anchorTimeUs + (samplesBefore - anchorSamples) * C.MICROS_PER_SECOND / sampleRate;
+  }
+
+  /**
    * Returns the time of the first sample of the output produced while decoding the packet at
    * {@code inputTimeUs}.
    *
