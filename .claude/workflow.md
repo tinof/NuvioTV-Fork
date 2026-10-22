@@ -22,7 +22,7 @@ gate:           ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew :app:testFull
 gate-focused:   ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew :app:testFullDebugUnitTest --tests '<pattern>'
 gate-fallback:  ci
 gate-skip:      '*.md' 'docs/**'
-ci:             dispatch "PR Full Debug Build"
+ci:             pr-checks
 logic:          '*.kt' '*.kts' '*.java' '*.c' '*.cpp' '*.h' '*CMakeLists.txt'
 tests:          'app/src/test/**' 'app/src/androidTest/**' 'scripts/tests/**'
 self-check:     none
@@ -33,10 +33,13 @@ self-check:     none
   trees, and the roadmap cites PR numbers, never SHAs.
 - The gate needs JDK 17 and `ANDROID_HOME`. On its first run the Android Gradle plugin installs the
   missing platform 36, build-tools 35 and NDK 29 itself (licences are accepted); that run takes about six
-  minutes. The full `:app:assembleFullDebug` (native libraries, libdovi) runs in CI. Mutation testing is
-  not used in this repo.
-- PR builds trigger only for `main`, so `/ship` dispatches `PR Full Debug Build` on the step branch and
-  finds the run by `headSha`.
+  minutes. Mutation testing is not used in this repo.
+- Since 2026-10-22 GitHub builds no APK or AAR: the five binary workflows (`PR Full Debug Build` and its
+  comment, `Build Android TV Release`, `Build FFmpeg decoder AAR`, `Patch datasource AAR`) are disabled
+  with `gh workflow disable`, and binaries are built locally only (`scripts/shield_build_install.sh`, the
+  local FFmpeg module build in `ffmpeg-decoder-downmix/README.md`). CI is the fork-only `Checks` workflow
+  (`.github/workflows/checks.yml`): unit tests on every pull request into `main` or `perf/shield-pass`,
+  test reports only. `/ship` waits for the PR's checks (`ci: pr-checks`).
 
 ## Gates
 
@@ -151,11 +154,8 @@ contributors) now live in the ship plugin; the routing table there is the same o
 `roadmap-memory` is off: like the earlier repo copy of roadmap-next, every run ranks afresh and writes
 nothing to the roadmap.
 
-The `new-build` probe accepts local builds only. An APK installed from a CI `PR Full Debug Build`
-artifact reads as "new build needed" even when it is fresh: to accept one by hand, find a successful
-`workflow_dispatch` run whose commit has the same tree as HEAD (`gh api repos/tinof/NuvioTV-Fork/git/commits/<headSha> -q .tree.sha`
-against `git rev-parse HEAD^{tree}`), download its `full-debug-apks` artifact and compare the hash of
-`app-full-arm64-v8a-debug.apk` with the installed one.
+The `new-build` probe accepts local builds only, which since 2026-10-22 are the only builds: CI makes no
+APK.
 
 Readiness rules are `none`: a rule blocks every step it covers whenever its probe fails, so a path rule
 would block `[desk]` steps on the player code while the Shield is off. The `device` and `new-build` tags
