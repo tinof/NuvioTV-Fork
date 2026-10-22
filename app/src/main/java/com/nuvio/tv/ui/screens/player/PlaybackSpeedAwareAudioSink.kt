@@ -91,6 +91,10 @@ internal class PlaybackSpeedAwareAudioSink(
 
     private var faultInjectFiredForCurrentConfig: Boolean = false
 
+    // A DTS-HD MA transcode configured for an output that does not list DTS-HD (see
+    // refuseDtsHdTranscodeWithoutDtsHdOutput).
+    private var dtsHdTranscodeWithoutDtsHdOutput: Boolean = false
+
     private var forwardAnchorPending: Boolean = false
     private var forwardUnsyncedChunks: Int = 0
     private var forwardFirstPtsUs: Long = C.TIME_UNSET
@@ -177,6 +181,8 @@ internal class PlaybackSpeedAwareAudioSink(
         isCurrentlyPassthrough =
             isEncodedPassthroughCandidate(inputFormat) && !shouldRejectDirectPlayback(inputFormat)
         faultInjectFiredForCurrentConfig = false
+        dtsHdTranscodeWithoutDtsHdOutput = AacToDtsRouting.isDtsHdTranscodeOutput(inputFormat) &&
+            !outputListsDtsHd() && dtsTargetOverride != AacToDtsRouting.Target.HD
         monitor.onTrackReset()
         super.configure(inputFormat, specifiedBufferSize, outputChannels)
         passthroughPacer.setIecPacked(iecSink?.isIecActive == true)
@@ -221,6 +227,7 @@ internal class PlaybackSpeedAwareAudioSink(
         presentationTimeUs: Long,
         encodedAccessUnitCount: Int
     ): Boolean {
+        refuseDtsHdTranscodeWithoutDtsHdOutput()
         if (isCurrentlyPassthrough) {
             monitor.maybeApplyStartThreshold()
             maybeInjectOpenFailure()
@@ -426,6 +433,28 @@ internal class PlaybackSpeedAwareAudioSink(
             AudioTrack.STATE_UNINITIALIZED,
             format,
             true,
+            null
+        )
+    }
+
+    /**
+     * The target choice never picks DTS-HD MA for an output that does not list DTS-HD, unless the
+     * debug switch forces it. Should a DTS-HD MA transcode still arrive here, the own IEC engine
+     * would pack bursts the receiver may not decode, or Media3 would open a DTS core AudioTrack
+     * for it; both play nothing useful and raise no error. Refusing it as a failed AudioTrack
+     * open sends the stream down the D5 chain (tryAacToDtsStepDown: the DTS core next) instead.
+     * Every buffer is refused until the next configure, so a retry cannot slip past it.
+     */
+    private fun refuseDtsHdTranscodeWithoutDtsHdOutput() {
+        if (!dtsHdTranscodeWithoutDtsHdOutput) return
+        val format = currentInputFormat ?: return
+        Log.w(TAG, "DTS-HD MA transcode refused: the output does not list DTS-HD")
+        onDiagnosticEvent?.invoke("aac_dts_hd_refused reason=output_lacks_dtshd")
+        throw AudioSink.InitializationException(
+            "AudioTrack init failed ${AudioTrack.STATE_UNINITIALIZED} DTS-HD MA transcode, output lacks DTS-HD",
+            AudioTrack.STATE_UNINITIALIZED,
+            format,
+            false,
             null
         )
     }
