@@ -17,7 +17,7 @@ TARGET_DTS_HD = 3
 UNIT = 512
 AAC_FRAME = 1024
 TRIM = 1024  # priming of FFmpeg's native AAC encoder
-# Tight bound of a stereo unit with a 2012-byte core (DTSHDMA_MAX_UNIT_BYTES_24).
+# Tight bound of a stereo unit with a 2012-byte core (DCAXLL_MAX_UNIT_BYTES_24).
 MAX_UNIT_BYTES = 5369
 # End-of-stream loss without the last-sample flag: FIFO remainder (511) + resampler (about 108)
 # + the frame held back for alignment (512), in 48 kHz samples.
