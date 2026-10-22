@@ -198,6 +198,9 @@ internal data class ExoConstructionFingerprint(
     val maintainOriginalAudioOnDownmix: Boolean,
     val forceOpticalPassthroughActive: Boolean,
     val transcodeAacToDtsActive: Boolean = false,
+    // The stream's DTS-HD MA step-down and the debug.nuvio.aac_dts_target switch.
+    val aacToDtsHdAllowed: Boolean = true,
+    val aacToDtsTargetOverride: String? = null,
     val useSystemPassthrough: Boolean,
     val dtsHdTvPassthrough: Boolean = false,
     val iecOff: Boolean = false,
@@ -1355,6 +1358,8 @@ internal fun PlayerRuntimeController.initializePlayer(
             val isTranscodeAacToDtsActive = playerSettings.transcodeAacToDts &&
                 playerSettings.decoderPriority != 0 &&
                 url !in aacToDtsOffStreamUrls
+            // D5: a refused DTS-HD MA transcode leaves this stream on the DTS core.
+            val aacToDtsHdAllowed = url !in aacToDtsHdOffStreamUrls
             // Force-AC3 does not escalate the *global* extension mode to
             // PREFER (that would put software AV1 video decode ahead of
             // MediaCodec). The FFmpeg audio renderer is instead reordered
@@ -1638,6 +1643,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 maintainOriginalAudioOnDownmix = playerSettings.maintainOriginalAudioOnDownmix,
                 forceOpticalPassthroughActive = isForcePassthroughActive,
                 transcodeAacToDtsActive = isTranscodeAacToDtsActive,
+                aacToDtsHdAllowed = aacToDtsHdAllowed,
                 useSystemPassthrough = playerSettings.useSystemPassthrough,
                 dtsHdTvPassthrough = dtsHdTvPassthroughActive,
                 iecOff = iecOffStreamUrls.contains(url),
@@ -2497,6 +2503,13 @@ internal fun PlayerRuntimeController.initializePlayer(
                         // (hybrid MIME upgraded mid-stream past the selection-time
                         // abdication). Rebuild with FFmpeg audio preferred so the
                         // whole family maps to the renderer that can decode it.
+                        // A refused AAC-to-DTS transcode steps down before the generic PCM
+                        // recovery, which would force PCM for every format: DTS-HD MA rebuilds
+                        // with the DTS core, the core with PCM, and PCM forcing stays off.
+                        if (tryAacToDtsStepDown(error)) {
+                            return
+                        }
+
                         if (tryDeniedAudioFfmpegFallback(error)) {
                             return
                         }
@@ -3941,17 +3954,23 @@ internal fun PlayerRuntimeController.noteAudioTrackRejection(error: PlaybackExce
     if (!error.isAudioTrackFailure()) return
     val mime = failedAudioTrackInputFormat(error)?.sampleMimeType
     val routeKey = currentAudioOutputRoute?.key
-    // A refused DTS track made by the AAC-to-DTS transcode says nothing about real DTS tracks on
-    // this route, so it is not learned. This stream plays the AAC as PCM from now on. The player
-    // has already dropped its audio format when the error arrives, so the last input format the
+    // A refused DTS or DTS-HD track made by the AAC-to-DTS transcode says nothing about real DTS
+    // tracks on this route, so it is not learned. tryAacToDtsStepDown moves the stream one step
+    // down (DTS-HD MA to the DTS core, the core to PCM), but only once no same-configuration
+    // retry is scheduled, so a transient refusal is retried with the same target. The player has
+    // already dropped its audio format when the error arrives, so the last input format the
     // analytics listener saw for this player is used.
     val sourceMime = lastAudioInputMime?.takeIf { it.first === _exoPlayer }?.second
     if (isDtsTranscode(sourceMime, mime)) {
-        aacToDtsOffStreamUrls.add(currentStreamUrl)
+        val next = when (aacToDtsStepDown(sourceMime, mime, retryScheduled)) {
+            AacToDtsStepDown.HD_OFF -> "DTS core next"
+            AacToDtsStepDown.ALL_OFF -> "PCM next"
+            null -> "same-configuration retry first"
+        }
         Log.w(
             PlayerRuntimeController.TAG,
-            "AUDIO_TRACK_REJECTION_NOT_LEARNED DTS transcode of $sourceMime refused on route=$routeKey; " +
-                "AAC to DTS off for this stream"
+            "AUDIO_TRACK_REJECTION_NOT_LEARNED ${if (mime == MimeTypes.AUDIO_DTS_HD) "DTS-HD" else "DTS"} " +
+                "transcode of $sourceMime refused on route=$routeKey; $next"
         )
         return
     }
@@ -4047,7 +4066,7 @@ private fun PlaybackException.isStuckBufferingWatchdog(): Boolean {
     return isStuckBufferingWatchdog(errorCode, details)
 }
 
-private fun PlaybackException.isAudioTrackFailure(): Boolean {
+internal fun PlaybackException.isAudioTrackFailure(): Boolean {
     val details = buildString {
         append(message ?: "")
         append(' ')

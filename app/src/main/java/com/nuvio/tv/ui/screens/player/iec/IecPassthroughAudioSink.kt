@@ -71,6 +71,11 @@ internal class IecPassthroughAudioSink(
     private var deadOutputSinceNanos: Long = NEVER
     private var outputCheckedAtNanos: Long = NEVER
     private var fillerWriteCode: Int = 0
+    // DTS-HD units larger than their burst's payload (cut short). Never expected: a transcode unit
+    // is at most 5369 bytes against 8172 for 2 channels; a count here means the bound broke.
+    private var dtsHdOverflows: Long = 0L
+
+    internal val dtsHdOverflowCount: Long get() = dtsHdOverflows
 
     // TrueHD keep-alive: the track is never paused or flushed once it plays. Content is held back
     // while paused, and padding-only MAT frames keep the HDMI bitstream going, so the receiver and
@@ -645,18 +650,50 @@ internal class IecPassthroughAudioSink(
         android.util.Log.i("IecPassthrough", line)
     }
 
+    /**
+     * A real DTS-HD track hands over one access unit per buffer. The AAC-to-DTS transcode puts 2
+     * to 4 units (core + ExSS) in one buffer, and each needs its own burst. Only a buffer that is
+     * wholly such units, with a core in each and an ExSS in at least one, is split; anything else
+     * (a coreless DTS-HD or DTS:X frame, a single unit) keeps the one-burst path.
+     */
     private fun handleDtsHd(buffer: ByteBuffer, presentationTimeUs: Long): Boolean {
-        val position = buffer.position()
-        val head = ByteArray(buffer.remaining().coerceAtMost(8))
-        buffer.get(head)
-        buffer.position(position)
-        val sampleCount = resolveDtsSampleCount(head, buffer, presentationTimeUs)
+        val walk = DtsHdAccessUnits.walk(buffer, buffer.position(), buffer.limit())
+        if (walk.count < 2 || walk.withExtension == 0 || walk.consumed != buffer.remaining()) {
+            queueDtsHdBurst(buffer, presentationTimeUs)
+            noteFrameQueued()
+            return true
+        }
+        var offset = buffer.position()
+        for ((index, size) in walk.sizes.withIndex()) {
+            val unit = buffer.duplicate()
+            unit.position(offset)
+            unit.limit(offset + size)
+            queueDtsHdBurst(unit, presentationTimeUs)
+            // The source stays uncommitted until its last burst is written.
+            if (index < walk.count - 1) sourcesOnFrame.add(0) else noteFrameQueued()
+            offset += size
+        }
+        buffer.position(buffer.limit())
+        return true
+    }
+
+    private fun queueDtsHdBurst(unit: ByteBuffer, presentationTimeUs: Long) {
+        val position = unit.position()
+        val head = ByteArray(unit.remaining().coerceAtMost(8))
+        unit.get(head)
+        unit.position(position)
+        val sampleCount = resolveDtsSampleCount(head, unit, presentationTimeUs)
         val period = Iec61937Packer.dtsHdIecPeriod(dtsChannelCount, sampleCount)
         val burst = acquireDtsBurst(period shl 2)
-        Iec61937Packer.packDtsHdInto(buffer, period, burst)
+        val size = unit.remaining()
+        if (!Iec61937Packer.packDtsHdInto(unit, period, burst)) {
+            dtsHdOverflows++
+            if (dtsHdOverflows == 1L) {
+                onDiagnosticEvent?.invoke("iec_dtshd_overflow unit=$size period=$period")
+                android.util.Log.w("IecPassthrough", "DTS-HD unit of $size bytes cut to burst period $period")
+            }
+        }
         pendingFrames.add(burst)
-        noteFrameQueued()
-        return true
     }
 
     private fun resolveDtsSampleCount(head: ByteArray, buffer: ByteBuffer, ptsUs: Long): Int {
@@ -1151,7 +1188,7 @@ internal class IecPassthroughAudioSink(
         val line = "iec_health mode=$mode payload=${track.payload} underruns=$underruns " +
             "head=${track.playbackHeadFrames()} written=$writtenFrames " +
             "pending=${pendingFrames.size} stalls=$totalWriteStalls playing=$playing " +
-            "keepAlive=$isKeepAliveActive ${keepAliveState()}"
+            "keepAlive=$isKeepAliveActive ${keepAliveState()} dtshdOverflows=$dtsHdOverflows"
         android.util.Log.i("IecPassthrough", line)
         onDiagnosticEvent?.invoke(line)
     }
