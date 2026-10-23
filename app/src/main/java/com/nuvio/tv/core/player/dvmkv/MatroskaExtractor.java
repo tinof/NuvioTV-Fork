@@ -60,6 +60,7 @@ import androidx.media3.extractor.TrueHdSampleRechunker;
 import androidx.media3.extractor.text.SubtitleParser;
 import androidx.media3.extractor.text.SubtitleTranscodingExtractorOutput;
 import com.google.common.collect.ImmutableList;
+import com.nuvio.tv.core.player.HevcInitNals;
 import com.nuvio.tv.core.player.DolbyVisionBaseLayerColor;
 import com.nuvio.tv.core.util.TtffTrace;
 import java.io.ByteArrayOutputStream;
@@ -433,6 +434,7 @@ public class MatroskaExtractor implements Extractor {
   private static final int ID_STEREO_MODE = 0x53B8;
   private static final int ID_COLOUR = 0x55B0;
   private static final int ID_COLOUR_RANGE = 0x55B9;
+  private static final int ID_COLOUR_MATRIX_COEFFICIENTS = 0x55B1;
   private static final int ID_COLOUR_BITS_PER_CHANNEL = 0x55B2;
   private static final int ID_COLOUR_TRANSFER = 0x55BA;
   private static final int ID_COLOUR_PRIMARIES = 0x55BB;
@@ -1179,6 +1181,7 @@ public class MatroskaExtractor implements Extractor {
       case ID_COLOUR_RANGE:
       case ID_COLOUR_TRANSFER:
       case ID_COLOUR_PRIMARIES:
+      case ID_COLOUR_MATRIX_COEFFICIENTS:
       case ID_MAX_CLL:
       case ID_MAX_FALL:
       case ID_PROJECTION_TYPE:
@@ -1856,6 +1859,7 @@ public class MatroskaExtractor implements Extractor {
       case ID_COLOUR_PRIMARIES:
         assertInTrackEntry(id);
         currentTrack.hasColorInfo = true;
+        currentTrack.containerColourPrimaries = rawColourValue(value);
         int colorSpace = ColorInfo.isoColorPrimariesToColorSpace((int) value);
         if (colorSpace != Format.NO_VALUE) {
           currentTrack.colorSpace = colorSpace;
@@ -1863,6 +1867,7 @@ public class MatroskaExtractor implements Extractor {
         break;
       case ID_COLOUR_TRANSFER:
         assertInTrackEntry(id);
+        currentTrack.containerColourTransfer = rawColourValue(value);
         int colorTransfer = ColorInfo.isoTransferCharacteristicsToColorTransfer((int) value);
         if (colorTransfer != Format.NO_VALUE) {
           currentTrack.colorTransfer = colorTransfer;
@@ -1873,8 +1878,14 @@ public class MatroskaExtractor implements Extractor {
         currentTrack.hasColorInfo = true;
         currentTrack.bitsPerChannel = (int) value;
         break;
+      case ID_COLOUR_MATRIX_COEFFICIENTS:
+        // Fork (DV2.4): recorded for the HLG contract only; it does not create a ColorInfo.
+        assertInTrackEntry(id);
+        currentTrack.containerColourMatrix = rawColourValue(value);
+        break;
       case ID_COLOUR_RANGE:
         assertInTrackEntry(id);
+        currentTrack.containerColourRange = rawColourValue(value);
         switch ((int) value) {
           case 1: // Broadcast range.
             currentTrack.colorRange = C.COLOR_RANGE_LIMITED;
@@ -2297,6 +2308,11 @@ public class MatroskaExtractor implements Extractor {
       throw ParserException.createForMalformedContainer(
           "Element " + id + " must be in a TrackEntry", /* cause= */ null);
     }
+  }
+
+  /** Fork (DV2.4): an unsigned Colour value as an int; values beyond int range saturate. */
+  private static int rawColourValue(long value) {
+    return value < 0 || value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
   }
 
   private void assertInCues(int id) throws ParserException {
@@ -3698,6 +3714,14 @@ public class MatroskaExtractor implements Extractor {
     public @C.ColorTransfer int bitstreamColorTransfer = Format.NO_VALUE;
     public @C.ColorTransfer int dolbyVisionBaseLayerTransfer = Format.NO_VALUE;
     public byte @MonotonicNonNull [] pendingDolbyVisionBlockAdditionalData;
+    // Fork (DV2.4): the Colour values as coded (H.273 codes, Matroska Range codes), null when the
+    // element is absent, for the HLG contract. The Format keeps using the fields above.
+    @Nullable public Integer containerColourPrimaries;
+    @Nullable public Integer containerColourTransfer;
+    @Nullable public Integer containerColourMatrix;
+    @Nullable public Integer containerColourRange;
+    // Fork (DV2.4): the first SPS NAL of an HEVC track's hvcC, or null.
+    public byte @MonotonicNonNull [] hevcFirstSps;
 
     // Audio elements. Initially set to their default values.
     public int channelCount = 1;
@@ -3791,6 +3815,10 @@ public class MatroskaExtractor implements Extractor {
           nalUnitLengthFieldLength = hevcConfig.nalUnitLengthFieldLength;
           codecs = hevcConfig.codecs;
           bitstreamColorTransfer = hevcConfig.colorTransfer;
+          @Nullable byte[] firstSps = HevcInitNals.firstSps(initializationData);
+          if (firstSps != null) {
+            hevcFirstSps = firstSps;
+          }
           break;
         case CODEC_ID_FOURCC:
           Pair<String, @NullableType List<byte[]>> pair =
