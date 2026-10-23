@@ -10,6 +10,37 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-23: Appendix A hand-off check
+
+After DV2.2 and DV2.4 merged, three read-only Opus agents checked whether a fresh session could continue
+Appendix A from the repo alone. One checked the roadmap's consistency, one checked the design docs
+against the merged code, and one planned DV2.3 with no prior context and listed what it could not
+find. Changes:
+
+- `ROADMAP.md`:
+  - Current status points to Appendix A, and A.4 says how device builds are made.
+  - The DV1 status names DV1.4's eye-check close; DV4.5 needs DV1.8 instead of DV1.4.
+  - The DV2 status cites hdr-analyze PR #68 (`f55c779`).
+  - DV2.3 lists what it must settle:
+    - the HLG contract runs before the Format build, and a converted 8.4 Format carries
+      `baseLayerColorInfo`, so the HDR10 wrapper leaves it HLG;
+    - the PQ row's field rules;
+    - the Dolby Vision level, including when no frame rate is known;
+    - the setting, gate and revert-switch names;
+    - the decoder-failure retry;
+    - SEI-only HLG stays native;
+    - the static HDR block is kept.
+  - DV2.7 says how `DoviRpuBuilder` is called and who owns the handle.
+  - DV3.2 names the Kotlin API.
+  - Owner decisions records the static 8.4 L1 and the DV1.4 close.
+- `docs/dv-conversion/DESIGN.md`:
+  - Every stale fork `file:line` reference is updated (`MatroskaExtractor.java`,
+    `DolbyVisionExtractorsFactory.kt`, `PlayerRuntimeController*.kt`,
+    `NuvioExoPlayerPerformanceHelper.kt`).
+  - The "Fork HLG detection reads only the Colour element" statement now describes DV2.4.
+  - Section 2.7 records what DV2.2 shipped.
+  - The 519 KB figure is labelled as the test build.
+
 ## 2026-10-23: DV2.2 Fork-side Rust crate over dovi_rpu_builder (PR #14)
 
 - [DV2.2][desk] A fork-side Rust crate over `dovi_rpu_builder` (pinned to an hdr-analyze commit), built
