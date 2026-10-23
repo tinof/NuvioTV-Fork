@@ -82,6 +82,10 @@ keep-alive) and the fork's datasource AAR stays. Elsewhere upstream's new defaul
 listed in [`docs/shield-todo.md`](docs/shield-todo.md). Device numbers above predate them, and the installed
 build predates the sync.
 
+**Appendix A (2026-10-23).** On the separate Dolby Vision track, DV2.1, DV2.2 and DV2.4 are done and DV1.4
+is closed. The next startable desk steps are DV2.3 and DV2.8, then DV2.7; DV3.2 (HLG → 8.4 on the Shield)
+and DV1.8 follow. A.4 ends with how device builds are made.
+
 ### Waiting for the owner
 
 Steps that need a decision or a reading from the owner. Other steps of the same item stay startable.
@@ -106,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-23 | Appendix A hand-off check: stale references in `DESIGN.md` fixed; DV2.3 and DV2.7 say what they must settle; DV4.5 needs DV1.8. | DV1–DV4 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-23 | DV2.2 shipped: `libnuvio_rpu.so`, a JNI `cdylib` over `dovi_rpu_builder` that renders static 8.1 and 8.4 RPUs, shot L1 RPUs and HDR10+ L1, byte-identical to hdr-analyze's fixtures. | DV2 | [log](docs/ROADMAP_LOG.md), PR #14 |
 | 2026-10-23 | DV2.4 shipped: the HLG contract decides HLG for 8.4 from the Matroska Colour values and the SPS VUI at track init, and logs the alternative-transfer SEI. | DV2 | [log](docs/ROADMAP_LOG.md), PR #13 |
 | 2026-10-23 | DV1.4 closed on the owner's eye check; DV2.1 done in hdr-analyze (E16.1); DV2.2 becomes a separate `cdylib` after a link test; DV1.8, DV2.7 and DV2.8 added. | DV1, DV2, DV3 | [log](docs/ROADMAP_LOG.md), hdr-analyze PR #67 |
@@ -743,11 +748,16 @@ start and seek latency, memory high-water, the analysis lead, and the share of A
 numerical tolerances are frozen. The corpus includes long uncut shots, repeated seeks, network stalls
 and resource reclaim; the report covers recovery and fallback coverage as well as the steady state.
 
+**Device builds.** `scripts/shield_build_install.sh --install` (JDK 17, `ANDROID_SERIAL` set) first builds
+`libnuvio_rpu.so` when cargo-ndk is installed (`scripts/build_rpu_builder.sh`), then the APK, and installs
+it with the certificate and hash checks of M2. Without cargo-ndk the APK has no builder and conversion
+stays off. Every device session follows [M2](#m2-device-safety-protocol).
+
 ### A.5 Steps
 
 #### DV1: device gates and desk checks
 
-- **Status:** Open.
+- **Status:** Open. DV1.4 closed on 2026-10-23 on the owner's eye check (log); its precise half is DV1.8.
 - [DV1.1][desk] Read the Media3 1.8.0 renderer path and the patched AARs: the sample framing at
   `onQueueInputBuffer` per container, the reconfiguration prefix, the real input-buffer capacity for 4K
   HEVC (`KEY_MAX_INPUT_SIZE` is only the request), and how flushes and releases reach the renderer.
@@ -777,8 +787,8 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
   Dolby Vision is HLG an 8.4 RPU can describe (`HlgDecision`, read by the extractor's `getHlgDecision`);
   nothing acts on it before DV2.3.
   DV2.2 is done (PR #14): `nuvio_rpu` (`native/rpu_builder`), its own `cdylib` `libnuvio_rpu.so` over
-  `dovi_rpu_builder` at hdr-analyze `f55c779`, read through `DoviRpuBuilder`; built locally only
-  (`scripts/build_rpu_builder.sh`), nothing calls it before DV2.3 and DV2.7.
+  `dovi_rpu_builder` at hdr-analyze `f55c779` (its PR #68, E16.2), read through `DoviRpuBuilder`; built
+  locally only (`scripts/build_rpu_builder.sh`), nothing calls it before DV2.3 and DV2.7.
 - [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
   crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
   test corpus. Needs: DV2.1.
@@ -792,11 +802,35 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
   vendored extractor, the Dolby Vision level from the stream, native fallback when the decoder fails,
   behind a setting that is off by default, a `DeviceProfile` gate and a `debug.nuvio.*` revert switch.
   Gate: unit tests over every row of the table. Needs: DV2.4 (the HLG rows read its transfer).
+  What the step must settle, found by a fresh-session check (2026-10-23):
+  - Order: the HLG contract runs after `formatBuilder.build()` today (`MatroskaExtractor.java:3876`,
+    `:3884`); move it before, and give a converted 8.4 Format `Hlg84.baseLayerColorInfo`, so the HDR10
+    wrapper `HdrColorSignalingTrackOutput` (`DolbyVisionExtractorsFactory.kt:388-401`) leaves it HLG. A
+    test checks the Format after that wrapper.
+  - The PQ row uses the HLG contract's field rules with transfer 16: range limited, matrix 9, primaries 9,
+    a stated contradiction refuses, an untagged field is accepted and logged.
+  - The Dolby Vision level comes from width, height and frame rate in Dolby's profiles-and-levels table;
+    without a frame rate (no DefaultDuration) take the level for 60 fps. Unit-tested.
+  - Names, unless the code suggests better: a `PlayerSettings` field (`PlayerSettingsDataStore.kt`), off
+    by default and not shown before DV2.7, because a Dolby Vision Format without RPUs must never reach
+    the decoder; the gate `DeviceProfile.isNvidia()`,
+    `DolbyVisionCompatibility.isDolbyVisionDecoderPresent()` and `DoviRpuBuilder.isAvailable()`; the
+    revert switch `debug.nuvio.dv_convert`.
+  - Decoder failure: reuse the existing retry (`retryCurrentStreamWithDolbyVisionFallback`,
+    `PlayerRuntimeControllerObservers.kt:908`) with conversion off on the retry.
+  - HLG signalled only in an alternative-transfer SEI resolves to NotHlg and plays native, which the
+    `DESIGN.md` 2.5 row allows; its "Format-change path" has no step.
+  - A converted 8.4 Format keeps the container's static HDR block (`HlgContract` carries it); change
+    that only if DV3.2 shows a problem.
 - [DV2.7][desk] Extractor injection for tracks that carry no Dolby Vision: when DV2.3 converts a
   Matroska track, the existing transformer (`DolbyVisionMatroskaTransformer.kt`) adds the provider's RPU
   NAL to each AU, with the scene-refresh rule of `DESIGN.md` 2.2 and its debug switch. Gate: unit tests:
   one RPU per AU, every other NAL byte-identical, refresh as the rule says, native tracks untouched.
-  Needs: DV2.2, DV2.3.
+  Needs: DV2.2, DV2.3. Calling `DoviRpuBuilder` (`DoviRpuBuilder.kt`): per converted track,
+  `createStatic84(BT2100)` (or `create(params)`) once; per shot, `renderShot(handle, l1)` once (static
+  8.4: one shot with `static84L1()`); per AU, `ShotRpu.copyInto(..., sceneRefresh)`; `release(handle)`
+  when the track is released. The library is thread-safe and `ShotRpu` is immutable; the extractor's
+  loading thread owns the handle.
 - [DV2.8][desk] RPU debug dump behind a `debug.nuvio.*` switch: the RPU of the first N AUs after a start
   or seek and of every scene-refresh AU, for the existing Dolby Vision path and for converted tracks,
   written to logcat with its AU's presentation time; a script in `scripts/` (added to the `.gitignore`
@@ -816,8 +850,9 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
   scene rule runs in presentation order while the extractor reads in decode order; an AU without a
   payload reuses the previous payload in decode order; non-HDR10+ T.35 messages are skipped. Needs:
   DV2.7, DV2.8.
-- [DV3.2][device][owner][new-build] HLG → 8.4 static provider: `static_84_params` with `STATIC_84_L1`
-  (0 / 1283 / 3079, V29 average floor). The RPU carries the default L6 and the crate's CM v4.0 L3 and
+- [DV3.2][device][owner][new-build] HLG → 8.4 static provider: `DoviRpuBuilder.createStatic84(BT2100)`
+  (the crate's `static_84_params`) with `static84L1()` (`STATIC_84_L1`, 0 / 1283 / 3079, V29 average
+  floor). The RPU carries the default L6 and the crate's CM v4.0 L3 and
   L254. Gate: G-C second half: the canary turns green through the app's conversion, bt2100 shows no
   tint; the DV2.8 dump validates with `dovi_tool info`; a mid-file start and seeks played with both
   settings of the scene-refresh switch (`DESIGN.md` 2.2), the default kept or changed from what the TV
@@ -836,7 +871,7 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
   incrementally as AUs are read, inject in the extractor. Gate: unit tests; a different encode of the
   same title is rejected. Needs: DV4.4, DV2.2, DV2.3; for HLG also DV2.4.
 - [DV4.5][device][owner][new-build] A local sidecar end to end. Gate: every AU of the title carries the
-  sidecar's L1 (debug log), no added dropped frames, the owner's G-E reading. Needs: DV4.1, DV1.4.
+  sidecar's L1 (debug log), no added dropped frames, the owner's G-E reading. Needs: DV4.1, DV1.8.
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
   time, with a warm-up for scene context and crop, and stream finished shots; the first shot after a
   start inside a long shot is marked incomplete. Gate: its shots equal an offline run with the same
@@ -939,6 +974,9 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
 
 #### Owner decisions
 
+- Decided 2026-10-22: the static 8.4 L1 is 0 / 1283 / 3079 with the V29 average floor (DV3.2, A.3).
+- Decided 2026-10-23: DV1.4 closed on the owner's eye check of the 8.4 bt2100 and canary files; the
+  `dovi_tool` checks and the other G-C rows move to DV1.8.
 - Parity tolerances. Proposal: for identical frames, per-shot L1 median within 4 codes and maximum
   within 16 codes of the desktop; for approximation policies, the error table of DV1.5 decides.
 - Whether static HDR10 → 8.1 is ever on by default (after G-E).
