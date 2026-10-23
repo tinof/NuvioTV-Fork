@@ -1089,6 +1089,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 )
             }
             requestedLibassRenderMode = playerSettings.effectiveLibassRenderMode
+            // RPU debug dump: N AUs per extractor generation, 0 = off (no wrapper). Read once per playback.
+            val rpuDumpAus = DebugSwitches.int(com.nuvio.tv.core.player.RpuDumpTap.PROPERTY) ?: 0
             // ── Track Selector Setup ──
             // Read once per build: the selector runs on the playback thread for every reselection.
             val hbrTunnelOn = hbrTunnelAllowed(DebugSwitches.flag("debug.nuvio.hbr_tunnel"))
@@ -1648,7 +1650,10 @@ internal fun PlayerRuntimeController.initializePlayer(
             // after its own Matroska swap.
             val effectiveExtractorsFactory: ExtractorsFactory =
                 com.nuvio.tv.core.player.thumbnail.PlaybackTap.wrap(
-                    autoSyncExtractorsFactory(dolbyVisionExtractorsFactory, url, headers) // AutoSync hook
+                    com.nuvio.tv.core.player.RpuDumpTap.wrap(
+                        autoSyncExtractorsFactory(dolbyVisionExtractorsFactory, url, headers), // AutoSync hook
+                        rpuDumpAus
+                    )
                 )
 
             setLoadingStatus(
@@ -1801,7 +1806,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                         renderersFactory = renderersFactory,
                         autoSyncSourceKey = url.takeIf {
                             com.nuvio.tv.ui.screens.player.autosync.AutoSyncPreferences.isEnabled(context)
-                        }
+                        },
+                        rpuDumpAus = rpuDumpAus
                     )
             } else {
                 buildDefaultPlayer()

@@ -43,19 +43,24 @@ internal fun ExoPlayer.Builder.buildWithAssSupportCompat(
     extractorsFactory: ExtractorsFactory = DefaultExtractorsFactory(),
     renderersFactory: RenderersFactory = DefaultRenderersFactory(context),
     autoSyncSourceKey: String? = null,
+    /** [com.nuvio.tv.core.player.RpuDumpTap]'s N; 0 = off. */
+    rpuDumpAus: Int = 0,
     subtitleTimeShiftUs: () -> Long = { 0L }
 ): ExoPlayer {
     val assHandler = AssHandler()
     val assSubtitleParserFactory = CompatAssSubtitleParserFactory(assHandler)
-    // AutoSync and the tap wrap after the Matroska swap, which matches extractors by class.
+    // AutoSync and the taps wrap after the Matroska swap, which matches extractors by class.
     val swappedExtractorsFactory = extractorsFactory.withAssMkvSupportCompat(
         subtitleParserFactory = assSubtitleParserFactory,
         assHandler = assHandler
     )
     val assExtractorsFactory = com.nuvio.tv.core.player.thumbnail.PlaybackTap.wrap(
-        autoSyncSourceKey?.let {
-            com.nuvio.tv.ui.screens.player.autosync.AutoSyncExtractorsFactory(swappedExtractorsFactory, it)
-        } ?: swappedExtractorsFactory
+        com.nuvio.tv.core.player.RpuDumpTap.wrap(
+            autoSyncSourceKey?.let {
+                com.nuvio.tv.ui.screens.player.autosync.AutoSyncExtractorsFactory(swappedExtractorsFactory, it)
+            } ?: swappedExtractorsFactory,
+            rpuDumpAus
+        )
     )
     playerMediaSourceFactory?.configureSubtitleParsing(
         extractorsFactory = assExtractorsFactory,
