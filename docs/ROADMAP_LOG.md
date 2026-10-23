@@ -10,6 +10,77 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-23: DV1.4 closed, DV2.1 done in hdr-analyze, DV2.2 repackaged
+
+- [DV1.4][device][owner] G-C, first half: `mkvdovi` files and L1 variants played through Nuvio. Gate:
+  the owner's TV readings and the `dovi_tool info` checks in the log. Closed by the owner on an eye
+  check of the `mkvdovi` 8.4 files (bt2100 and the P8 canary): Dolby Vision through Nuvio on the Shield,
+  the canary green. The `dovi_tool info` checks, the other G-C rows, a mid-file start and seeks were not
+  recorded; they move to the new step DV1.8. Qualification matrix: the 8.4 G-C row is "pass, eye check
+  only"; the other G-C rows stay not run.
+
+- [DV2.1][desk] In hdr-analyze, a lib crate with the RPU builders (8.1, 8.4, HDR10+, static). Gate:
+  `mkvdovi` output is byte-identical on the test corpus. Done as hdr-analyze E16.1, PR #67 (merged
+  2026-10-22). The gate was widened there, because `mkvdovi` never built RPUs in-process (it runs
+  `dovi_tool generate`):
+  - The new crate `dovi_rpu_builder` writes one RPU NAL per AU (`0x7C01` plus the escaped payload).
+  - It equals `dovi_tool generate` 2.3.4 on every committed fixture and on 64/64 HDR10+ corpus runs.
+  - The nine 0.7.0 `mkvdovi` RPU baselines are unchanged.
+  - Static 8.4 L1 (owner, 2026-10-22): min 0, avg 1283, max 3079, V29 average floor.
+  - The canary composer lives in `dovi84_composer::canary_mapping` and is not offered by `mkvdovi`.
+  - Not included: the HDR10 MaxCLL/MaxFALL heuristic (DV3.3).
+
+**Review of the merged crate against this plan** (two Opus finders, an Opus verifier per finding; 15
+findings, all confirmed, most of them notes):
+- Blocker for DV2.2 as written ("a cargo-ndk staticlib … linked like libdovi"). `libdovi.a` is a Rust
+  staticlib (`dolby_vision` 3.3.2, rustc 1.93.0, not LTO-merged). A second LTO staticlib linked with it
+  into one `.so` fails with NDK 29: `duplicate symbol: rust_eh_personality`. A test staticlib without
+  LTO, built with the same rustc 1.93.0, linked in both archive orders, because both carry the same std
+  object; that depends on the two compilers matching and is not used. Detail in `DESIGN.md` 2.7.
+- A test `cdylib` over the merged crate built for arm64-v8a: 519 KB stripped, NEEDED libc, libm and
+  libdl only. Its first static 8.4 AU, bt2100 and canary, equalled hdr-analyze's committed `dovi_tool`
+  fixtures (host test).
+- Thread safety: `RpuBuilder`, `ShotRpu`, `Hdr10PlusHold` and `Error` are `Send + Sync`. A write costs
+  about 1–2 µs on an Apple-silicon Mac (not a Tegra number).
+- For hdr-analyze, not blocking DV3.2:
+  - `RpuBuilder::new` accepts parameters that every later write refuses, such as L6 above 10000 or nine
+    trim targets. The refusal comes as the generic `Error::Rpu`.
+  - Doc fixes: the static 8.4 RPU also carries the crate's CM v4.0 L3 and L254; the panic strategy is
+    the consuming crate's; `Hdr10PlusHold::reset` after a seek is caller policy.
+- For the fork:
+  - The scene-refresh rule after a start or seek was undecided (now `DESIGN.md` 2.2).
+  - HDR10+ needs presentation order for its scene rule while the extractor reads in decode order, and
+    a rule for AUs without a payload (now in DV3.1).
+  - "Held while the payload is unchanged" was stricter than `dovi_tool`'s scene key (A.3 and
+    `DESIGN.md` 1 reworded).
+  - JNI entries need their own `catch_unwind`.
+
+**Steps changed or added**
+
+- [DV2.2][desk] Reworded: a fork-side Rust crate over `dovi_rpu_builder` (pinned to an hdr-analyze
+  commit), built with cargo-ndk as a `cdylib` for arm64-v8a with its own `System.loadLibrary`, not
+  linked into `dovi_bridge`. JNI entry points: static 8.1 and 8.4 RPUs (composer bt2100 or canary), shot
+  L1 → RPU, HDR10+ payload → L1. `panic = "unwind"` with every entry inside `catch_unwind`; errors as
+  stable codes; both scene-refresh variants of a shot rendered once. Without the library, conversion stays
+  off. Gate: a host `cargo test` of the wrapper equals hdr-analyze's committed fixtures at the pinned
+  commit; the cargo-ndk build links; `scripts/verify_native_apk.py` finds the library and its entry
+  points. Deferred: one combined staticlib replacing `libdovi.a`.
+- [DV2.3][desk] Now Matroska only, and Needs: DV2.4.
+- [DV2.7][desk] New: extractor injection for tracks that carry no Dolby Vision, through the existing
+  transformer, with the scene-refresh rule of `DESIGN.md` 2.2. Gate: unit tests: one RPU per AU, every
+  other NAL byte-identical, refresh as the rule says, native tracks untouched. Needs: DV2.2, DV2.3.
+- [DV2.8][desk] New: RPU debug dump behind a `debug.nuvio.*` switch for the existing and the converted
+  paths, plus a script that rebuilds an `RPU.bin` for `dovi_tool info`. Gate: unit test of the encoder;
+  a fixture round trip through the script.
+- [DV1.8][device][owner][new-build] New: G-C, precise half, with the DV2.8 dump, from the start, from a
+  mid-file resume point and with seeks. Gate: dumped RPUs validate with `dovi_tool info` and equal the
+  files' RPUs; the owner's readings; the G-C rows set. Needs: DV2.8.
+- [DV3.1] Needs now DV2.7, DV2.8 (DV1.4 closed); the HDR10+ order and gap rules go into `DESIGN.md` 2.4
+  first.
+- [DV3.2] Names `static_84_params` and `STATIC_84_L1`; gate adds the DV2.8 dump check and a mid-file
+  start and seeks with both settings of the scene-refresh switch. Needs: DV2.4, DV2.7, DV2.8.
+- [DV3.3] Notes that the heuristic is not in `dovi_rpu_builder`. Needs: DV2.7.
+
 ## 2026-10-22: Q6.1, Q6.10 Decoder AAR and the DTS-HD MA transcode target (PR #12)
 
 - [Q6.1][desk] Decoder AAR with the DTS target in `app/libs`. Done 2026-10-21 (CI run 39594133508, AAR
