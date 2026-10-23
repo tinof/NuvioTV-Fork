@@ -72,7 +72,8 @@ rpu_lib="app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so"
 if cargo ndk --version >/dev/null 2>&1; then
   scripts/build_rpu_builder.sh
 elif [ -f "$rpu_lib" ]; then
-  echo "warning: cargo-ndk not found; packaging the existing $rpu_lib without rebuilding it" >&2
+  echo "warning: cargo-ndk not found; packaging the existing $rpu_lib without rebuilding it" \
+    "(sha256 $(shasum -a 256 "$rpu_lib" | cut -d' ' -f1), modified $(date -r "$rpu_lib" '+%Y-%m-%d %H:%M:%S'))" >&2
 else
   echo "warning: cargo-ndk not found; the APK has no libnuvio_rpu.so, so Dolby Vision conversion is off" >&2
 fi
