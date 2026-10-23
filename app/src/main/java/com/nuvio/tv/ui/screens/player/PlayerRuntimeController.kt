@@ -867,6 +867,10 @@ class PlayerRuntimeController(
     @Volatile internal var currentPlayerSettingsForReport: PlayerSettings = PlayerSettings()
 
     internal val dv7ToHevcForcedStreamUrls: MutableSet<String> = mutableSetOf()
+    // DV2.3: streams whose Dolby Vision signalling of an HDR10, HDR10+ or HLG track failed to decode;
+    // they play native from then on. Never cleared, like the set above.
+    internal val dvConvertDisabledStreamUrls: MutableSet<String> = mutableSetOf()
+    internal var isDvConversionArmedForCurrentPlayback: Boolean = false
     // AM9 native FEL: streams that left the native dual-layer path (MEL, non-P7 RPU, device error or
     // stall) and are re-prepared on the AUTO path.
     internal val nativeFelDisabledStreamUrls: MutableSet<String> = mutableSetOf()
