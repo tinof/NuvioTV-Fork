@@ -228,6 +228,24 @@ The Dolby Vision level comes from the stream's resolution and frame rate. If the
 configure, playback falls back to native. The first implementation covers Matroska; MP4 and TS each need
 their own signalling and injection step.
 
+**Implemented in DV2.3 (Matroska).** `DvSignalling.decide` (`core/player/DvSignalling.kt`) is the table;
+the vendored extractor runs it in `Track.initializeFormat` before the Format is built, after the HLG
+contract, for HEVC tracks without a dvcC or `dv*` codecs, and keeps the result on the track
+(`getDolbyVisionSignalling`, for DV2.7).
+- The PQ row is `HlgContract.resolvePq`: the HLG contract's field rules with transfer 16.
+- A converted Format is `video/dolby-vision`, `dvhe.08.LL`, with the contract's base-layer ColorInfo
+  (8.4: `Hlg84.baseLayerColorInfo`, HLG; 8.1: PQ), the container's static HDR block and the hvcC
+  parameter sets.
+- The level is the lowest whose pixel rate and width hold the stream, from FFmpeg's
+  `libavcodec/dovi_rpuenc.c` table (Dolby's PDF was not read), with the DefaultDuration rate or 60 fps
+  without one; above level 13 the track plays native.
+- The gate, once per playback (`DvConversionGate`): the hidden setting `convertHdrToDolbyVision` (off;
+  shown with DV2.7), the revert switch `debug.nuvio.dv_convert` (0 turns it off, nothing turns it on),
+  Nvidia, a Dolby Vision decoder and display, `DoviRpuBuilder.isAvailable()`, and neither the strip,
+  HDR10 base-layer nor map-to-HEVC mode. A Dolby Vision decoder failure of a playback that signalled a
+  converted track adds the stream to `dvConvertDisabledStreamUrls` and replays it native through
+  `retryCurrentStreamWithDolbyVisionFallback`.
+
 ### 2.6 HLG measurement
 
 Measured HLG L1 is taken in the PQ domain reconstructed by the selected composer: the luma curve, the
