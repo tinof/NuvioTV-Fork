@@ -195,7 +195,8 @@ internal object HlgContract {
 
     /**
      * The one log line for a track's decision, with the alternative-transfer SEI's preferred
-     * transfer ([preferredTransferSei], null when the hvcC has none), which never changes the decision.
+     * transfer ([preferredTransferSei], null when neither the hvcC nor the first sample has one), which
+     * never changes the decision.
      */
     @JvmStatic
     fun logLine(trackNumber: Int, decision: HlgDecision, preferredTransferSei: Int?): String {
