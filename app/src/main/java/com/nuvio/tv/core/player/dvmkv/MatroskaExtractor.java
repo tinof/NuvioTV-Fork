@@ -63,6 +63,8 @@ import com.google.common.collect.ImmutableList;
 import com.nuvio.tv.core.player.ContainerColour;
 import com.nuvio.tv.core.player.HevcInitNals;
 import com.nuvio.tv.core.player.HevcVuiColour;
+import com.nuvio.tv.core.player.DvSignalling;
+import com.nuvio.tv.core.player.DvSignallingDecision;
 import com.nuvio.tv.core.player.HlgContract;
 import com.nuvio.tv.core.player.HlgDecision;
 import com.nuvio.tv.core.util.TtffTrace;
@@ -217,6 +219,17 @@ public class MatroskaExtractor implements Extractor {
         @Nullable String codecs, @Nullable byte[] dolbyVisionConfigBytes) {
       return null;
     }
+
+    /**
+     * Fork (DV2.3): whether an HEVC track that carries no Dolby Vision may be signalled as Dolby
+     * Vision when the signalling decision table says so. Read once per track at track init.
+     */
+    default boolean isDolbyVisionConversionEnabled() {
+      return false;
+    }
+
+    /** Fork (DV2.3): called at track init when a track is signalled as converted. */
+    default void onDolbyVisionConversionSignalled(int trackId, DvSignallingDecision.Convert decision) {}
   }
 
   /**
@@ -3445,6 +3458,9 @@ public class MatroskaExtractor implements Extractor {
     @Nullable public Integer hevcPreferredTransfer;
     // Fork (DV2.4): the HLG contract's decision for an HEVC track without Dolby Vision.
     @Nullable private HlgDecision hlgDecision;
+    // Fork (DV2.3): the signalling decision for an HEVC track without Dolby Vision, null while
+    // conversion is off.
+    @Nullable private DvSignallingDecision dvSignalling;
     // Fork (DV2.4): the first sample is still to be read for an alternative-transfer SEI.
     public boolean hlgSampleSeiPending;
     private int hlgTrackId;
@@ -3767,6 +3783,52 @@ public class MatroskaExtractor implements Extractor {
         codecs = DolbyVisionCompatibility.chooseHevcCodecsString(codecs, null);
       }
 
+      isHevc = CODEC_ID_H265.equals(codecId);
+      // Fork (DV2.4, DV2.3): the HLG contract and then the signalling decision table, for HEVC tracks
+      // that carry no Dolby Vision, before the Format is built: a converted track is published as
+      // Dolby Vision from the start. The HLG decision itself changes nothing.
+      @Nullable ColorInfo convertedColorInfo = null;
+      if (isHevc && dolbyVisionConfigBytes == null && MimeTypes.VIDEO_H265.equals(mimeType)) {
+        ContainerColour containerColour =
+            new ContainerColour(
+                containerColourPrimaries,
+                containerColourTransfer,
+                containerColourMatrix,
+                containerColourRange,
+                getHdrStaticInfo());
+        @Nullable
+        HevcVuiColour vui = hevcFirstSps == null ? null : HevcVuiColour.parse(hevcFirstSps);
+        hlgDecision = HlgContract.resolve(containerColour, vui);
+        // android.util.Log, like the chapters line: Media3's Log throws in JVM unit tests, where
+        // the stubbed Log.getStackTraceString returns null.
+        android.util.Log.i(TAG, HlgContract.logLine(trackId, hlgDecision, hevcPreferredTransfer));
+        hlgTrackId = trackId;
+        hlgSampleSeiPending =
+            hevcPreferredTransfer == null
+                && !hasContentEncryption
+                && contentCompressionAlgorithm != CONTENT_COMPRESSION_HEADER_STRIP;
+        if (dolbyVisionSampleTransformer != null
+            && dolbyVisionSampleTransformer.isDolbyVisionConversionEnabled()) {
+          dvSignalling =
+              DvSignalling.decide(
+                  hasContentEncryption,
+                  containerColour,
+                  vui,
+                  hlgDecision,
+                  width,
+                  height,
+                  defaultSampleDurationNs);
+          android.util.Log.i(TAG, DvSignalling.logLine(trackId, dvSignalling));
+          if (dvSignalling instanceof DvSignallingDecision.Convert) {
+            DvSignallingDecision.Convert convert = (DvSignallingDecision.Convert) dvSignalling;
+            mimeType = MimeTypes.VIDEO_DOLBY_VISION;
+            codecs = convert.getCodecs();
+            convertedColorInfo = convert.getColorInfo();
+            dolbyVisionSampleTransformer.onDolbyVisionConversionSignalled(trackId, convert);
+          }
+        }
+      }
+
       @C.SelectionFlags int selectionFlags = 0;
       selectionFlags |= flagDefault ? C.SELECTION_FLAG_DEFAULT : 0;
       selectionFlags |= flagForced ? C.SELECTION_FLAG_FORCED : 0;
@@ -3840,7 +3902,8 @@ public class MatroskaExtractor implements Extractor {
             .setRotationDegrees(rotationDegrees)
             .setProjectionData(projectionData)
             .setStereoMode(stereoMode)
-            .setColorInfo(colorInfo);
+            // Fork (DV2.3): a converted track takes the contract's base-layer colour.
+            .setColorInfo(convertedColorInfo != null ? convertedColorInfo : colorInfo);
       } else if (MimeTypes.APPLICATION_SUBRIP.equals(mimeType)
           || MimeTypes.TEXT_SSA.equals(mimeType)
           || MimeTypes.TEXT_VTT.equals(mimeType)
@@ -3874,31 +3937,13 @@ public class MatroskaExtractor implements Extractor {
               .setCodecs(codecs)
               .setDrmInitData(drmInitData)
               .build();
+      // Fork (DV2.3): a converted track is still asked with its HEVC codecs, so the strip and
+      // HDR10+ modes treat it as before; DV2.7's injection keys off getDolbyVisionSignalling().
       requiresDolbyVisionTransform =
           dolbyVisionSampleTransformer != null && !hasContentEncryption
-              && dolbyVisionSampleTransformer.shouldTransform(codecs, dolbyVisionConfigBytes);
-      isHevc = CODEC_ID_H265.equals(codecId);
-      // Fork (DV2.4): the HLG contract, for HEVC tracks that carry no Dolby Vision. It reads,
-      // decides and logs; nothing above depends on it.
-      if (isHevc && dolbyVisionConfigBytes == null && MimeTypes.VIDEO_H265.equals(mimeType)) {
-        hlgDecision =
-            HlgContract.resolve(
-                new ContainerColour(
-                    containerColourPrimaries,
-                    containerColourTransfer,
-                    containerColourMatrix,
-                    containerColourRange,
-                    getHdrStaticInfo()),
-                hevcFirstSps == null ? null : HevcVuiColour.parse(hevcFirstSps));
-        // android.util.Log, like the chapters line: Media3's Log throws in JVM unit tests, where
-        // the stubbed Log.getStackTraceString returns null.
-        android.util.Log.i(TAG, HlgContract.logLine(trackId, hlgDecision, hevcPreferredTransfer));
-        hlgTrackId = trackId;
-        hlgSampleSeiPending =
-            hevcPreferredTransfer == null
-                && !hasContentEncryption
-                && contentCompressionAlgorithm != CONTENT_COMPRESSION_HEADER_STRIP;
-      }
+              && dolbyVisionSampleTransformer.shouldTransform(
+                  dvSignalling instanceof DvSignallingDecision.Convert ? hevcCodecsString : codecs,
+                  dolbyVisionConfigBytes);
     }
 
     /**
@@ -3920,6 +3965,16 @@ public class MatroskaExtractor implements Extractor {
     @Nullable
     public HlgDecision getHlgDecision() {
       return hlgDecision;
+    }
+
+    /**
+     * Fork (DV2.3): the signalling decision, set at track init for an HEVC track without Dolby
+     * Vision while conversion is enabled, otherwise null. A {@link DvSignallingDecision.Convert}
+     * track is published as Dolby Vision and needs an RPU in every AU (DV2.7).
+     */
+    @Nullable
+    public DvSignallingDecision getDolbyVisionSignalling() {
+      return dvSignalling;
     }
 
     /** Forces any pending sample metadata to be flushed to the output. */
