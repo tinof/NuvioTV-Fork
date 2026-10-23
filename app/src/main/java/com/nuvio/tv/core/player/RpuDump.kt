@@ -153,6 +153,8 @@ private class RpuDumpExtractor(
     /** An AU arrived in [generation]; the next init or seek starts a new one. */
     var used = true
 
+    val tracks = ArrayList<RpuDumpTrackOutput>()
+
     override fun init(output: ExtractorOutput) {
         startGeneration("init", -1L)
         delegate.init(RpuDumpExtractorOutput(output, this))
@@ -166,6 +168,8 @@ private class RpuDumpExtractor(
 
     override fun seek(position: Long, timeUs: Long) {
         startGeneration("seek", timeUs)
+        // A load cancelled mid-sample leaves part of it written; the extractor drops it, so do the tracks.
+        tracks.forEach { it.dropPendingSample() }
         delegate.seek(position, timeUs)
     }
 
@@ -190,7 +194,7 @@ private class RpuDumpExtractorOutput(
 ) : ExtractorOutput {
     override fun track(id: Int, type: Int): TrackOutput {
         val track = delegate.track(id, type)
-        return if (type == C.TRACK_TYPE_VIDEO) RpuDumpTrackOutput(track, id, extractor) else track
+        return if (type == C.TRACK_TYPE_VIDEO) RpuDumpTrackOutput(track, id, extractor).also { extractor.tracks += it } else track
     }
 
     override fun endTracks() = delegate.endTracks()
@@ -304,6 +308,13 @@ private class RpuDumpTrackOutput(
         } else {
             len = 0
         }
+        sideBytes = 0
+        overflow = false
+    }
+
+    /** Forgets the sample being written (main bytes, supplemental count, overflow). */
+    fun dropPendingSample() {
+        len = 0
         sideBytes = 0
         overflow = false
     }
