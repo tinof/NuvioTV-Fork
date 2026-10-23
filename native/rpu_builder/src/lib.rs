@@ -10,3 +10,6 @@
 
 mod api;
 mod ffi;
+
+#[cfg(test)]
+mod fixture_tests;
