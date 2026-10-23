@@ -1,0 +1,5 @@
+# The rustc that built the vendored libdovi.a (DESIGN.md 2.7). This crate does not link with it,
+# but one compiler for the fork's Rust keeps the two easy to compare.
+[toolchain]
+channel = "1.93.0"
+targets = ["aarch64-linux-android"]
