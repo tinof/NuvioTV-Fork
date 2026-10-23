@@ -9,26 +9,26 @@ use serde_json::Value;
 
 use crate::api::{self, Builders};
 
-fn fixture(name: &str) -> Vec<u8> {
+pub(crate) fn fixture(name: &str) -> Vec<u8> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests-fixtures")
         .join(name);
     std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
 
-fn json(name: &str) -> Value {
+pub(crate) fn json(name: &str) -> Value {
     serde_json::from_slice(&fixture(name)).unwrap()
 }
 
 /// One AU in the `RPU.bin` layout: a start code, then the NAL without its 2-byte header.
-fn push_record(out: &mut Vec<u8>, nal: &[u8]) {
+pub(crate) fn push_record(out: &mut Vec<u8>, nal: &[u8]) {
     assert_eq!(nal[..2], [0x7C, 0x01]);
     out.extend_from_slice(&[0, 0, 0, 1]);
     out.extend_from_slice(&nal[2..]);
 }
 
 /// `(duration, [min, avg, max])` per shot, from an `extra.json`.
-fn shots(extra: &Value) -> Vec<(u64, [i32; 3])> {
+pub(crate) fn shots(extra: &Value) -> Vec<(u64, [i32; 3])> {
     extra["shots"]
         .as_array()
         .unwrap()
@@ -181,7 +181,7 @@ fn profile_81_cases_equal_dovi_tool() {
     }
 }
 
-fn payloads(sequence: &str) -> Vec<Vec<u8>> {
+pub(crate) fn payloads(sequence: &str) -> Vec<Vec<u8>> {
     let data = fixture(&format!("{sequence}.payloads"));
     let mut rest = data.as_slice();
     let mut payloads = Vec::new();
