@@ -1,0 +1,4 @@
+# 16 KB pages, as the other native libraries of the app (CMakeLists.txt, the FFmpeg module).
+# cargo-ndk sets the linker; scripts/build_rpu_builder.sh checks the LOAD alignment of the result.
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
