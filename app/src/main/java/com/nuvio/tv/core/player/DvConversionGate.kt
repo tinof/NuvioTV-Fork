@@ -43,6 +43,17 @@ internal object DvConversionGate {
         else -> Result(true, "on")
     }
 
+    /**
+     * Whether a Dolby Vision decoder failure replays the stream native: only in a playback whose gate
+     * was on and that signalled a converted track ([convertedTarget], from the stats). The caller adds
+     * the stream to the disabled set first, so the retry resolves the gate off.
+     */
+    fun retriesNative(
+        armed: Boolean,
+        convertedTarget: DvSignallingDecision.Target?,
+        dolbyVisionDecoderFailure: Boolean,
+    ): Boolean = armed && convertedTarget != null && dolbyVisionDecoderFailure
+
     fun logLine(result: Result): String =
         if (result.enabled) "DV_CONVERT: on" else "DV_CONVERT: off (${result.reason})"
 }
