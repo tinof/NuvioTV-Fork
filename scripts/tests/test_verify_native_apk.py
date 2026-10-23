@@ -1,4 +1,6 @@
+import contextlib
 import importlib.util
+import io
 import struct
 import tempfile
 import unittest
@@ -61,6 +63,28 @@ class NativeApkTest(unittest.TestCase):
             for marker in module.RPU_BUILDER_MARKERS:
                 with self.assertRaisesRegex(ValueError, "RPU builder"):
                     module.verify(self.archive(root, real_rpu=marker), "arm64-v8a")
+
+    def test_allow_missing_rpu_builder_accepts_an_apk_without_it(self):
+        with tempfile.TemporaryDirectory() as root:
+            apk = self.archive(root, skip=module.RPU_BUILDER)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = module.verify(apk, "arm64-v8a", allow_missing_rpu_builder=True)
+            self.assertEqual(4, len(result["nativeLibraries"]))
+            self.assertIn("notice: no libnuvio_rpu.so", stderr.getvalue())
+            # The other libraries stay required.
+            with self.assertRaisesRegex(ValueError, "Missing native"):
+                module.verify(self.archive(root, skip="libdovi_bridge.so"), "arm64-v8a", allow_missing_rpu_builder=True)
+
+    def test_allow_missing_rpu_builder_still_checks_a_present_one(self):
+        with tempfile.TemporaryDirectory() as root:
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = module.verify(self.archive(root), "arm64-v8a", allow_missing_rpu_builder=True)
+                self.assertIn("lib/arm64-v8a/libnuvio_rpu.so", result["nativeLibraries"])
+                with self.assertRaisesRegex(ValueError, "RPU builder"):
+                    module.verify(self.archive(root, real_rpu=False), "arm64-v8a", allow_missing_rpu_builder=True)
+            self.assertEqual("", stderr.getvalue())
 
     def test_wrong_machine_and_wrong_abi_are_rejected(self):
         with tempfile.TemporaryDirectory() as root:
