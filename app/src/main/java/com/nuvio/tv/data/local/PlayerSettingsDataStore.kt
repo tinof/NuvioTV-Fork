@@ -355,6 +355,10 @@ data class PlayerSettings(
     // derived from the source RPU so non-DV HDR10 sinks tone-map correctly.
     // Default off (on for Nvidia when never saved); only affects P7/P8.1 strip output.
     val injectHdr10MetadataOnStrip: Boolean = false,
+    // DV2.3: signal HDR10, HDR10+ and HLG Matroska tracks as Dolby Vision 8.1 / 8.4. Off, and not
+    // shown in the settings before DV2.7 injects the RPUs: a Dolby Vision Format without RPUs must
+    // never reach the decoder.
+    val convertHdrToDolbyVision: Boolean = false,
     val mpvHi10pGnextSoftwareFallbackEnabled: Boolean = false,
     val mpvHardwareDecodeMode: MpvHardwareDecodeMode = MpvHardwareDecodeMode.AUTO_SAFE,
     // Display settings
@@ -861,6 +865,7 @@ class PlayerSettingsDataStore @Inject constructor(
     private val dv7LibdoviModeOverrideKey = intPreferencesKey("dv7_libdovi_mode_override")
     private val stripHdr10PlusSeiKey = booleanPreferencesKey("strip_hdr10plus_sei")
     private val injectHdr10MetadataOnStripKey = booleanPreferencesKey("inject_hdr10_metadata_on_strip")
+    private val convertHdrToDolbyVisionKey = booleanPreferencesKey("convert_hdr_to_dolby_vision")
     private val mpvHi10pGnextSoftwareFallbackEnabledKey =
         booleanPreferencesKey("mpv_hi10p_gnext_software_fallback_enabled")
     private val mpvHardwareDecodeModeKey = stringPreferencesKey("mpv_hardware_decode_mode")
@@ -1368,6 +1373,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 dv7LibdoviModeOverride = (prefs[dv7LibdoviModeOverrideKey] ?: -1).coerceIn(-1, 4),
                 stripHdr10PlusSei = prefs[stripHdr10PlusSeiKey] ?: false,
                 injectHdr10MetadataOnStrip = storedInjectHdr10MetadataOnStrip(prefs[injectHdr10MetadataOnStripKey]),
+                convertHdrToDolbyVision = prefs[convertHdrToDolbyVisionKey] ?: false,
                 mpvHi10pGnextSoftwareFallbackEnabled =
                     prefs[mpvHi10pGnextSoftwareFallbackEnabledKey] ?: false,
                 mpvHardwareDecodeMode = parseMpvHardwareDecodeMode(prefs[mpvHardwareDecodeModeKey]),
@@ -2341,6 +2347,12 @@ class PlayerSettingsDataStore @Inject constructor(
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     internal suspend fun setStripHdr10PlusSei(enabled: Boolean, profileId: Int) { store(profileId).edit { it[stripHdr10PlusSeiKey] = enabled } }
     suspend fun setInjectHdr10MetadataOnStrip(enabled: Boolean) { store().edit { it[injectHdr10MetadataOnStripKey] = enabled } }
+    suspend fun setConvertHdrToDolbyVision(enabled: Boolean) =
+        setConvertHdrToDolbyVision(enabled, profileManager.activeProfileId.value)
+
+    internal suspend fun setConvertHdrToDolbyVision(enabled: Boolean, profileId: Int) {
+        store(profileId).edit { it[convertHdrToDolbyVisionKey] = enabled }
+    }
 
     /** The selectable subtitle language for a track or addon language code, or null when it is not one. */
     fun selectableSubtitleLanguage(language: String?): String? {
