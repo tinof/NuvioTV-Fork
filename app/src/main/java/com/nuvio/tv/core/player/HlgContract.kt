@@ -76,8 +76,10 @@ internal object HlgContract {
     const val MATRIX_BT2020_CL = 10
 
     // Matroska Colour\Range.
+    const val RANGE_UNSPECIFIED = 0
     const val RANGE_BROADCAST = 1
     const val RANGE_FULL = 2
+    const val RANGE_DEFINED_BY_MATRIX_AND_TRANSFER = 3
 
     private const val CHROMA_420 = 1
 
@@ -121,7 +123,11 @@ internal object HlgContract {
         val containerRange = when (container.range) {
             RANGE_BROADCAST -> C.COLOR_RANGE_LIMITED
             RANGE_FULL -> C.COLOR_RANGE_FULL
-            else -> null // 0 unspecified, 3 defined by matrix and transfer
+            null, RANGE_UNSPECIFIED, RANGE_DEFINED_BY_MATRIX_AND_TRANSFER -> null
+            // Out of spec: a stated value that is not limited, never read as untagged.
+            else -> return HlgDecision.Refused(
+                "range ${container.range} in the container, not a Matroska Range code"
+            )
         }
         val vuiRange = when {
             !vui.videoSignalTypePresent -> null

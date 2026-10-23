@@ -168,6 +168,25 @@ class HlgContractTest {
     }
 
     @Test
+    fun `a Matroska Range outside 0 to 3 is a stated contradiction, not untagged`() {
+        assertEquals(
+            HlgDecision.Refused("range 4 in the container, not a Matroska Range code"),
+            resolve(container(transfer = 18, range = 4), "untagged10")
+        )
+        assertEquals(
+            HlgDecision.Refused("range 4 in the container, not a Matroska Range code"),
+            resolve(container(range = 4), "hlg_tagged")
+        )
+        assertEquals(
+            HlgDecision.Refused("range ${Int.MAX_VALUE} in the container, not a Matroska Range code"),
+            resolve(container(range = Int.MAX_VALUE), "hlg_tagged")
+        )
+        // 0 and 3 stay untagged.
+        assertEquals(hlg84("range", "matrix", "primaries"), resolve(container(transfer = 18, range = 3), "untagged10"))
+        assertEquals(hlg84("range", "matrix", "primaries"), resolve(container(transfer = 18, range = 0), "untagged10"))
+    }
+
+    @Test
     fun `HLG without a readable SPS is refused`() {
         assertEquals(HlgDecision.Refused("no readable SPS"), resolve(hlgContainer, null))
         assertEquals(HlgDecision.Refused("no readable SPS"), resolve(container(transfer = 18), null))
