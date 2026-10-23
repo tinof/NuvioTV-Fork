@@ -2,16 +2,22 @@ package com.nuvio.tv.core.player
 
 /**
  * The x265 parameter sets and SEI of `src/test/resources/hevc-colour` (see its README): NAL units with
- * their 2-byte header and emulation prevention bytes, keyed by case and NAL name.
+ * their 2-byte header and emulation prevention bytes, keyed by case and NAL name; and the SPS-only
+ * vectors of its `sps_more.txt`.
  */
 object HevcColourFixtures {
 
-    private val nals: Map<String, ByteArray> by lazy {
+    private val nals: Map<String, ByteArray> by lazy { read("hevc-colour/nals.txt") }
+
+    /** `sps_more.txt`: SPS-only vectors from Media3's tests and hand-built ones, keyed by case. */
+    private val moreSps: Map<String, ByteArray> by lazy { read("hevc-colour/sps_more.txt") }
+
+    private fun read(resource: String): Map<String, ByteArray> {
         val text = HevcColourFixtures::class.java.classLoader!!
-            .getResourceAsStream("hevc-colour/nals.txt")!!
+            .getResourceAsStream(resource)!!
             .bufferedReader()
             .use { it.readText() }
-        text.lineSequence()
+        return text.lineSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("#") }
             .associate { line ->
@@ -22,6 +28,11 @@ object HevcColourFixtures {
 
     val cases: List<String>
         get() = nals.keys.map { it.substringBefore('.') }.distinct()
+
+    val moreSpsCases: List<String>
+        get() = moreSps.keys.toList()
+
+    fun moreSps(case: String): ByteArray = checkNotNull(moreSps[case]) { "no SPS $case" }.copyOf()
 
     fun vps(case: String): ByteArray = nal(case, "vps")
     fun sps(case: String): ByteArray = nal(case, "sps")
