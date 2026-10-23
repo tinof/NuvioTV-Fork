@@ -19,6 +19,10 @@ crate-type = ["cdylib"]
 dovi_rpu_builder = { git = "https://github.com/tinof/hdr-analyze", rev = "f55c779f10034f19b4e4e26e3fcd09adcbe73233" }
 jni = { version = "0.21", default-features = false }
 
+[dev-dependencies]
+# Reads the fixtures' JSON; the version dovi_rpu_builder already pulls in.
+serde_json = "1.0"
+
 [profile.release]
 # Every JNI entry point runs inside catch_unwind, which needs unwinding.
 panic = "unwind"
