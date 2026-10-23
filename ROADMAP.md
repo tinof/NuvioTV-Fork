@@ -106,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-23 | DV2.4 shipped: the HLG contract decides HLG for 8.4 from the Matroska Colour values and the SPS VUI at track init, and logs the alternative-transfer SEI. | DV2 | [log](docs/ROADMAP_LOG.md), PR #13 |
 | 2026-10-23 | DV1.4 closed on the owner's eye check; DV2.1 done in hdr-analyze (E16.1); DV2.2 becomes a separate `cdylib` after a link test; DV1.8, DV2.7 and DV2.8 added. | DV1, DV2, DV3 | [log](docs/ROADMAP_LOG.md), hdr-analyze PR #67 |
 | 2026-10-22 | Q6.1 and Q6.10 shipped: DTS-HD MA for mono and stereo AAC when the output lists DTS-HD, AARs built locally only. | Q6 | [log](docs/ROADMAP_LOG.md), PR #12 |
 | 2026-10-21 | Q6 added and built on `feat/Q6-aac-dts`: AAC to DTS transcode, DTS 2.0 confirmed on the owner's HT-A9. | Q6 | [log](docs/ROADMAP_LOG.md), [design](docs/aac-to-dts/DESIGN.md) |
@@ -771,6 +772,9 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
 
 - **Status:** Partial. DV2.1 is done: hdr-analyze's `dovi_rpu_builder` (its E16.1, PR #67), one RPU NAL
   per AU, byte-identical to `dovi_tool generate` 2.3.4; contract in hdr-analyze `docs/RPU_BUILDER.md`.
+  DV2.4 is done (PR #13): `HlgContract` decides at Matroska track init whether an HEVC track without
+  Dolby Vision is HLG an 8.4 RPU can describe (`HlgDecision`, read by the extractor's `getHlgDecision`);
+  nothing acts on it before DV2.3.
 - [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
   crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
   test corpus. Needs: DV2.1.
@@ -803,9 +807,6 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
   written to logcat with its AU's presentation time; a script in `scripts/` (added to the `.gitignore`
   exceptions) rebuilds an `RPU.bin` from it for `dovi_tool info`. Gate: unit test of the encoder; a
   fixture round trip through the script.
-- [DV2.4][desk] The HLG contract: transfer from the SPS VUI at track init, refusal of contradicting
-  range, matrix or primaries, no HDR10 colour info on an HLG base layer, and the alternative-transfer
-  SEI logged but not acted on. Gate: unit tests with VUI-only, contradicting and untagged HLG samples.
 - [DV5.1][desk] Renderer replacement (moved here from DV5, ID kept): RPUs written off the renderer
   thread, the swap at `onQueueInputBuffer` in the verified framings, shot commitment, AU identity,
   analysis generations and the completeness watermark. Gate: the tests of `DESIGN.md` 2.3 and 2.4 pass.
