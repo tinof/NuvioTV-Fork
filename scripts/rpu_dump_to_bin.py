@@ -10,7 +10,7 @@ Turn the dump on, play, and capture it (the switch is read when playback starts)
     dovi_tool info -i RPU.bin -f 0
 
 Input is logcat text from a file or stdin, in `threadtime`/`brief` format (the text after `NuvioRpuDump:`) or
-`-v raw` (lines that start with `v1 `); other tags are ignored. The line format is `RpuDumpFormat` in
+`-v raw` (lines that start with `v1 `), with or without `-v color`; other tags are ignored. The line format is `RpuDumpFormat` in
 app/src/main/java/com/nuvio/tv/core/player/RpuDump.kt:
 
     v1 seq=<n> trk=<id> gen=<g> au=<i> pts=<us> sr=<0|1|?> why=<start|refresh> len=<bytes> crc=<crc32>
@@ -42,13 +42,14 @@ TAG = "NuvioRpuDump"
 START_CODE = b"\x00\x00\x00\x01"
 NAL_HEADER = b"\x7c\x01"
 FIELD = re.compile(r"(\w+)=(\S+)")
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 RECORD_KEYS = ("seq", "trk", "gen", "au", "pts", "sr", "why", "len", "crc")
 
 
 def messages(text):
     """The dump's own lines, without the logcat prefix."""
     for line in text.splitlines():
-        line = line.rstrip("\r")
+        line = ANSI.sub("", line).rstrip("\r")       # `adb logcat -v color`
         at = line.find(TAG)
         if at >= 0:
             message = line[at + len(TAG):].lstrip()
