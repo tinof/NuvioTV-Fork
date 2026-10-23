@@ -136,6 +136,7 @@ internal object DolbyVisionConversionStats {
     fun getLastSelectedConversionMode() = session.getLastSelectedConversionMode()
     fun getLastElType() = session.getLastElType()
     fun getLastRpuMetadata() = session.getLastRpuMetadata()
+    fun getConvertedTrackTarget() = session.getConvertedTrackTarget()
     fun getFirstDm() = session.getFirstDm()
     fun liveDmAt(positionUs: Long) = session.liveDmAt(positionUs)
 }
@@ -150,6 +151,8 @@ internal class DolbyVisionStatsSession {
     @Volatile private var lastElType: Int? = null
     // Static HDR metadata read from the current stream's first RPU.
     @Volatile private var lastRpuMetadata: DoviBridge.RpuStaticMetadata? = null
+    // DV2.3: the target of a track this playback signalled as converted, set on the loading thread.
+    @Volatile private var convertedTrackTarget: DvSignallingDecision.Target? = null
 
     // HUD: RPU display-management summaries keyed by media time (us). The feeders (extractor hooks,
     // native FEL renderer) run seconds ahead of playback, so the HUD shows the entry at the playback position.
@@ -229,6 +232,13 @@ internal class DolbyVisionStatsSession {
     private val LIVE_DM_KEEP_BEHIND_US = 30_000_000L
     private val LIVE_DM_MAX_ENTRIES = 4096
 
+    fun recordConvertedTrack(target: DvSignallingDecision.Target) {
+        convertedTrackTarget = target
+    }
+
+    /** DV2.3: the target of a track signalled as converted in this playback, or null. */
+    fun getConvertedTrackTarget(): DvSignallingDecision.Target? = convertedTrackTarget
+
     @Synchronized fun recordElType(code: Int) {
         lastElType = code
     }
@@ -280,6 +290,11 @@ internal data class DolbyVisionConversionConfig(
     val nativeProfile7: Boolean = false,
     /** AUTO converting profile 7 the way manual Convert to DV8.1 does (mode 2, fallback to 1). */
     val autoMode2: Boolean = false,
+    /**
+     * DV2.3: HEVC Matroska tracks without Dolby Vision may be signalled as Dolby Vision 8.1 or 8.4
+     * (the [DvConversionGate] result). Independent of [active], which is the Profile 7 and 5 path.
+     */
+    val convertNonDolbyVision: Boolean = false,
     val stats: DolbyVisionStatsSession = DolbyVisionConversionStats.session
 ) {
     /** Mode-2 default with per-RPU fallback to mode 1 (not for a forced mode). */
