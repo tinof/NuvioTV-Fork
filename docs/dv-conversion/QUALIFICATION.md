@@ -17,10 +17,10 @@ playback and display chain, and links the log entry with the measurements.
 | G-B | T3 | 4K60, every frame | not run | | DV1.3 |
 | G-B | T3 | 4K60, without top-layer `_N` pictures | not run | | DV1.3 |
 | G-B | T3 | 4K60, IRAP only | not run | | DV1.3 |
-| G-C | all | 8.1 from HDR10, `mkvdovi` file, Shield → owner's TV | not run | | DV1.4 |
-| G-C | all | 8.1 from HDR10+, `mkvdovi` file | not run | | DV1.4 |
-| G-C | all | 8.4 bt2100 and canary, `mkvdovi` file | not run | | DV1.4 |
-| G-C | all | L1 variants of one title | not run | | DV1.4 |
+| G-C | all | 8.1 from HDR10, `mkvdovi` file, Shield → owner's TV | not run | | DV1.8 |
+| G-C | all | 8.1 from HDR10+, `mkvdovi` file | not run | | DV1.8 |
+| G-C | all | 8.4 bt2100 and canary, `mkvdovi` file | pass, eye check only (owner) | 2026-10-23 | DV1.4; `dovi_tool` checks in DV1.8 |
+| G-C | all | L1 variants of one title | not run | | DV1.8 |
 | G-C | all | Pulse clip (L1 alternating, pixels constant) | not run | | DV7.7 |
 | G-C | DV7 candidates b, c | 8.1 mapping canary against identity control, on the recorded playback chain | not run | | DV7.7 |
 | G-C | all | Conversion in the app, per source type | not run | | DV3.1, DV3.2, DV3.3 |

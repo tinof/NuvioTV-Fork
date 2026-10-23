@@ -46,7 +46,9 @@ Checked in code on 2026-10-16.
   (max in 2081..4095, avg ≥ 819 or 1229, min ≤ 12). dovi_tool takes these values from the first frame of
   each HDR10+ scene and holds them for the shot (`generator.rs:189`, `:205-209`); `hdr10plus_tool` starts
   a new scene when the metadata differs from the previous frame. A live port computes L1 from each AU's
-  own SEI and holds it while the payload stays the same.
+  own SEI and holds it while the scene key stays the same: the fields `hdr10plus_tool` compares, not
+  the whole payload (`fraction_bright_pixels` is not compared; hdr-analyze `docs/RPU_BUILDER.md`,
+  `SceneKey` and `Hdr10PlusHold`).
 - **hdr-analyze per frame.** The statistics (PQ histogram, max-RGB peak, the min at P0.1, means) need
   only the current frame (`hdr_analyzer_mvp/src/analysis/frame.rs:644-919`).
 - **hdr-analyze per shot.** Scene detection looks 4 analyzed frames around each frame for the score and
@@ -151,6 +153,16 @@ shot need not be its first frame in presentation order, so the commitment must e
 Results that arrive after the commitment go to the cache or to a later shot that is not committed yet. A
 mid-shot refresh is not allowed in this plan; if it is wanted later, it is a separate, tested policy.
 
+**Scene refresh at a start or seek (2026-10-23).** The default is `mkvdovi` parity: the flag is set
+only on a shot's first frame in the linear stream. A static title therefore sets it on frame 0 only, and
+the first AU after a mid-file start or a seek carries 0, as an `mkvdovi` file played from the same point
+does. A `debug.nuvio.*` switch instead sets it on the first AU of every generation (section 2.3), which
+is the one exception to the rule above. DV3.2 plays a mid-file start and seeks with both settings and
+keeps the default unless the TV shows a difference. Media3 can seek inside samples it has already
+extracted without running the extractor again; such samples keep the flag they were given (DV1.1 reads
+that path). `scene_refresh_flag` is coded ue(v), so the two variants of an RPU can differ in size: the
+fork's wrapper renders both once per shot, and the headroom check below uses both.
+
 Before a late provider is committed for a shot, a size and headroom guarantee must hold for every AU of
 that shot, including the scene-refresh variant and any reconfiguration prefix; checking only the first AU
 is not enough. If the guarantee cannot be established, the whole shot keeps its fallback. A test covers a
@@ -225,13 +237,29 @@ showed a green and purple picture when chroma curves with fewer than two pivots 
 hdr-analyze provides three separate pieces, each in its own pull request:
 
 1. **RPU builders** (8.1, 8.4, HDR10+, static), which the Android bridge needs first. `mkvdovi` output
-   stays byte-identical.
+   stays byte-identical. Done: `dovi_rpu_builder`, hdr-analyze E16.1 (PR #67, 2026-10-22), byte-identical
+   to `dovi_tool generate` 2.3.4; contract in hdr-analyze `docs/RPU_BUILDER.md`. Not included: the HDR10
+   MaxCLL/MaxFALL heuristic of DV3.3.
 2. **Analyzer extraction**: per-frame statistics on plain planes and shot L1, with no behaviour change.
 3. **A causal scene detector**, versioned on its own, with a chosen delay and a rule that commits a
    boundary irreversibly. It is a new policy: its disagreement with the global detector is measured, and
    the global detector stays the reference for offline parity.
 
 JNI, Gradle and APK integration stay in the fork.
+
+**Packaging (link test, 2026-10-23).** The vendored `libdovi.a` is itself a Rust staticlib (`dolby_vision`
+3.3.2, rustc 1.93.0, not LTO-merged), so a second Rust staticlib cannot share `libdovi_bridge.so` with it:
+- With fat LTO, the NDK 29 link fails on `duplicate symbol: rust_eh_personality`, an unmangled name in
+  both copies of std. `panic = "abort"` does not remove it.
+- Without LTO and with the exact rustc that built `libdovi.a`, the link succeeds, because both archives
+  carry the same std object and the linker keeps one. That holds only while the two compilers match, so
+  it is not used.
+
+The builder therefore ships as its own `cdylib` (`System.loadLibrary`; 519 KB stripped for arm64-v8a,
+needing only libc, libm and libdl). The first static 8.4 AU from such a test build, bt2100 and canary,
+equalled hdr-analyze's committed `dovi_tool` fixtures. One combined staticlib (`dolby_vision` 3.4 with
+`capi`, plus the builder) replacing `libdovi.a` is the later alternative; it moves the Profile 7 path to
+3.4.0.
 
 ### 2.8 Playback manifest
 
