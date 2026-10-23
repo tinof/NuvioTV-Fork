@@ -24,9 +24,13 @@ order), each as `00 00 00 01` followed by the NAL without its 2-byte header: the
 parse_rpu_file splits on. Emulation prevention bytes stay in, as in the stream.
 
 logcat loses lines when logd rate-limits a chatty app or its buffer wraps: keep N small, clear the prune list
-as above, and use --strict to fail on any gap. A generation starts at an extractor init or seek; Media3's first
-load seeks right after init, so a start usually shows as `event=seek seekUs=0`. AUs Media3 had already extracted
-before a seek are not read again and are not dumped again.
+as above, and use --strict to fail on a gap. Gaps are found only up to the last record received: records lost
+after it leave no trace, so the summary prints each session's last seq to compare with what the playback should
+have dumped (the first N AUs of each generation plus its scene refreshes).
+
+A generation starts at an extractor init or seek; Media3's first load seeks right after init, so a start usually
+shows as `event=seek seekUs=0`. AUs Media3 had already extracted before a seek are not read again and are not
+dumped again.
 """
 import argparse
 import re
@@ -158,7 +162,8 @@ def main(argv=None):
     parser.add_argument("--gen", type=int, action="append", help="only this generation (repeatable)")
     parser.add_argument("--trk", type=int, help="only this track id")
     parser.add_argument("--refresh-only", action="store_true", help="only AUs with scene_refresh_flag 1 (sr=1)")
-    parser.add_argument("--strict", action="store_true", help="exit 1 on any gap, incomplete or bad record")
+    parser.add_argument("--strict", action="store_true", help="exit 1 on a seq gap before the last record received, or an incomplete or bad record; "
+                             "records lost after the last one cannot be seen")
     args = parser.parse_args(argv)
     if not args.output and not args.list:
         parser.error("give -o RPU.bin and/or --list")
@@ -182,6 +187,9 @@ def main(argv=None):
                     print("\t".join([str(index)] + [str(record[k]) for k in ("seq",) + RECORD_KEYS[1:]]))
     if args.output:
         args.output.write_bytes(rpu_bin(records))
+    for index, session_records in enumerate(sessions, 1):
+        last = session_records[-1]["seq"] if session_records else "none"
+        print(f"session {index}: last seq {last}; a record lost after it cannot be detected", file=sys.stderr)
     print(f"{len(records)} records from {len(sessions)} session(s), {len(problems)} problem(s)"
           + (f", wrote {args.output}" if args.output else ""), file=sys.stderr)
     return 1 if args.strict and problems else 0
