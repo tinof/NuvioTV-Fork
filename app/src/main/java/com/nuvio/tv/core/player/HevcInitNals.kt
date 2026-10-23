@@ -11,6 +11,7 @@ import androidx.media3.container.NalUnitUtil
 @UnstableApi
 internal object HevcInitNals {
 
+    private const val NAL_TYPE_FIRST_NON_VCL = 32
     private const val NAL_TYPE_SPS = 33
     private const val NAL_TYPE_PREFIX_SEI = 39
     private const val SEI_PAYLOAD_ALTERNATIVE_TRANSFER = 147
@@ -30,6 +31,31 @@ internal object HevcInitNals {
         for (nal in nals(initializationData)) {
             if (nalType(nal) != NAL_TYPE_PREFIX_SEI) continue
             preferredTransferInSei(nal)?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * preferred_transfer_characteristics of the first alternative-transfer SEI in the prefix SEI NALs
+     * of one access unit ([length] bytes of [sample], NALs behind [nalUnitLengthFieldLength]-byte
+     * lengths, as a Matroska block holds them), or null. The walk stops at the first VCL NAL, which
+     * every prefix SEI of the access unit precedes, and at a NAL length that overruns the sample.
+     */
+    @JvmStatic
+    fun preferredTransferInSample(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int): Int? {
+        if (nalUnitLengthFieldLength !in 1..4) return null
+        var pos = 0
+        while (pos + nalUnitLengthFieldLength <= length) {
+            var nalLength = 0L
+            repeat(nalUnitLengthFieldLength) { nalLength = (nalLength shl 8) or (sample[pos++].toLong() and 0xFF) }
+            if (nalLength < 2 || nalLength > length - pos) return null
+            val end = pos + nalLength.toInt()
+            val type = (sample[pos].toInt() ushr 1) and 0x3F
+            if (type < NAL_TYPE_FIRST_NON_VCL) return null
+            if (type == NAL_TYPE_PREFIX_SEI) {
+                preferredTransferInSei(sample.copyOfRange(pos, end))?.let { return it }
+            }
+            pos = end
         }
         return null
     }
