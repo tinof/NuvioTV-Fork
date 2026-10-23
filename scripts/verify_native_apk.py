@@ -8,6 +8,10 @@ from pathlib import Path
 
 MACHINES = {"arm64-v8a": (2, 183), "armeabi-v7a": (1, 40)}
 REQUIRED = {"libdovi_bridge.so", "libffmpegJNI.so", "libass.so", "libasskt.so"}
+# Dolby Vision conversion (ROADMAP DV2.2), built by scripts/build_rpu_builder.sh for arm64-v8a only.
+RPU_BUILDER = "libnuvio_rpu.so"
+RPU_BUILDER_MARKERS = (b"Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeRenderShot", b"nuvio_rpu ")
+REQUIRED_BY_ABI = {"arm64-v8a": REQUIRED | {RPU_BUILDER}, "armeabi-v7a": REQUIRED}
 
 
 def verify(apk: Path, abi: str) -> dict:
@@ -20,7 +24,7 @@ def verify(apk: Path, abi: str) -> dict:
         if corrupt:
             raise ValueError(f"Corrupt ZIP entry: {corrupt}")
         libraries = [name for name in names if name.startswith("lib/") and name.endswith(".so")]
-        missing = REQUIRED - {name.rsplit("/", 1)[-1] for name in libraries if name.startswith(f"lib/{abi}/")}
+        missing = REQUIRED_BY_ABI[abi] - {name.rsplit("/", 1)[-1] for name in libraries if name.startswith(f"lib/{abi}/")}
         if missing:
             raise ValueError(f"Missing native playback libraries for {abi}: {sorted(missing)}")
         hashes = {}
@@ -36,6 +40,10 @@ def verify(apk: Path, abi: str) -> dict:
         bridge = archive.read(f"lib/{abi}/libdovi_bridge.so")
         if b"dovi-bridge-libdovi-capi-0.2" not in bridge or b"dovi_convert_rpu_with_mode" not in bridge:
             raise ValueError("Dolby Vision bridge lacks real libdovi linkage")
+        if RPU_BUILDER in REQUIRED_BY_ABI[abi]:
+            rpu_builder = archive.read(f"lib/{abi}/{RPU_BUILDER}")
+            if not all(marker in rpu_builder for marker in RPU_BUILDER_MARKERS):
+                raise ValueError("Dolby Vision RPU builder lacks its JNI entry points or version")
     return {"apk": str(apk), "abi": abi, "sha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "nativeLibraries": hashes}
 
 
