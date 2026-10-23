@@ -141,6 +141,10 @@ class MatroskaHlgContractTest {
             record(HevcColourFixtures.hvcCOf("hlg_tagged"), colour(uint(0x55B9, 2))).decision
         )
         assertEquals(
+            HlgDecision.Refused("range 4 in the container, not a Matroska Range code"),
+            record(HevcColourFixtures.hvcCOf("hlg_tagged"), colour(uint(0x55B9, 4))).decision
+        )
+        assertEquals(
             HlgDecision.Refused("bit depth 8/8, not 10"),
             record(HevcColourFixtures.hvcCOf("hlg_8bit"), null).decision
         )
