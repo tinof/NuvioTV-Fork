@@ -106,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-23 | DV1.4 closed on the owner's eye check; DV2.1 done in hdr-analyze (E16.1); DV2.2 becomes a separate `cdylib` after a link test; DV1.8, DV2.7 and DV2.8 added. | DV1, DV2, DV3 | [log](docs/ROADMAP_LOG.md), hdr-analyze PR #67 |
 | 2026-10-22 | Q6.1 and Q6.10 shipped: DTS-HD MA for mono and stereo AAC when the output lists DTS-HD, AARs built locally only. | Q6 | [log](docs/ROADMAP_LOG.md), PR #12 |
 | 2026-10-21 | Q6 added and built on `feat/Q6-aac-dts`: AAC to DTS transcode, DTS 2.0 confirmed on the owner's HT-A9. | Q6 | [log](docs/ROADMAP_LOG.md), [design](docs/aac-to-dts/DESIGN.md) |
 | 2026-10-21 | Q5 and M3.3 added from a live capture: 12 stutter events in 5 min, correlated with memory pressure. | Q5, M3 | [log](docs/ROADMAP_LOG.md) |
@@ -673,11 +674,12 @@ The evidence, the architecture, the budget and the risks are in
 Each tier adds a provider to the same injector. A later tier is never required for an earlier one.
 
 - **T0, no pixels.** Compatibility first: RPUs made on the desktop and played through the app. Then
-  static providers and HDR10+ → 8.1 (L1 from each AU's own SEI, held while the payload is unchanged).
-  HLG → 8.4 uses the bt2100 composer with a conservative nominal L1: maximum 3079 (the source-range
-  ceiling, not a measured value) and a fixed average. HDR10 → 8.1 static derives a heuristic L1 from
-  MaxCLL and MaxFALL, with rules for missing, zero or implausible values, and is opt-in only: in Dolby
-  Vision mode the TV probably does not apply its own HDR10 dynamic tone mapping (a guess, tested in G-E).
+  static providers and HDR10+ → 8.1 (L1 from each AU's own SEI, held while `dovi_tool`'s scene key
+  is unchanged). HLG → 8.4 uses the bt2100 composer with a conservative nominal L1: maximum 3079 (the
+  source-range ceiling, not a measured value) and a fixed average of 1283 (owner, 2026-10-22). HDR10 →
+  8.1 static derives a heuristic L1 from MaxCLL and MaxFALL, with rules for missing, zero or
+  implausible values, and is opt-in only: in Dolby Vision mode the TV probably does not apply its own
+  HDR10 dynamic tone mapping (a guess, tested in G-E).
 - **T1, shot lists made on a PC.** First a local sidecar with a playback manifest, made by `mkvdovi`.
   Then a LAN server mode in hdr-analyze that analyses the same source from a random-access point before
   the playhead and streams finished shots (its CUDA path runs at about 325 fps for 4K HDR10 and 490 fps
@@ -752,8 +754,6 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
   qualification matrix set to pass or fail.
 - [DV1.3][device] G-B probe per mode at 4K24 and 4K60. Gate: the report in the log and the G-B rows of
   the qualification matrix set to pass or fail.
-- [DV1.4][device][owner] G-C, first half: `mkvdovi` files and L1 variants played through Nuvio. Gate:
-  the owner's TV readings and the `dovi_tool info` checks in the log.
 - [DV1.5][desk] In hdr-analyze, measure what decimation costs: per-shot L1 at sample rates 2 and 3,
   downscale 2 and 4, without top-layer `_N` pictures and IRAP only, against full analysis on the
   validation corpus. Gate: error table in hdr-analyze `docs/VALIDATION.md`.
@@ -761,25 +761,48 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
   the load. Gate: the report in the log and the idle G-F row of the qualification matrix. Needs: DV1.2.
 - [DV1.7][device][new-build] G-F playback thermal run (T3): two hours of playback with analysis. Gate:
   the report in the log and the playback G-F row of the qualification matrix. Needs: DV5.4.
+- [DV1.8][device][owner][new-build] G-C, precise half (DV1.4 closed on the owner's eye check): the
+  `mkvdovi` files (8.4 bt2100 and canary, 8.1 from HDR10 and HDR10+, the L1 variants) played through
+  Nuvio with the DV2.8 dump on, from the start, from a mid-file resume point and with seeks. Gate: the
+  dumped RPUs validate with `dovi_tool info` and equal the files' RPUs; the owner's TV readings and the
+  playback chain in the log; the G-C rows of the qualification matrix set. Needs: DV2.8.
 
 #### DV2: shared code, signalling and injector
 
-- **Status:** Open.
-- [DV2.1][desk] In hdr-analyze, a lib crate with the RPU builders (8.1, 8.4, HDR10+, static). Gate:
-  `mkvdovi` output is byte-identical on the test corpus.
+- **Status:** Partial. DV2.1 is done: hdr-analyze's `dovi_rpu_builder` (its E16.1, PR #67), one RPU NAL
+  per AU, byte-identical to `dovi_tool generate` 2.3.4; contract in hdr-analyze `docs/RPU_BUILDER.md`.
 - [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
   crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
   test corpus. Needs: DV2.1.
 - [DV2.6][desk] In hdr-analyze, a causal scene detector, versioned on its own, with a chosen delay and an
   irreversible commit rule. Gate: its cut and per-shot L1 disagreement with the global detector on the
   validation corpus, in hdr-analyze `docs/VALIDATION.md`. Needs: DV2.5.
-- [DV2.2][desk] A cargo-ndk staticlib on the RPU builders only, linked like libdovi, with JNI entry
-  points: HDR10+ payload → RPU, static 8.1 and 8.4 RPUs, shot L1 → RPU. `scripts/verify_native_apk.py`
-  checks it. Gate: unit tests equal to `dovi_tool generate` output for the same inputs. Needs: DV2.1.
-- [DV2.3][desk] The signalling decision table of `DESIGN.md` 2.5 for Matroska: a branch in the vendored
-  extractor, the Dolby Vision level from the stream, native fallback when the decoder fails, behind a
-  setting that is off by default, a `DeviceProfile` gate and a `debug.nuvio.*` revert switch. Gate: unit
-  tests over every row of the table.
+- [DV2.2][desk] A fork-side Rust crate over `dovi_rpu_builder` (pinned to an hdr-analyze commit), built
+  with cargo-ndk as a `cdylib` for arm64-v8a with its own `System.loadLibrary`, not linked into
+  `dovi_bridge` (`DESIGN.md` 2.7). JNI entry points: static 8.1 and 8.4 RPUs (composer bt2100 or canary),
+  shot L1 → RPU, HDR10+ payload → L1. `panic = "unwind"` with every entry inside `catch_unwind`; errors
+  as stable codes; both scene-refresh variants of a shot rendered once and handed out as immutable byte
+  arrays. Without the library, conversion stays off and playback native. Gate: a host `cargo test` of
+  the wrapper equals hdr-analyze's committed fixtures (`dovi_rpu_builder/tests/fixtures`) at the pinned
+  commit; the cargo-ndk build links; `scripts/verify_native_apk.py` finds the library and its entry
+  points in the APK.
+- Deferred: one combined staticlib (`dolby_vision` 3.4 with `capi`, plus the builder) that replaces
+  `libdovi.a`. It moves the Profile 7 path from 3.3.2 to 3.4.0, so it needs a Profile 7 regression check;
+  worth it when DV7.3 needs a `scene_refresh_flag` setter.
+- [DV2.3][desk] The signalling decision table of `DESIGN.md` 2.5 for Matroska only: a branch in the
+  vendored extractor, the Dolby Vision level from the stream, native fallback when the decoder fails,
+  behind a setting that is off by default, a `DeviceProfile` gate and a `debug.nuvio.*` revert switch.
+  Gate: unit tests over every row of the table. Needs: DV2.4 (the HLG rows read its transfer).
+- [DV2.7][desk] Extractor injection for tracks that carry no Dolby Vision: when DV2.3 converts a
+  Matroska track, the existing transformer (`DolbyVisionMatroskaTransformer.kt`) adds the provider's RPU
+  NAL to each AU, with the scene-refresh rule of `DESIGN.md` 2.2 and its debug switch. Gate: unit tests:
+  one RPU per AU, every other NAL byte-identical, refresh as the rule says, native tracks untouched.
+  Needs: DV2.2, DV2.3.
+- [DV2.8][desk] RPU debug dump behind a `debug.nuvio.*` switch: the RPU of the first N AUs after a start
+  or seek and of every scene-refresh AU, for the existing Dolby Vision path and for converted tracks,
+  written to logcat with its AU's presentation time; a script in `scripts/` (added to the `.gitignore`
+  exceptions) rebuilds an `RPU.bin` from it for `dovi_tool info`. Gate: unit test of the encoder; a
+  fixture round trip through the script.
 - [DV2.4][desk] The HLG contract: transfer from the SPS VUI at track init, refusal of contradicting
   range, matrix or primaries, no HDR10 colour info on an HLG base layer, and the alternative-transfer
   SEI logged but not acted on. Gate: unit tests with VUI-only, contradicting and untagged HLG samples.
@@ -793,11 +816,19 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
 - **Status:** Open.
 - [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
   on the owner's TV; the debug log shows an RPU in every AU and L1 equal to `dovi_tool` for the same
-  frames. Needs: DV2.2, DV2.3, DV1.4.
-- [DV3.2][device][owner][new-build] HLG → 8.4 static provider. Gate: G-C second half: the canary turns
-  green through the app's conversion, bt2100 shows no tint. Needs: DV2.2, DV2.3, DV2.4, DV1.4.
-- [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. Gate: G-E A/B recorded; the
-  default stays off unless the owner prefers it. Needs: DV2.2, DV2.3.
+  frames. First write into `DESIGN.md` 2.4 the HDR10+ rules of hdr-analyze `docs/RPU_BUILDER.md`: the
+  scene rule runs in presentation order while the extractor reads in decode order; an AU without a
+  payload reuses the previous payload in decode order; non-HDR10+ T.35 messages are skipped. Needs:
+  DV2.7, DV2.8.
+- [DV3.2][device][owner][new-build] HLG → 8.4 static provider: `static_84_params` with `STATIC_84_L1`
+  (0 / 1283 / 3079, V29 average floor). The RPU carries the default L6 and the crate's CM v4.0 L3 and
+  L254. Gate: G-C second half: the canary turns green through the app's conversion, bt2100 shows no
+  tint; the DV2.8 dump validates with `dovi_tool info`; a mid-file start and seeks played with both
+  settings of the scene-refresh switch (`DESIGN.md` 2.2), the default kept or changed from what the TV
+  shows. Needs: DV2.4, DV2.7, DV2.8.
+- [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. The MaxCLL/MaxFALL heuristic is
+  not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); where it lives is decided when this step
+  starts. Gate: G-E A/B recorded; the default stays off unless the owner prefers it. Needs: DV2.7.
 
 #### DV4: T1, shot lists made on a PC
 
