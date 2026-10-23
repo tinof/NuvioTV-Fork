@@ -12,6 +12,7 @@ variants of an RPU, and HDR10+ payload → L1. The Kotlin side is
   `catch_unwind`.
 - `src/fixture_tests.rs`, `tests-fixtures/`: the wrapper against hdr-analyze's committed
   `dovi_tool` output.
+- `src/jvm_tests.rs` (feature `jvm-tests`): the `Java_*` exports called through a real JVM.
 
 ## Why a separate library
 
@@ -46,6 +47,23 @@ scripts/build_rpu_builder.sh               # arm64-v8a .so into app/src/main/jni
 scripts/shield_build_install.sh            # runs build_rpu_builder.sh first when cargo-ndk is installed
 python3 scripts/verify_native_apk.py app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk --abi arm64-v8a
 ```
+
+Plain `cargo test` needs no JDK and does not touch `src/ffi.rs`'s JNI code. The JNI layer has its
+own host tests, behind the test-only feature `jvm-tests` (it turns on jni's `invocation`; never use
+it for the Android build):
+
+```sh
+cd native/rpu_builder
+JAVA_HOME="$(/usr/libexec/java_home -v 17)" cargo test --features jvm-tests
+```
+
+They start one JVM with `-Xcheck:jni` in the test process and call every `Java_*` export with a real
+`JNIEnv` and Java arrays: static 8.4 (bt2100, canary) and an 8.1 case equal the fixtures through
+JNI, `nativeHdr10PlusL1` fills its out array, wrong-length and null arrays are code 20, a released
+handle is code 21, and no call leaves a Java exception pending. jni finds `libjvm` through
+`JAVA_HOME` (without it, macOS's default `/usr/libexec/java_home`, or the `java` on `PATH` on Linux)
+and loads `$JAVA_HOME/lib/server/libjvm.dylib` by its full path, so macOS needs no
+`DYLD_LIBRARY_PATH`. `cargo clippy --all-targets --features jvm-tests` checks the test code.
 
 The build needs cargo-ndk (`cargo install cargo-ndk --locked`) and the NDK that `app/build.gradle.kts`
 names (`ndkVersion`). It links with `-z max-page-size=16384` (`.cargo/config.toml`), and the script
