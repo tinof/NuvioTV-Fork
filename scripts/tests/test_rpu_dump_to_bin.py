@@ -98,6 +98,12 @@ class RpuDumpToBinTest(unittest.TestCase):
         code, _, stderr = self.run_main(crc + "\n" + record_lines(1, nal, 1500)[0], "--strict")
         self.assertEqual(1, code)
         self.assertIn("seq 0 CRC mismatch", stderr)
+        length = good.replace(f"len={len(nal)} ", f"len={len(nal) + 1} ")
+        self.assertNotEqual(good, length)
+        code, _, stderr = self.run_main(length + "\n" + record_lines(1, nal, 1500)[0], "--strict")
+        self.assertEqual(1, code)
+        self.assertIn(f"seq 0 length {len(nal)} != len={len(nal) + 1}", stderr)
+        self.assertNotIn("missing", stderr)
         self.assertNotIn("missing", stderr)
         no_header = b"\x00\x01" + nal[2:]
         code, data, stderr = self.run_main(record_lines(0, no_header, 1500)[0], "--strict")
