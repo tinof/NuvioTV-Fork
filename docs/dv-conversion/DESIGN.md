@@ -17,23 +17,24 @@ Device results go to `QUALIFICATION.md`.
 
 ## 1. What is established
 
-Checked in code on 2026-10-16.
+Checked in code on 2026-10-16; fork references re-checked on 2026-10-23, after DV2.2 and DV2.4.
 
 - **Fork pipeline.** Dolby Vision 7 → 8.1 runs per sample in the extractor (the NAL loop of
   `DolbyVisionMatroskaTransformer.kt:426-474`). The extractor rewrites the Format before Media3 picks a
   decoder. For Matroska, HEVC `initializationData` is the parameter sets from the hvcC only
-  (`MatroskaExtractor.java:3277`), so the Shield's Dolby Vision decoder already plays the fork's 8.1
+  (`MatroskaExtractor.java:3521-3522`), so the Shield's Dolby Vision decoder already plays the fork's 8.1
   output with no dvcC: the MIME type and the codecs string select it. MP4 is different: Media3 appends
   the dvcC to `initializationData` (`BoxParser.java:1477-1493` in Media3 1.8.0), and the renderer sends it
   as csd-1. An HDR10 or HLG source has no dvcC to pass, which matches the Matroska case.
 - **Signalling gap.** Both rewrite hooks run only for tracks that already carry Dolby Vision: a dvcC
-  (`MatroskaExtractor.java:3446`) or a `dvhe.`/`dvh1.` codecs string (`:3489`). HDR10, HDR10+ and HLG
-  tracks need a new branch that sets `video/dolby-vision` and `dvhe.08.xx`. The extractor publishes each
-  track's Format at the end of its TrackEntry, before any frame (`MatroskaExtractor.java:1402-1415`), and
-  its comment warns that holding the Format back can deadlock preparation (`:1411-1414`).
+  (`MatroskaExtractor.java:3696`) or a `dvhe.`/`dvh1.` codecs string (`:3741-3742`). HDR10, HDR10+ and HLG
+  tracks need a new branch that sets `video/dolby-vision` and `dvhe.08.xx` (DV2.3); DV2.4 records the HLG
+  decision on the track but does not rewrite the Format. The extractor publishes each
+  track's Format at the end of its TrackEntry, before any frame (`MatroskaExtractor.java:1489-1498`), and
+  its comment warns that holding the Format back can deadlock preparation (`:1494-1497`).
 - **Sample framing.** The transformer sees length-prefixed NALs, but the Matroska extractor writes
-  Annex B start codes into the sample queue (`MatroskaExtractor.java:2533-2534`). At renderer input a
-  sample is therefore Annex B for Matroska; other containers are for DV1.1 to read.
+  Annex B start codes into the sample queue (`MatroskaExtractor.java:2610-2611`, `:2681-2682`). At
+  renderer input a sample is therefore Annex B for Matroska; other containers are for DV1.1 to read.
 - **RPU generation.** The bundled libdovi C API parses, converts and writes RPUs; it cannot generate
   one per frame (`DV7/libdovi/android-arm64/include/libdovi/rpu_parser.h:551-741`). The pure-Rust crates
   can: `dolby_vision` 3.4 (`DoviRpu::profile81_config`, `profile84_config`, `write_hevc_unspec62_nalu`),
@@ -77,8 +78,12 @@ Checked in code on 2026-10-16.
   8.4 files, and a canary composer turned the unchanged HLG base layer green (hdr-analyze
   `docs/ROADMAP_LOG.md:237-262`). The Shield-to-TV chain therefore decodes 8.4 and applies the composer.
   The fork's path is untested. In the same test, an HLG source signalled only in the VUI played as SDR.
-- **Fork HLG detection** reads only the Matroska Colour element (`MatroskaExtractor.java:1699-1705`); the
-  SPS VUI and the alternative-transfer SEI are ignored.
+- **Fork HLG detection (DV2.4, PR #13).** At track init, `HlgContract.resolve`
+  (`MatroskaExtractor.java:3884-3892`) decides from the Matroska Colour element, now with
+  MatrixCoefficients and Range (`:1825-1832`), and the first SPS's VUI (`HevcInitNals.firstSps`,
+  `HevcVuiColour`; `:3525-3529`). The alternative-transfer SEI, from the hvcC or the first sample
+  (`:3529`, `:2414`), is logged only. The decision is kept on the track (`getHlgDecision`); nothing acts on
+  it before DV2.3.
 - **CUDA is not an option.** CUDA for Android ended with CodeWorks for Android (1R6 had CUDA 6.5 and
   7.0; 1R7 dropped CUDA). One NVIDIA forum thread (forums.developer.nvidia.com/t/77215, June 2019)
   reports `cudaErrorInsufficientDriver` on Shield TV with Android 8.0. hdr-analyze's GPU path needs
@@ -100,7 +105,7 @@ Checked in code on 2026-10-16.
   flushed and released without a renderer reset (`:1494-1499`); the fork's
   `DecodeOrderPtsVideoRenderer.kt:146-154` already handles every flush and release.
 - **Look-ahead.** The player loads 15 to 45 s ahead of the playhead
-  (`NuvioExoPlayerPerformanceHelper.kt:66-67`), within a byte budget of at most 500 MB on the 3 GB
+  (`NuvioExoPlayerPerformanceHelper.kt:57-58`), within a byte budget of at most 500 MB on the 3 GB
   Shield Pro (`BufferSizing.kt:17`; the 2 GB Shield gets 150 MB). The budget is lowered for the back
   buffer and other uses (`BufferSizing.kt:75-99`, `ReadAheadReserve.kt:54-63`), so a reservation for
   analysis shortens the look-ahead it needs.
@@ -255,11 +260,19 @@ JNI, Gradle and APK integration stay in the fork.
   carry the same std object and the linker keeps one. That holds only while the two compilers match, so
   it is not used.
 
-The builder therefore ships as its own `cdylib` (`System.loadLibrary`; 519 KB stripped for arm64-v8a,
-needing only libc, libm and libdl). The first static 8.4 AU from such a test build, bt2100 and canary,
+The builder therefore ships as its own `cdylib` (`System.loadLibrary`; 519 KB stripped for arm64-v8a in
+the 2026-10-23 test build, needing only libc, libm and libdl). The first static 8.4 AU from such a test build, bt2100 and canary,
 equalled hdr-analyze's committed `dovi_tool` fixtures. One combined staticlib (`dolby_vision` 3.4 with
 `capi`, plus the builder) replacing `libdovi.a` is the later alternative; it moves the Profile 7 path to
 3.4.0.
+
+**Shipped in DV2.2 (PR #14).** The crate `native/rpu_builder` (`nuvio_rpu`, pinned to hdr-analyze
+`f55c779`, the merge of its PR #68) builds `libnuvio_rpu.so` (558192 bytes) with
+`scripts/build_rpu_builder.sh` into the gitignored `app/src/main/jniLibs/arm64-v8a/`;
+`scripts/shield_build_install.sh` runs it first when cargo-ndk is installed. `DoviRpuBuilder.kt` loads it
+and reports unavailable without it (armeabi-v7a APKs, JVM tests). CI builds no Rust: the disabled release
+workflow verifies with `verify_native_apk.py --allow-missing-rpu-builder`. Codes, pin and tests:
+`native/rpu_builder/README.md`.
 
 ### 2.8 Playback manifest
 
@@ -346,8 +359,8 @@ Derived, not measured. One 4K frame in P010 is 24.9 MB.
   with their provenance and quality class and reuses them at that class.
 - Shot lists shared with other users: a wrong match spoils a film, and the key reveals what a user plays.
   Own devices only.
-- An untagged HLG stream signalled as 8.1 would get HDR10 colour info. The HLG contract (DV2.4) comes
-  before any HLG tier.
+- An untagged HLG stream signalled as 8.1 would get HDR10 colour info. The HLG contract (DV2.4, done in
+  PR #13) comes before any HLG tier.
 - Dolby Vision is a Dolby trademark; this is an unofficial conversion with no certification claim, as in
   hdr-analyze's `docs/PROVENANCE.md`.
 
@@ -366,18 +379,20 @@ Checked in code on 2026-10-19.
   MP4 in `dovi_bridge.cpp:746-780` and TS in `dovi_bridge.cpp:862-900`. Enhancement-layer NAL units are
   dropped. Active Auto conversion uses mode 2 on Nvidia and on devices whose decoder capabilities select
   it, subject to the `dv7_manual` switch (`DolbyVisionBaseLayerPolicy.kt:56-66`, `:150-157`;
-  `DolbyVisionExtractorsFactory.kt:308-315`); other devices keep Auto's mode 1.
+  `DolbyVisionExtractorsFactory.kt:308-324`); other devices keep Auto's mode 1.
 - **What the modes keep.** For FEL, mode 2 sets the mapping to the identity and drops the residual; the
   display-management levels stay. Mode 1 (`ToMel`) keeps the authored mapping and produces a
   MEL-compatible RPU that keeps Profile 7 syntax; the fork carries it under its Profile 8 signalling
-  (`DolbyVisionExtractorsFactory.kt:515-516`). That is a compatibility path, not a Profile 8.1 RPU with
+  (`DolbyVisionExtractorsFactory.kt:724-728`). That is a compatibility path, not a Profile 8.1 RPU with
   the mapping kept (`To81MappingPreserved`, which the 3.3.2 C API cannot reach,
-  `DolbyVisionExtractorsFactory.kt:300-306`), and not FEL_PLAN candidate (b).
+  `DolbyVisionExtractorsFactory.kt:313-315`), and not FEL_PLAN candidate (b).
 - **Fallback.** The per-RPU fallback from mode 2 to mode 1 exists only in `convertRpuNal`, the
   BlockAdditional path (`:405-411`). In-band Matroska (`:453`), MP4 (`dovi_bridge.cpp:757`) and TS
   (`:878`) use one mode. `docs/shield-todo.md:49` describes the fallback as general. Separately, when the
   decoder fails under mode 2 the whole playback retries once in mode 1
-  (`PlayerRuntimeControllerInitialization.kt:2295-2300`).
+  (`PlayerRuntimeControllerInitialization.kt:2382-2402`, `retryCurrentStreamWithDolbyVisionFallback` in
+  `PlayerRuntimeControllerObservers.kt:908`; mode 1 forced on the retry at
+  `PlayerRuntimeControllerInitialization.kt:1261`).
 - **Failure.** A failed RPU is dropped and the AU goes on without one (`DolbyVisionMatroskaTransformer.kt:461-466`,
   `dovi_bridge.cpp:773-780`, `:894-900`). Matroska abandons conversion after 60 consecutive failures
   (`:168-187`, `:607`); MP4 and TS keep trying and only count the drops (`dovi_bridge.cpp:102-113`). What
@@ -432,7 +447,7 @@ RPU, so this injector can carry them with no pixels on the Shield:
 - (b) authored mapping kept in a Profile 8.1 RPU, residual dropped. The fork's mode 1 keeps the
   mapping too, but in a Profile 7 MEL-compatible RPU (5.1), so a mode 1 against mode 2 comparison is a
   first look, not a test of (b). The fork prefers mode 2 because the curves "assume the enhancement
-  layer this pipeline strips" (`DolbyVisionExtractorsFactory.kt:304-306`), which is FEL_PLAN's open
+  layer this pipeline strips" (`DolbyVisionExtractorsFactory.kt:313-315`), which is FEL_PLAN's open
   question for (b). hdr-analyze's reference reconstruction decides it.
 - (c) a mapping refitted per frame or shot against the reference reconstruction: computed on a PC,
   delivered as complete RPUs in the playback manifest (section 2.8).
