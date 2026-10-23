@@ -51,6 +51,7 @@ class ProfileSettingsCredentialPolicyTest {
             "audio_rejection_reset_token",
             "migration_back_buffer_budget_done",
             "inject_hdr10_metadata_on_strip",
+            "convert_hdr_to_dolby_vision",
         ).forEach { assertTrue(it, shouldExcludePreferenceFromProfileSettingsSync("player_settings", it)) }
         assertFalse(shouldExcludePreferenceFromProfileSettingsSync("player_settings", "subtitle_preferred_language"))
     }
