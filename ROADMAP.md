@@ -106,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-23 | DV2.2 shipped: `libnuvio_rpu.so`, a JNI `cdylib` over `dovi_rpu_builder` that renders static 8.1 and 8.4 RPUs, shot L1 RPUs and HDR10+ L1, byte-identical to hdr-analyze's fixtures. | DV2 | [log](docs/ROADMAP_LOG.md), PR #14 |
 | 2026-10-23 | DV2.4 shipped: the HLG contract decides HLG for 8.4 from the Matroska Colour values and the SPS VUI at track init, and logs the alternative-transfer SEI. | DV2 | [log](docs/ROADMAP_LOG.md), PR #13 |
 | 2026-10-23 | DV1.4 closed on the owner's eye check; DV2.1 done in hdr-analyze (E16.1); DV2.2 becomes a separate `cdylib` after a link test; DV1.8, DV2.7 and DV2.8 added. | DV1, DV2, DV3 | [log](docs/ROADMAP_LOG.md), hdr-analyze PR #67 |
 | 2026-10-22 | Q6.1 and Q6.10 shipped: DTS-HD MA for mono and stereo AAC when the output lists DTS-HD, AARs built locally only. | Q6 | [log](docs/ROADMAP_LOG.md), PR #12 |
@@ -775,21 +776,15 @@ and resource reclaim; the report covers recovery and fallback coverage as well a
   DV2.4 is done (PR #13): `HlgContract` decides at Matroska track init whether an HEVC track without
   Dolby Vision is HLG an 8.4 RPU can describe (`HlgDecision`, read by the extractor's `getHlgDecision`);
   nothing acts on it before DV2.3.
+  DV2.2 is done (PR #14): `nuvio_rpu` (`native/rpu_builder`), its own `cdylib` `libnuvio_rpu.so` over
+  `dovi_rpu_builder` at hdr-analyze `f55c779`, read through `DoviRpuBuilder`; built locally only
+  (`scripts/build_rpu_builder.sh`), nothing calls it before DV2.3 and DV2.7.
 - [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
   crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
   test corpus. Needs: DV2.1.
 - [DV2.6][desk] In hdr-analyze, a causal scene detector, versioned on its own, with a chosen delay and an
   irreversible commit rule. Gate: its cut and per-shot L1 disagreement with the global detector on the
   validation corpus, in hdr-analyze `docs/VALIDATION.md`. Needs: DV2.5.
-- [DV2.2][desk] A fork-side Rust crate over `dovi_rpu_builder` (pinned to an hdr-analyze commit), built
-  with cargo-ndk as a `cdylib` for arm64-v8a with its own `System.loadLibrary`, not linked into
-  `dovi_bridge` (`DESIGN.md` 2.7). JNI entry points: static 8.1 and 8.4 RPUs (composer bt2100 or canary),
-  shot L1 → RPU, HDR10+ payload → L1. `panic = "unwind"` with every entry inside `catch_unwind`; errors
-  as stable codes; both scene-refresh variants of a shot rendered once and handed out as immutable byte
-  arrays. Without the library, conversion stays off and playback native. Gate: a host `cargo test` of
-  the wrapper equals hdr-analyze's committed fixtures (`dovi_rpu_builder/tests/fixtures`) at the pinned
-  commit; the cargo-ndk build links; `scripts/verify_native_apk.py` finds the library and its entry
-  points in the APK.
 - Deferred: one combined staticlib (`dolby_vision` 3.4 with `capi`, plus the builder) that replaces
   `libdovi.a`. It moves the Profile 7 path from 3.3.2 to 3.4.0, so it needs a Profile 7 regression check;
   worth it when DV7.3 needs a `scene_refresh_flag` setter.
