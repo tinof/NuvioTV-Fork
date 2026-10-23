@@ -196,6 +196,34 @@ class RpuDumpTapTest {
     }
 
     @Test
+    fun seekDropsASampleCutOffMidWrite() {
+        val h = Harness(firstAus = 1, FlagReader())
+        val track = h.video()
+        val cut = au(rpu(1))
+        // Matroska's supplemental size prefix and half the main part, then the load is cancelled.
+        track.sampleData(ParsableByteArray(byteArrayOf(0, 0, 0, cut.size.toByte())), 4, TrackOutput.SAMPLE_DATA_PART_SUPPLEMENTAL)
+        track.sampleData(ParsableByteArray(cut.copyOfRange(0, 7)), 7, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        h.extractor.seek(5_000, 2_000_000)
+        val sample = au(rpu(2))
+        track.sampleData(ParsableByteArray(byteArrayOf(0, 0, 0, sample.size.toByte())), 4, TrackOutput.SAMPLE_DATA_PART_SUPPLEMENTAL)
+        track.sampleData(ParsableByteArray(sample), sample.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        track.sampleMetadata(2_000_000, C.BUFFER_FLAG_KEY_FRAME or C.BUFFER_FLAG_HAS_SUPPLEMENTAL_DATA, 4 + sample.size, 0, null)
+        assertEquals(listOf(rpu(2).toList()), h.records.map { it.nal.toList() })
+        assertEquals("seek", RpuDumpTestLines.fields(h.generations.single())["event"])
+    }
+
+    @Test
+    fun seekClearsAnOverflowedSample() {
+        val h = Harness(firstAus = 1, FlagReader())
+        val track = h.video()
+        val runaway = 16 * 1024 * 1024 + 1
+        track.sampleData(ParsableByteArray(ByteArray(runaway)), runaway, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        h.extractor.seek(5_000, 2_000_000)
+        track.write(au(rpu(3)), 2_000_000)
+        assertEquals(listOf(rpu(3).toList()), h.records.map { it.nal.toList() })
+    }
+
+    @Test
     fun bytesReachTheDelegateUnchanged() {
         val h = Harness(firstAus = 2, FlagReader())
         val track = h.video()
