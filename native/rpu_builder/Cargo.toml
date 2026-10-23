@@ -1,0 +1,27 @@
+[package]
+name = "nuvio_rpu"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.93"
+license = "GPL-3.0-only"
+description = "JNI wrapper over hdr-analyze's dovi_rpu_builder: Dolby Vision 8.1 / 8.4 RPUs for NuvioTV's conversion (ROADMAP DV2.2)"
+publish = false
+
+[lib]
+name = "nuvio_rpu"
+# cdylib only: an rlib in this list turns LTO off for the cdylib. Its own shared library, not
+# linked into libdovi_bridge.so (docs/dv-conversion/DESIGN.md 2.7).
+crate-type = ["cdylib"]
+
+[dependencies]
+# Pinned to an hdr-analyze commit on main; moving it is described in README.md. The rev's first
+# seven characters are also in the version string (src/api.rs, VERSION), which a test checks.
+dovi_rpu_builder = { git = "https://github.com/tinof/hdr-analyze", rev = "f55c779f10034f19b4e4e26e3fcd09adcbe73233" }
+jni = { version = "0.21", default-features = false }
+
+[profile.release]
+# Every JNI entry point runs inside catch_unwind, which needs unwinding.
+panic = "unwind"
+lto = "fat"
+codegen-units = 1
+strip = true

@@ -74,3 +74,6 @@ sentry.properties
 
 # Local build log of scripts/shield_build_install.sh
 /.local/
+
+# Cargo output of native/rpu_builder
+/native/rpu_builder/target/
