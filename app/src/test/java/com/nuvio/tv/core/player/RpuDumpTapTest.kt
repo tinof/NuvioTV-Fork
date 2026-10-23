@@ -252,6 +252,27 @@ class RpuDumpTapTest {
     }
 
     @Test
+    fun aHugeRequestedLengthReadsAtMostOneChunk() {
+        val h = Harness(firstAus = 1, FlagReader())
+        val track = h.video()
+        val source = ByteArray(200_000) { (it * 7).toByte() }
+        var at = 0
+        val reader = DataReader { buffer, offset, length ->
+            val n = minOf(length, source.size - at)
+            System.arraycopy(source, at, buffer, offset, n)
+            at += n
+            n
+        }
+        // A corrupt Matroska NAL length asks for almost 2 GB in one call.
+        val first = track.sampleData(reader, Int.MAX_VALUE - 8, false, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        assertEquals(64 * 1024, first)
+        while (at < source.size) {
+            assertTrue(track.sampleData(reader, Int.MAX_VALUE - 8, false, TrackOutput.SAMPLE_DATA_PART_MAIN) <= 64 * 1024)
+        }
+        assertArrayEquals(source, h.downstream.tracks.getValue(1).main.toByteArray())
+    }
+
+    @Test
     fun encryptedAuIsCountedButNotDumped() {
         val h = Harness(firstAus = 2, FlagReader())
         val track = h.video()
