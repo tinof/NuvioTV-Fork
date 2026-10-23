@@ -245,6 +245,33 @@ class RpuDumpTapTest {
     }
 
     @Test
+    fun bytesBeforeTheFormatBelongToTheFirstAu() {
+        // TS's H265Reader writes the AUD and parameter sets, then calls format() at the end of the PPS.
+        val h = Harness(firstAus = 1, FlagReader())
+        val track = h.source.output.track(1, C.TRACK_TYPE_VIDEO)
+        val sample = au(rpu(0))
+        track.sampleData(ParsableByteArray(sample.copyOfRange(0, 6)), 6, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        track.format(Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265).setCodecs("hvc1.2.4.L153").build())
+        track.sampleData(ParsableByteArray(sample.copyOfRange(6, sample.size)), sample.size - 6, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        track.sampleMetadata(0, C.BUFFER_FLAG_KEY_FRAME, sample.size, 0, null)
+        assertEquals(listOf(rpu(0).toList()), h.records.map { it.nal.toList() })
+        assertEquals("0", h.records.single().fields["au"])
+    }
+
+    @Test
+    fun bytesBeforeANonHevcFormatAreDropped() {
+        val h = Harness(firstAus = 3, FlagReader())
+        val track = h.source.output.track(1, C.TRACK_TYPE_VIDEO)
+        val sample = au(rpu(0))
+        track.sampleData(ParsableByteArray(sample), sample.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        track.format(Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).setCodecs("avc1.640028").build())
+        track.sampleMetadata(0, C.BUFFER_FLAG_KEY_FRAME, sample.size, 0, null)
+        track.write(au(rpu(1)), 40_000)
+        assertEquals(emptyList<String>(), h.lines)
+        assertArrayEquals(sample + au(rpu(1)), h.downstream.tracks.getValue(1).main.toByteArray())
+    }
+
+    @Test
     fun onlyHevcVideoIsTapped() {
         val h = Harness(firstAus = 3, FlagReader())
         val avc = h.video(id = 1, mime = MimeTypes.VIDEO_H264, codecs = "avc1.640028")
