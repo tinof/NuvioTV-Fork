@@ -315,7 +315,9 @@ object DoviBridge {
         val elHalfResolution: Boolean?,
         val level2Count: Int,
         val level8Count: Int,
-        val level10Count: Int
+        val level10Count: Int,
+        /** `scene_refresh_flag`: true on a shot's first frame; null when the RPU carries no DM data. */
+        val sceneRefresh: Boolean? = null
     ) {
         fun hasLevel(level: Int): Boolean = when (level) {
             in 1..11 -> levels and (1 shl level) != 0
@@ -372,7 +374,8 @@ object DoviBridge {
             elHalfResolution = opt(20)?.let { it == 1 },
             level2Count = v[21].coerceAtLeast(0),
             level8Count = v[22].coerceAtLeast(0),
-            level10Count = v[23].coerceAtLeast(0)
+            level10Count = v[23].coerceAtLeast(0),
+            sceneRefresh = opt(25)?.let { it == 1 }
         )
     }
 
