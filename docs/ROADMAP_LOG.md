@@ -10,6 +10,41 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-23: DV2.2 Fork-side Rust crate over dovi_rpu_builder (PR #14)
+
+- [DV2.2][desk] A fork-side Rust crate over `dovi_rpu_builder` (pinned to an hdr-analyze commit), built
+  with cargo-ndk as a `cdylib` for arm64-v8a with its own `System.loadLibrary`, not linked into
+  `dovi_bridge` (`DESIGN.md` 2.7). JNI entry points: static 8.1 and 8.4 RPUs (composer bt2100 or canary),
+  shot L1 → RPU, HDR10+ payload → L1. `panic = "unwind"` with every entry inside `catch_unwind`; errors
+  as stable codes; both scene-refresh variants of a shot rendered once and handed out as immutable byte
+  arrays. Without the library, conversion stays off and playback native. Gate: a host `cargo test` of
+  the wrapper equals hdr-analyze's committed fixtures (`dovi_rpu_builder/tests/fixtures`) at the pinned
+  commit; the cargo-ndk build links; `scripts/verify_native_apk.py` finds the library and its entry
+  points in the APK.
+
+**Evidence**
+
+- Host `cargo test` in `native/rpu_builder`: 15 tests. The fixture tests
+  (`static_84_equals_dovi_tool_for_bt2100_and_canary`, `profile_81_cases_equal_dovi_tool`,
+  `hdr10plus_sequences_equal_dovi_tool_for_every_peak_source` and two more) equal the copies of
+  hdr-analyze's `dovi_rpu_builder/tests/fixtures` at the pinned commit `f55c779` (`tests-fixtures/SHA256SUMS`);
+  `the_version_names_the_pinned_commit` ties the version string to the pin.
+- `cargo test --features jvm-tests`: 21 tests, the `Java_*` exports called through a real JVM, including
+  `a_panic_is_code_99_at_every_kind_of_entry`.
+- `scripts/build_rpu_builder.sh`: the cargo-ndk build links for arm64-v8a, three LOAD segments at 16 KB.
+- `scripts/verify_native_apk.py` on a local `scripts/shield_build_install.sh` debug APK of the reviewed head:
+  `lib/arm64-v8a/libnuvio_rpu.so` present with its entry-point marker; its tests (`scripts/tests`) 7 passed.
+- Gate `:app:testFullDebugUnitTest`: 6672 tests, 0 failures, 10 skipped, `DoviRpuBuilderTest` (7) included.
+- CI: the `Checks` workflow on PR #14.
+- Review (Tier 2, codex and gemini): both LGTM, no findings, no P2 notes.
+
+**Resolution:** `nuvio_rpu` wraps `dovi_rpu_builder` as its own `cdylib`, `libnuvio_rpu.so`, loaded by
+`DoviRpuBuilder` with its own `System.loadLibrary` and not linked into `dovi_bridge`. Every JNI entry
+runs inside `catch_unwind` and returns stable codes; a shot renders both scene-refresh variants once as
+immutable byte arrays. The library is built locally only (`scripts/build_rpu_builder.sh`, run by
+`scripts/shield_build_install.sh`); without it `DoviRpuBuilder.isAvailable()` is false and playback stays
+native. Nothing calls it yet: DV2.3 and DV2.7 are the first readers.
+
 ## 2026-10-23: DV2.4 The HLG contract (PR #13)
 
 - [DV2.4][desk] The HLG contract: transfer from the SPS VUI at track init, refusal of contradicting
