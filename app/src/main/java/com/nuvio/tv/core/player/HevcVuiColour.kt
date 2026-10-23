@@ -51,6 +51,7 @@ internal data class HevcVuiColour(
          * SPS can take its format from the VPS), or truncated.
          */
         @JvmStatic
+        @JvmOverloads
         fun parse(nal: ByteArray, offset: Int = 0, limit: Int = nal.size): HevcVuiColour? {
             if (limit - offset < 3) return null
             val nalType = (nal[offset].toInt() ushr 1) and 0x3F
