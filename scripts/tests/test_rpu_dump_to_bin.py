@@ -128,6 +128,12 @@ class RpuDumpToBinTest(unittest.TestCase):
         _, data, _ = self.run_main(text, "--session", "2")
         self.assertEqual(b"\x00\x00\x00\x01" + nal[2:30], data)
 
+    def test_color_capture_parses(self):
+        colored = "\n".join(f"\x1b[38;5;40m{line}\x1b[0m" for line in LOGCAT.read_text().splitlines())
+        code, data, _ = self.run_main(colored, "--strict")
+        self.assertEqual(0, code)
+        self.assertEqual(RPU_BIN.read_bytes(), data)
+
     def test_dovi_tool_reads_the_rebuilt_file(self):
         dovi_tool = shutil.which("dovi_tool")
         if dovi_tool is None:
