@@ -229,7 +229,8 @@ jobs:
       - name: Verify native playback features
         if: inputs.mode != 'dry-run'
         run: |
-          python scripts/verify_native_apk.py app/build/outputs/apk/full/release/app-full-arm64-v8a-release.apk --abi arm64-v8a
+          # CI builds no Rust (scripts/build_rpu_builder.sh is local only), so no libnuvio_rpu.so.
+          python scripts/verify_native_apk.py app/build/outputs/apk/full/release/app-full-arm64-v8a-release.apk --abi arm64-v8a --allow-missing-rpu-builder
           python scripts/verify_native_apk.py app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk --abi armeabi-v7a
 
       - name: Upload build artifacts
