@@ -1,0 +1,26 @@
+# SPS vectors gen.sh does not make (README, "SPS layouts"). One SPS NAL per case, 2-byte header and
+# emulation prevention bytes as coded.
+#
+# From Media3 1.8.0 (androidx/media tag 1.8.0), libraries/container/src/test/java/androidx/media3/container/NalUnitUtilTest.java:
+# m3_lpcm_sample: H265_SPS_TEST_DATA ("24-bit big endian raw audio LPCM (MP4,H265,raw)" sample)
+m3_lpcm_sample=420101222000000300b00000030000030099a001e020021c4d94bbb4a332aac05a8489048a000007d20000bb80e4687c9c00012e1f800021fd3000025c3f000043fa62
+# m3_mvhevc_hdr_view0: H265_SPS_TEST_DATA_2VIEWS_HDR_VIEW_0 (MV-HEVC base view)
+m3_mvhevc_hdr_view0=420101022000000300b00000030000030099a001e020021c4d94628d924297555843fffffffffffffff918828d087fffffffffffffff918828d087fffffffffffffff92bc041400000fa40003a983c24824dc0002625a0001312dfc4c78f40
+# m3_exoghi_10316: the payload of parseH265SpsNalUnitPayload_exoghi_10316, behind the SPS header 4201
+m3_exoghi_10316=420101022000000300900000030000030096a001e020021c4d9e5792429185164aaacb9b9ebce40977eb9978f016a1220136c2000007d20000bb81f455ef7e00e3801c7801c70038f1
+# m3_st_rps: the payload of parseH265SpsNalUnitPayload_withShortTermRefPicSets, behind the SPS header 4201
+m3_st_rps=42010102600000030000030000030000030096a0021c801e04d96f924c8ebff9f36521cd424402410000030001000003001d08
+#
+# From Media3 1.8.0 libraries/test_data/src/test/assets/media, the first SPS of the video stream:
+#   ffmpeg -i <asset> -map 0:v -c:v copy -frames:v 3 -bsf:v hevc_mp4toannexb -f hevc out.hevc; python3 -I nals.py out.hevc
+# m3_hlg_1080p: mp4/hlg-1080p.mp4
+m3_hlg_1080p=42010102200000030000030000030000030099a003c0801107cada2d2bb04bb9a848904804
+# m3_rps_pred_ts: ts/sample_h265_rps_pred.ts
+m3_rps_pred_ts=42010701600000030090000003000003003f0000a0073200ac7256266533989317248a41d2474f3e3fc4fcb3f9fb3cbfd7cc8792ff9fb3cbfd7c123a79f1fe27e53fcfdfcb3f5f321e4bfe7ecf2ff5f1ffe1568156602000007d0000075301
+#
+# Hand-built, not from an encoder: x265 SPSs of nals.txt with fields inserted bit by bit.
+#   python3 -I sps_tool.py build < nals.txt
+# hand_long_term_refs: hlg_tagged.sps with long_term_ref_pics_present_flag 1, num_long_term_ref_pics_sps 2: (lsb 5, used 1), (lsb 9, used 0)
+hand_long_term_refs=42010102200000030090000003000003001ea0208104d96566924cb60b097350912090400000fa00000300fa02
+# hand_sub_layer_ptl: hlg_sublayers.sps with sub_layer_profile_present_flag and sub_layer_level_present_flag 1 for each sub-layer: Main 10, level 90
+hand_sub_layer_ptl=42010402200000030090000003000003001ef00002600000030090000003000003005a02600000030090000003000003005aa0208104d965652b295964932b9a84890482000007d0000007d010

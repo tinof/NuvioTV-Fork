@@ -20,9 +20,10 @@ class HevcVuiColourTest {
         fullRange: Boolean = false,
         profile: Int = 2,
         bitDepth: Int = 10,
+        chroma: Int = 1,
     ) = HevcVuiColour(
         generalProfileIdc = profile,
-        chromaFormatIdc = 1,
+        chromaFormatIdc = chroma,
         bitDepthLuma = bitDepth,
         bitDepthChroma = bitDepth,
         videoSignalTypePresent = signalType,
@@ -45,7 +46,36 @@ class HevcVuiColourTest {
         "range_only10" to vui(null, null, null, fullRange = true),
         "hlg_still10" to vui(9, 18, 9, profile = 4),
         "atc_sei" to vui(9, 14, 9),
+        "hlg_sublayers" to vui(9, 18, 9),
+        "hlg_sar_ext" to vui(9, 18, 9),
+        "hlg_conf_win" to vui(9, 18, 9),
+        "hlg_scaling_default" to vui(9, 18, 9),
+        "hlg_scaling_list" to vui(9, 18, 9),
+        "hlg_sps_rps" to vui(9, 18, 9),
+        "hlg_422" to vui(9, 18, 9, profile = 4, chroma = 2),
+        "hlg_444" to vui(9, 18, 9, profile = 4, chroma = 3),
     )
+
+    /**
+     * `sps_more.txt`, with the values its sources give: Media3's own assertions (colorSpace BT.2020,
+     * HLG or ST 2084, limited) for the NalUnitUtilTest vectors, ffprobe for the media assets, and the
+     * x265 SPS a hand-built vector was made from. The matrix is the one value Media3 does not read.
+     */
+    private val expectedMore = mapOf(
+        "m3_lpcm_sample" to vui(9, 18, 9),
+        "m3_mvhevc_hdr_view0" to vui(null, null, null, signalType = false),
+        "m3_exoghi_10316" to vui(9, 16, 9),
+        "m3_st_rps" to vui(9, 16, 9),
+        "m3_hlg_1080p" to vui(9, 18, 9),
+        "m3_rps_pred_ts" to vui(null, null, null, signalType = false, profile = 1, bitDepth = 8),
+        "hand_long_term_refs" to vui(9, 18, 9),
+        "hand_sub_layer_ptl" to vui(9, 18, 9),
+    )
+
+    /** Every SPS vector: the x265 cases and `sps_more.txt`. */
+    private val allSps: Map<String, ByteArray>
+        get() = HevcColourFixtures.cases.associateWith(HevcColourFixtures::sps) +
+            HevcColourFixtures.moreSpsCases.associateWith(HevcColourFixtures::moreSps)
 
     @Test
     fun `every fixture SPS gives the colour fields x265 was asked for`() {
@@ -56,9 +86,16 @@ class HevcVuiColourTest {
     }
 
     @Test
+    fun `every other SPS layout gives the colour fields its source states`() {
+        assertEquals(expectedMore.keys, HevcColourFixtures.moreSpsCases.toSet())
+        for ((case, want) in expectedMore) {
+            assertEquals(case, want, HevcVuiColour.parse(HevcColourFixtures.moreSps(case)))
+        }
+    }
+
+    @Test
     fun `primaries, transfer, range and bit depth agree with Media3's own SPS parser`() {
-        for (case in HevcColourFixtures.cases) {
-            val sps = HevcColourFixtures.sps(case)
+        for ((case, sps) in allSps) {
             val ours = checkNotNull(HevcVuiColour.parse(sps)) { case }
             val media3 = NalUnitUtil.parseH265SpsNalUnit(sps, 0, sps.size, null)
             assertEquals(case, media3.colorSpace, ours.colourPrimaries?.let(ColorInfo::isoColorPrimariesToColorSpace) ?: Format.NO_VALUE)
@@ -91,8 +128,7 @@ class HevcVuiColourTest {
 
     @Test
     fun `a truncated SPS is unreadable, never misread`() {
-        for (case in HevcColourFixtures.cases) {
-            val sps = HevcColourFixtures.sps(case)
+        for ((case, sps) in allSps) {
             val full = HevcVuiColour.parse(sps)
             for (length in 0 until sps.size) {
                 val parsed = HevcVuiColour.parse(sps.copyOf(length))
