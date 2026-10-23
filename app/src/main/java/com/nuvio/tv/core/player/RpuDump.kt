@@ -28,8 +28,10 @@ import java.util.zip.CRC32
  *
  * A generation starts at an extractor `init` or `seek`; an `init` or `seek` before the generation's first AU
  * starts none (Media3's first load seeks right after `init`). Wraps the outermost ExtractorsFactory, inside
- * [com.nuvio.tv.core.player.thumbnail.PlaybackTap], so it sees what the decoder gets: native Profile 8 and 5
- * tracks as well as the tracks the Dolby Vision factory converts. Media3 can seek inside samples it already
+ * [com.nuvio.tv.core.player.thumbnail.PlaybackTap], so for progressive sources (Matroska, MP4, TS: what the
+ * `mkvdovi` files use) it sees what the decoder gets: native Profile 8 and 5 tracks as well as the tracks the
+ * Dolby Vision factory converts. HLS and DASH build their chunk extractors without that factory and are not
+ * tapped; [untappedSourceLine] says so in the log. Media3 can seek inside samples it already
  * extracted; those AUs are not extracted again and appear once. It only observes: every sample byte reaches
  * the delegate unchanged. While on, each HEVC / Dolby Vision AU is buffered once.
  */
@@ -48,6 +50,21 @@ object RpuDumpTap {
         log: (String) -> Unit = { android.util.Log.i(RpuDumpFormat.TAG, it) }
     ): ExtractorsFactory =
         if (firstAus <= 0) delegate else RpuDumpExtractorsFactory(delegate, firstAus, reader, log)
+
+    /**
+     * `v1 untapped source=<hls|dash> n=<N>` when the dump is on and [streamMime] is an adaptive source, which
+     * never passes through [wrap]; null otherwise. The script skips it like a generation line.
+     */
+    fun untappedSourceLine(firstAus: Int, streamMime: String?): String? {
+        if (firstAus <= 0 || streamMime == null) return null
+        val mime = streamMime.lowercase()
+        val source = when {
+            "mpegurl" in mime || "m3u8" in mime -> "hls"     // as initializePlayer's isHls
+            mime == MimeTypes.APPLICATION_MPD.lowercase() -> "dash"
+            else -> return null
+        }
+        return "v1 untapped source=$source n=$firstAus"
+    }
 }
 
 /** Reads `scene_refresh_flag` from an RPU NAL (2-byte header included); null when it cannot be read. */
