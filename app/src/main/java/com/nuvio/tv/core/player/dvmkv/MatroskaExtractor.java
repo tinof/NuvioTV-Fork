@@ -60,7 +60,11 @@ import androidx.media3.extractor.TrueHdSampleRechunker;
 import androidx.media3.extractor.text.SubtitleParser;
 import androidx.media3.extractor.text.SubtitleTranscodingExtractorOutput;
 import com.google.common.collect.ImmutableList;
+import com.nuvio.tv.core.player.ContainerColour;
 import com.nuvio.tv.core.player.HevcInitNals;
+import com.nuvio.tv.core.player.HevcVuiColour;
+import com.nuvio.tv.core.player.HlgContract;
+import com.nuvio.tv.core.player.HlgDecision;
 import com.nuvio.tv.core.util.TtffTrace;
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
@@ -3465,6 +3469,11 @@ public class MatroskaExtractor implements Extractor {
     @Nullable public Integer containerColourRange;
     // Fork (DV2.4): the first SPS NAL of an HEVC track's hvcC, or null.
     public byte @MonotonicNonNull [] hevcFirstSps;
+    // Fork (DV2.4): preferred_transfer_characteristics of an alternative-transfer SEI in the
+    // hvcC, or null. Logged only; it never changes the HLG decision.
+    @Nullable public Integer hevcPreferredTransfer;
+    // Fork (DV2.4): the HLG contract's decision for an HEVC track without Dolby Vision.
+    @Nullable private HlgDecision hlgDecision;
 
     // Audio elements. Initially set to their default values.
     public int channelCount = 1;
@@ -3543,6 +3552,7 @@ public class MatroskaExtractor implements Extractor {
           if (firstSps != null) {
             hevcFirstSps = firstSps;
           }
+          hevcPreferredTransfer = HevcInitNals.preferredTransfer(initializationData);
           break;
         case CODEC_ID_FOURCC:
           Pair<String, @NullableType List<byte[]>> pair =
@@ -3894,6 +3904,31 @@ public class MatroskaExtractor implements Extractor {
           dolbyVisionSampleTransformer != null && !hasContentEncryption
               && dolbyVisionSampleTransformer.shouldTransform(codecs, dolbyVisionConfigBytes);
       isHevc = CODEC_ID_H265.equals(codecId);
+      // Fork (DV2.4): the HLG contract, for HEVC tracks that carry no Dolby Vision. It reads,
+      // decides and logs; nothing above depends on it.
+      if (isHevc && dolbyVisionConfigBytes == null && MimeTypes.VIDEO_H265.equals(mimeType)) {
+        hlgDecision =
+            HlgContract.resolve(
+                new ContainerColour(
+                    containerColourPrimaries,
+                    containerColourTransfer,
+                    containerColourMatrix,
+                    containerColourRange,
+                    getHdrStaticInfo()),
+                hevcFirstSps == null ? null : HevcVuiColour.parse(hevcFirstSps));
+        // android.util.Log, like the chapters line: Media3's Log throws in JVM unit tests, where
+        // the stubbed Log.getStackTraceString returns null.
+        android.util.Log.i(TAG, HlgContract.logLine(trackId, hlgDecision, hevcPreferredTransfer));
+      }
+    }
+
+    /**
+     * Fork (DV2.4): the HLG contract's decision, set at track init for an HEVC track without
+     * Dolby Vision, otherwise null. For the signalling decision table (DV2.3).
+     */
+    @Nullable
+    public HlgDecision getHlgDecision() {
+      return hlgDecision;
     }
 
     /** Forces any pending sample metadata to be flushed to the output. */
