@@ -157,14 +157,17 @@ class HlgContractTest {
 
     @Test
     fun `HLG in 4_2_2 or 4_4_4 is refused`() {
-        for (chroma in listOf(0, 2, 3)) {
-            assertEquals(
-                HlgDecision.Refused("chroma_format_idc $chroma, not 4:2:0"),
-                HlgContract.resolve(untaggedContainer, vui("hlg_tagged").copy(chromaFormatIdc = chroma))
-            )
-        }
-        // A 10-bit RExt stream in 4:2:0 is still accepted.
+        assertEquals(2, vui("hlg_422").chromaFormatIdc)
+        assertEquals(3, vui("hlg_444").chromaFormatIdc)
+        assertEquals(HlgDecision.Refused("chroma_format_idc 2, not 4:2:0"), resolve(untaggedContainer, "hlg_422"))
+        assertEquals(HlgDecision.Refused("chroma_format_idc 3, not 4:2:0"), resolve(hlgContainer, "hlg_444"))
+        // Both are 10-bit RExt (profile 4) like hlg_still10, which is 4:2:0 and accepted.
+        assertEquals(4, vui("hlg_444").generalProfileIdc)
         assertEquals(hlg84(), resolve(hlgContainer, "hlg_still10"))
+        assertEquals(
+            HlgDecision.Refused("chroma_format_idc 0, not 4:2:0"),
+            HlgContract.resolve(untaggedContainer, vui("hlg_tagged").copy(chromaFormatIdc = 0))
+        )
     }
 
     @Test
@@ -238,9 +241,36 @@ class HlgContractTest {
             "range_only10" to HlgDecision.TransferUnknown,
             "hlg_still10" to hlg84(),
             "atc_sei" to HlgDecision.NotHlg,
+            "hlg_sublayers" to hlg84(),
+            "hlg_sar_ext" to hlg84(),
+            "hlg_conf_win" to hlg84(),
+            "hlg_scaling_default" to hlg84(),
+            "hlg_scaling_list" to hlg84(),
+            "hlg_sps_rps" to hlg84(),
+            "hlg_422" to HlgDecision.Refused("chroma_format_idc 2, not 4:2:0"),
+            "hlg_444" to HlgDecision.Refused("chroma_format_idc 3, not 4:2:0"),
         )
         assertEquals(HevcColourFixtures.cases.toSet(), expected.keys)
         for ((case, decision) in expected) assertEquals(case, decision, resolve(untaggedContainer, case))
+    }
+
+    @Test
+    fun `every other SPS layout without container colour gets the decision its VUI implies`() {
+        val expected = mapOf(
+            "m3_lpcm_sample" to hlg84(),
+            "m3_mvhevc_hdr_view0" to HlgDecision.TransferUnknown,
+            "m3_exoghi_10316" to HlgDecision.NotHlg,
+            "m3_st_rps" to HlgDecision.NotHlg,
+            "m3_hlg_1080p" to hlg84(),
+            "m3_rps_pred_ts" to HlgDecision.TransferUnknown,
+            "hand_long_term_refs" to hlg84(),
+            "hand_sub_layer_ptl" to hlg84(),
+        )
+        assertEquals(HevcColourFixtures.moreSpsCases.toSet(), expected.keys)
+        for ((case, decision) in expected) {
+            val vui = checkNotNull(HevcVuiColour.parse(HevcColourFixtures.moreSps(case))) { case }
+            assertEquals(case, decision, HlgContract.resolve(untaggedContainer, vui))
+        }
     }
 
     @Test
