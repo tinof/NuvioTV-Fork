@@ -211,8 +211,11 @@ private class RpuDumpTrackOutput(
 
     private val factory = extractor.factory
 
-    /** HEVC or Dolby Vision over HEVC: the codecs whose NAL type 62 is the RPU. */
-    private var supported = false
+    /**
+     * HEVC or Dolby Vision over HEVC: the codecs whose NAL type 62 is the RPU. True until format() says otherwise:
+     * TS's H265Reader writes the first AU's parameter sets before it knows the format.
+     */
+    private var supported = true
     private var codecs: String? = null
 
     // Main sample part since the last sampleMetadata (plus carried offset bytes); the size prefix and
@@ -237,7 +240,10 @@ private class RpuDumpTrackOutput(
         supported = mime == MimeTypes.VIDEO_H265 ||
             (mime == MimeTypes.VIDEO_DOLBY_VISION && lower.startsWith("dvh"))
         codecs = format.codecs
-        if (!supported) len = 0
+        if (!supported) {
+            len = 0
+            sideBytes = 0
+        }
         delegate.format(format)
     }
 
