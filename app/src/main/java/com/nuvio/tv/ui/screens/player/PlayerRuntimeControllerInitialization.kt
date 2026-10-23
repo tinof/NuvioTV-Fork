@@ -2404,8 +2404,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                         // DV2.3: a track this playback signalled as Dolby Vision failed to decode:
                         // play the stream again with conversion off, before the DV7 rungs below.
                         val convertedTarget = DolbyVisionConversionStats.getConvertedTrackTarget()
-                        if (isDvConversionArmedForCurrentPlayback && convertedTarget != null &&
-                            error.isDolbyVisionDecoderFailure()
+                        if (DvConversionGate.retriesNative(
+                                armed = isDvConversionArmedForCurrentPlayback,
+                                convertedTarget = convertedTarget,
+                                dolbyVisionDecoderFailure = error.isDolbyVisionDecoderFailure()
+                            ) && convertedTarget != null
                         ) {
                             dvConvertDisabledStreamUrls.add(currentStreamUrl)
                             Log.i(
@@ -3937,7 +3940,7 @@ private inline fun <reified T : Throwable> Throwable.findCause(): T? {
     return null
 }
 
-private fun PlaybackException.isDolbyVisionDecoderFailure(): Boolean {
+internal fun PlaybackException.isDolbyVisionDecoderFailure(): Boolean {
     // media3 surfaces failure-to-instantiate as
     // ERROR_CODE_DECODER_INIT_FAILED ("Decoder init failed..."), which the
     // message-string match below never catches - so the mode2 -> mode1 -> HDR10
