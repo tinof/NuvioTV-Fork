@@ -2398,6 +2398,25 @@ public class MatroskaExtractor implements Extractor {
       maybeEndTracks();
     }
 
+    if (track.hlgSampleSeiPending) {
+      // Fork (DV2.4): the alternative-transfer SEI can come in the first access unit instead of the
+      // hvcC. Peek that sample once and log what it states; the decision stays as it is.
+      byte[] peekedSample = new byte[size];
+      boolean hasPeekData =
+          zlibSampleSource != null
+              ? peekSampleBytesFromBuffer(zlibSampleSource, peekedSample, size)
+              : input.peekFully(peekedSample, 0, size, true);
+      if (hasPeekData) {
+        if (zlibSampleSource == null) {
+          input.resetPeekPosition();
+        }
+        track.logHlgSampleSei(
+            HevcInitNals.preferredTransferInSample(
+                peekedSample, size, track.nalUnitLengthFieldLength));
+      }
+      track.hlgSampleSeiPending = false;
+    }
+
     TrackOutput output = track.output;
     if (!sampleEncodingHandled) {
       if (track.hasContentEncryption) {
@@ -3422,10 +3441,13 @@ public class MatroskaExtractor implements Extractor {
     // Fork (DV2.4): the first SPS NAL of an HEVC track's hvcC, or null.
     public byte @MonotonicNonNull [] hevcFirstSps;
     // Fork (DV2.4): preferred_transfer_characteristics of an alternative-transfer SEI in the
-    // hvcC, or null. Logged only; it never changes the HLG decision.
+    // hvcC or the first sample, or null. Logged only; it never changes the HLG decision.
     @Nullable public Integer hevcPreferredTransfer;
     // Fork (DV2.4): the HLG contract's decision for an HEVC track without Dolby Vision.
     @Nullable private HlgDecision hlgDecision;
+    // Fork (DV2.4): the first sample is still to be read for an alternative-transfer SEI.
+    public boolean hlgSampleSeiPending;
+    private int hlgTrackId;
 
     // Audio elements. Initially set to their default values.
     public int channelCount = 1;
@@ -3871,7 +3893,24 @@ public class MatroskaExtractor implements Extractor {
         // android.util.Log, like the chapters line: Media3's Log throws in JVM unit tests, where
         // the stubbed Log.getStackTraceString returns null.
         android.util.Log.i(TAG, HlgContract.logLine(trackId, hlgDecision, hevcPreferredTransfer));
+        hlgTrackId = trackId;
+        hlgSampleSeiPending =
+            hevcPreferredTransfer == null
+                && !hasContentEncryption
+                && contentCompressionAlgorithm != CONTENT_COMPRESSION_HEADER_STRIP;
       }
+    }
+
+    /**
+     * Fork (DV2.4): records and logs the preferred transfer of an alternative-transfer SEI found in
+     * the first sample; null leaves the track as it is. It never changes the decision.
+     */
+    private void logHlgSampleSei(@Nullable Integer preferredTransfer) {
+      if (preferredTransfer == null || hlgDecision == null) {
+        return;
+      }
+      hevcPreferredTransfer = preferredTransfer;
+      android.util.Log.i(TAG, HlgContract.logLine(hlgTrackId, hlgDecision, preferredTransfer));
     }
 
     /**
