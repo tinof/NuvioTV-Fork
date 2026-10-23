@@ -13,3 +13,5 @@ mod ffi;
 
 #[cfg(test)]
 mod fixture_tests;
+#[cfg(all(test, feature = "jvm-tests"))]
+mod jvm_tests;
