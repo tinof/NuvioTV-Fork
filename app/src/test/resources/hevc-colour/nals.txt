@@ -1,0 +1,45 @@
+# hlg_tagged: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --colorprim bt2020 --transfer arib-std-b67 --colormatrix bt2020nc --range limited -o hlg_tagged.hevc
+hlg_tagged.vps=40010c01ffff02200000030090000003000003001e959809
+hlg_tagged.sps=42010102200000030090000003000003001ea0208104d96566924cae6a1224120800001f4000001f4040
+hlg_tagged.pps=4401c172b42240
+# untagged10: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 -o untagged10.hevc
+untagged10.vps=40010c01ffff02200000030090000003000003001e959809
+untagged10.sps=42010102200000030090000003000003001ea0208104d96566924cae0100000303e800000303e808
+untagged10.pps=4401c172b42240
+# pq: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --colorprim bt2020 --transfer smpte2084 --colormatrix bt2020nc --range limited -o pq.hevc
+pq.vps=40010c01ffff02200000030090000003000003001e959809
+pq.sps=42010102200000030090000003000003001ea0208104d96566924cae6a1220120800001f4000001f4040
+pq.pps=4401c172b42240
+# hlg_matrix709: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --colorprim bt2020 --transfer arib-std-b67 --colormatrix bt709 --range limited -o hlg_matrix709.hevc
+hlg_matrix709.vps=40010c01ffff02200000030090000003000003001e959809
+hlg_matrix709.sps=42010102200000030090000003000003001ea0208104d96566924cae6a1224020800001f4000001f4040
+hlg_matrix709.pps=4401c172b42240
+# hlg_full_range: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --colorprim bt2020 --transfer arib-std-b67 --colormatrix bt2020nc --range full -o hlg_full_range.hevc
+hlg_full_range.vps=40010c01ffff02200000030090000003000003001e959809
+hlg_full_range.sps=42010102200000030090000003000003001ea0208104d96566924cae6e1224120800001f4000001f4040
+hlg_full_range.pps=4401c172b42240
+# hlg_prim709: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --colorprim bt709 --transfer arib-std-b67 --colormatrix bt2020nc --range limited -o hlg_prim709.hevc
+hlg_prim709.vps=40010c01ffff02200000030090000003000003001e959809
+hlg_prim709.sps=42010102200000030090000003000003001ea0208104d96566924cae6a0224120800001f4000001f4040
+hlg_prim709.pps=4401c172b42240
+# hlg_matrix_cl: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --colorprim bt2020 --transfer arib-std-b67 --colormatrix bt2020c --range limited -o hlg_matrix_cl.hevc
+hlg_matrix_cl.vps=40010c01ffff02200000030090000003000003001e959809
+hlg_matrix_cl.sps=42010102200000030090000003000003001ea0208104d96566924cae6a1224140800001f4000001f4040
+hlg_matrix_cl.pps=4401c172b42240
+# hlg_8bit: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in8.yuv --input-depth 8 --output-depth 8 --profile main --colorprim bt2020 --transfer arib-std-b67 --colormatrix bt2020nc --range limited -o hlg_8bit.hevc
+hlg_8bit.vps=40010c01ffff01600000030090000003000003001e959809
+hlg_8bit.sps=42010101600000030090000003000003001ea020810596566924cae6a1224120800001f400000301f404
+hlg_8bit.pps=4401c172b42240
+# range_only10: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --range full -o range_only10.hevc
+range_only10.vps=40010c01ffff02200000030090000003000003001e959809
+range_only10.sps=42010102200000030090000003000003001ea0208104d96566924cae6c0800001f4000001f4040
+range_only10.pps=4401c172b42240
+# hlg_still10: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --frames 1 --colorprim bt2020 --transfer arib-std-b67 --colormatrix bt2020nc --range limited -o hlg_still10.hevc
+hlg_still10.vps=40010c01ffff0408000003009db800000300001e959809
+hlg_still10.sps=4201010408000003009db800000300001ea0208104d96566924cae6a1224120800001f4000001f4040
+hlg_still10.pps=4401c172b42240
+# atc_sei: x265 --input-res 64x64 --fps 1 --frames 2 --no-info --log-level error --input in10.yuv --input-depth 10 --output-depth 10 --profile main10 --colorprim bt2020 --transfer bt2020-10 --colormatrix bt2020nc --range limited --atc-sei 18 -o atc_sei.hevc
+atc_sei.vps=40010c01ffff02200000030090000003000003001e959809
+atc_sei.sps=42010102200000030090000003000003001ea0208104d96566924cae6a121c120800001f4000001f4040
+atc_sei.pps=4401c172b42240
+atc_sei.sei=4e0193011280
