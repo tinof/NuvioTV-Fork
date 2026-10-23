@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the full debug (or benchmark) APK locally with upstream's toolchain (JDK 17) and,
 # optionally, install it on the Shield over adb with `install -r` and check the installed hash.
+# libnuvio_rpu.so is built first by scripts/build_rpu_builder.sh when cargo-ndk is installed.
 #
 #   scripts/shield_build_install.sh [--suffix .shield] [--benchmark] [--debuggable] [--install] [--allow-empty-config]
 #
@@ -30,7 +31,7 @@ while [ $# -gt 0 ]; do
     --debuggable) debuggable=true; shift ;;
     --install) install=true; shift ;;
     --allow-empty-config) allow_empty_config=true; shift ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -65,6 +66,16 @@ fi
 head_sha="$(git rev-parse HEAD)"
 dirty=""
 [ -n "$(git status --porcelain --untracked-files=no)" ] && dirty=" (dirty tree)"
+
+# libnuvio_rpu.so (Dolby Vision conversion, arm64-v8a only) is built by cargo-ndk, not Gradle.
+rpu_lib="app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so"
+if cargo ndk --version >/dev/null 2>&1; then
+  scripts/build_rpu_builder.sh
+elif [ -f "$rpu_lib" ]; then
+  echo "warning: cargo-ndk not found; packaging the existing $rpu_lib without rebuilding it" >&2
+else
+  echo "warning: cargo-ndk not found; the APK has no libnuvio_rpu.so, so Dolby Vision conversion is off" >&2
+fi
 
 gradle_args=(":app:assembleFull${variant}" "-PnuvioAppIdSuffix=${suffix}")
 $debuggable && gradle_args+=("-Pdebuggable=true")
