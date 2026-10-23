@@ -68,6 +68,17 @@ class RpuDumpToBinTest(unittest.TestCase):
         code, _, _ = self.run_main("\n".join(dropped))
         self.assertEqual(0, code)
 
+    def test_dropped_final_record_is_reported_by_its_last_seq(self):
+        # Tail loss leaves no gap: --strict passes, and the summary names the last seq received.
+        lines = LOGCAT.read_text().splitlines()
+        dropped = [line for line in lines if "seq=6 " not in line]
+        code, data, stderr = self.run_main("\n".join(dropped), "--strict")
+        self.assertEqual(0, code)
+        self.assertIn("session 1: last seq 5;", stderr)
+        self.assertEqual(b"".join(records_of(RPU_BIN.read_bytes())[:6]), data)
+        _, _, stderr = self.run_main(LOGCAT.read_text(), "--strict")
+        self.assertIn("session 1: last seq 6;", stderr)
+
     def test_parts_are_joined_and_a_missing_part_fails(self):
         nal = b"\x7c\x01\x19\x08\x09" + bytes(range(256)) * 12 + b"\x80"
         lines = record_lines(0, nal, 1500) + record_lines(1, nal[:40], 1500)
