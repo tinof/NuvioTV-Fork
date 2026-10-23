@@ -19,6 +19,12 @@ crate-type = ["cdylib"]
 dovi_rpu_builder = { git = "https://github.com/tinof/hdr-analyze", rev = "f55c779f10034f19b4e4e26e3fcd09adcbe73233" }
 jni = { version = "0.21", default-features = false }
 
+[features]
+# Test only, never for the Android build: `cargo test --features jvm-tests` also runs src/jvm_tests.rs,
+# which calls the Java_* exports through a JVM that jni's invocation API starts from $JAVA_HOME
+# (README.md, Build and test).
+jvm-tests = ["jni/invocation"]
+
 [dev-dependencies]
 # Reads the fixtures' JSON; the version dovi_rpu_builder already pulls in.
 serde_json = "1.0"
