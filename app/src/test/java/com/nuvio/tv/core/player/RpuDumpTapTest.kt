@@ -112,6 +112,16 @@ class RpuDumpTapTest {
     }
 
     @Test
+    fun adaptiveSourcesLogThatTheyAreNotTapped() {
+        assertEquals("v1 untapped source=hls n=24", RpuDumpTap.untappedSourceLine(24, MimeTypes.APPLICATION_M3U8))
+        assertEquals("v1 untapped source=hls n=24", RpuDumpTap.untappedSourceLine(24, "audio/x-mpegURL"))
+        assertEquals("v1 untapped source=dash n=1", RpuDumpTap.untappedSourceLine(1, MimeTypes.APPLICATION_MPD))
+        assertEquals(null, RpuDumpTap.untappedSourceLine(0, MimeTypes.APPLICATION_M3U8))
+        assertEquals(null, RpuDumpTap.untappedSourceLine(24, MimeTypes.VIDEO_MATROSKA))
+        assertEquals(null, RpuDumpTap.untappedSourceLine(24, null))
+    }
+
+    @Test
     fun firstAusOfEachGenerationThenRefreshOnly() {
         val h = Harness(firstAus = 2, FlagReader())
         val track = h.video()
