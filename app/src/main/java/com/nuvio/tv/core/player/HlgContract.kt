@@ -57,9 +57,9 @@ internal sealed interface HlgDecision {
 
 /**
  * The HLG contract: decides from the container Colour values and the SPS VUI, at track init, whether
- * an HEVC track is HLG an 8.4 RPU can describe. The 8.4 composer describes only limited-range BT.2020
- * NCL input with BT.2020 primaries, and retagging cannot repair a source that says otherwise, so a
- * stated contradiction refuses; a field no source states is accepted. Pure: reads, decides, logs
+ * an HEVC track is HLG an 8.4 RPU can describe. The 8.4 composer describes only 4:2:0, limited-range
+ * BT.2020 NCL input with BT.2020 primaries, and retagging cannot repair a source that says otherwise,
+ * so a stated contradiction refuses; a field no source states is accepted. Pure: reads, decides, logs
  * nothing itself.
  */
 @UnstableApi
@@ -78,6 +78,8 @@ internal object HlgContract {
     // Matroska Colour\Range.
     const val RANGE_BROADCAST = 1
     const val RANGE_FULL = 2
+
+    private const val CHROMA_420 = 1
 
     private const val HEVC_PROFILE_MAIN = 1
     private const val HEVC_PROFILE_MAIN_10 = 2
@@ -109,6 +111,10 @@ internal object HlgContract {
         }
         if (vui.bitDepthLuma != 10 || vui.bitDepthChroma != 10) {
             return HlgDecision.Refused("bit depth ${vui.bitDepthLuma}/${vui.bitDepthChroma}, not 10")
+        }
+        // The 8.4 RPU describes a 4:2:0 base layer.
+        if (vui.chromaFormatIdc != CHROMA_420) {
+            return HlgDecision.Refused("chroma_format_idc ${vui.chromaFormatIdc}, not 4:2:0")
         }
 
         val untagged = mutableListOf<String>()

@@ -156,6 +156,18 @@ class HlgContractTest {
     }
 
     @Test
+    fun `HLG in 4_2_2 or 4_4_4 is refused`() {
+        for (chroma in listOf(0, 2, 3)) {
+            assertEquals(
+                HlgDecision.Refused("chroma_format_idc $chroma, not 4:2:0"),
+                HlgContract.resolve(untaggedContainer, vui("hlg_tagged").copy(chromaFormatIdc = chroma))
+            )
+        }
+        // A 10-bit RExt stream in 4:2:0 is still accepted.
+        assertEquals(hlg84(), resolve(hlgContainer, "hlg_still10"))
+    }
+
+    @Test
     fun `HLG without a readable SPS is refused`() {
         assertEquals(HlgDecision.Refused("no readable SPS"), resolve(hlgContainer, null))
         assertEquals(HlgDecision.Refused("no readable SPS"), resolve(container(transfer = 18), null))
