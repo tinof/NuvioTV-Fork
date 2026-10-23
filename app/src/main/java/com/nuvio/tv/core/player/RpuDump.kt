@@ -211,6 +211,8 @@ private class RpuDumpTrackOutput(
         /** Larger than any remux AU; a larger one is passed through without a dump. */
         const val MAX_BUFFER = 16 * 1024 * 1024
         const val NAL_LENGTH_FIELD = 4
+        /** The most one DataReader call reads, as a SampleQueue allocation does. */
+        const val MAX_READ = 64 * 1024
     }
 
     private val factory = extractor.factory
@@ -258,8 +260,9 @@ private class RpuDumpTrackOutput(
             if (supported && written > 0) sideBytes += written
             return written
         }
-        if (scratch.size < length) scratch = ByteArray(maxOf(length, 64 * 1024))
-        val read = input.read(scratch, 0, length)
+        // A read may be partial and the extractor loops, so a corrupt NAL length cannot size this array.
+        if (scratch.size < MAX_READ) scratch = ByteArray(MAX_READ)
+        val read = input.read(scratch, 0, minOf(length, MAX_READ))
         if (read == C.RESULT_END_OF_INPUT) {
             if (allowEndOfInput) return C.RESULT_END_OF_INPUT
             throw EOFException()
