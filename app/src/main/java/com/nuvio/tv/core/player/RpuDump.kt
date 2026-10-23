@@ -84,7 +84,9 @@ object DoviBridgeSceneRefreshReader : RpuSceneRefreshReader {
  * part=<i>/<n> <hex>`. `seq` counts records per playback from 0, so a lost record shows as a gap; `au` is the
  * AU's ordinal in its generation, counting every AU; `sr=?` means the flag could not be read; `why=start` is
  * the first-N rule, `why=refresh` a scene refresh after it. `len` and `crc` (CRC32, 8 lowercase hex digits)
- * cover the whole NAL with its `7C 01` header; the payload is lowercase hex. One generation line comes before
+ * cover the whole NAL with its `7C 01` header; the payload is lowercase hex. The tap trims 0x00 bytes after the
+ * NAL's last non-zero byte, which dovi_tool keeps as `trailing_zeroes`: if a byte compare with an extracted
+ * `RPU.bin` fails on a padded RPU, look there first. One generation line comes before
  * a generation's first record of a track: `v1 gen=<g> trk=<id> event=<init|seek> seekUs=<us|-1> n=<N>
  * codecs=<codecs|->`. Hex because `android.util.Base64` is a stub in JVM tests and `java.util.Base64` needs
  * API 26; a part of 1500 bytes keeps a line under logd's ~4 KB limit.
