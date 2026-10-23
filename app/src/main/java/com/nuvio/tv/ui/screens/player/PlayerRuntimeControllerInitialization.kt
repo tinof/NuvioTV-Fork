@@ -83,6 +83,8 @@ import com.nuvio.tv.core.player.DolbyVisionConversionStats
 import com.nuvio.tv.core.player.AviTrackFormatExtractorsFactory
 import com.nuvio.tv.core.player.DolbyVisionExtractorsFactory
 import com.nuvio.tv.core.player.DoviBridge
+import com.nuvio.tv.core.player.DoviRpuBuilder
+import com.nuvio.tv.core.player.DvConversionGate
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
 import com.nuvio.tv.core.player.AudioPassthroughPolicy
 import com.nuvio.tv.core.tracking.TrackingScrobbleAction
@@ -212,7 +214,9 @@ internal data class ExoConstructionFingerprint(
     val convertToDv81Active: Boolean,
     val mapDv7ToHevc: Boolean,
     val tunnelingEnabled: Boolean,
-    val nativeFelActive: Boolean = false
+    val nativeFelActive: Boolean = false,
+    // DV2.3: the extractor's conversion gate is fixed when the player is built.
+    val dvConversionArmed: Boolean = false
 )
 
 /**
@@ -1320,6 +1324,27 @@ internal fun PlayerRuntimeController.initializePlayer(
                 DolbyVisionBaseLayerPolicy.dolbyVisionDecoderPresent()
             )
             isMapDv7ToHevcActiveForCurrentPlayback = mapDv7ToHevcEnabled
+            // DV2.3: whether HEVC Matroska tracks without Dolby Vision may be signalled as Dolby
+            // Vision. The strip mode removes every RPU, and the strip and map modes skip the Dolby
+            // Vision decoder-failure fallback below, so both keep it off.
+            val stripDvRpuEnabled = playerSettings.dv7HandlingMode == Dv7HandlingMode.STRIP_DV ||
+                    effectiveDv7Mode == Dv7HandlingMode.HDR10_BASE_LAYER
+            val dvConversionGate = DvConversionGate.resolve(
+                setting = playerSettings.convertHdrToDolbyVision,
+                revertSwitch = DebugSwitches.flag(DvConversionGate.REVERT_SWITCH),
+                isNvidia = DeviceProfile.isNvidia(),
+                dolbyVisionDecoderPresent =
+                    com.nuvio.tv.core.player.dvmkv.DolbyVisionCompatibility.isDolbyVisionDecoderPresent(),
+                displayDolbyVision = capsForDiagnostics.displayDv,
+                rpuBuilderAvailable = DoviRpuBuilder.isAvailable(),
+                streamDisabled = dvConvertDisabledStreamUrls.contains(url),
+                stripOrBaseLayerMode = stripDvRpuEnabled || isHdr10BaseLayerModeActive,
+                mapToHevcMode = mapDv7ToHevcEnabled,
+            )
+            isDvConversionArmedForCurrentPlayback = dvConversionGate.enabled
+            if (playerSettings.convertHdrToDolbyVision) {
+                Log.i(PlayerRuntimeController.TAG, DvConversionGate.logLine(dvConversionGate))
+            }
             // Key this off the effective mode, not the AUTO policy
             // result. dv7AutoResult is null in every manual mode, so gating on it
             // would withhold findDvDecodersIgnoringProfile() from users who
@@ -1570,8 +1595,6 @@ internal fun PlayerRuntimeController.initializePlayer(
 
             // The app-level factory performs DV7 conversion for the in-band-RPU containers
             // (MP4/fMP4/TS); MKV goes through the vendored extractor. Pass-through for non-DV.
-            val stripDvRpuEnabled = playerSettings.dv7HandlingMode == Dv7HandlingMode.STRIP_DV ||
-                    effectiveDv7Mode == Dv7HandlingMode.HDR10_BASE_LAYER
             if (stripDvRpuEnabled) {
                 Log.i(PlayerRuntimeController.TAG, "DV_RPU_STRIP: enabled — will remove DV RPU NALs")
             }
@@ -1597,7 +1620,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                             },
                             dv5Enabled = playerSettings.dv5ToDv81Enabled,
                             manualDv81 = manualDv81Selected && !dv7Mode1Forced,
-                            autoMode2 = autoDv81Mode2 && !dv7Mode1Forced
+                            autoMode2 = autoDv81Mode2 && !dv7Mode1Forced,
+                            convertNonDolbyVision = isDvConversionArmedForCurrentPlayback
                         ),
                         stripDvRpu = stripDvRpuEnabled,
                         stripHdr10PlusSei = stripHdr10PlusSei,
@@ -1672,7 +1696,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 // Record the effective flag (raw toggle gated by
                 // prefer-app decoder): construction uses it, so reuse must too.
                 tunnelingEnabled = playerSettings.effectiveTunnelingEnabled,
-                nativeFelActive = nativeFelActive
+                nativeFelActive = nativeFelActive,
+                dvConversionArmed = isDvConversionArmedForCurrentPlayback
             )
             val reuseCandidatePlayer = _exoPlayer
             // Native renderers bind stats and decoder ownership to one playback session.
@@ -2400,6 +2425,22 @@ internal fun PlayerRuntimeController.initializePlayer(
                         }
                         val autoRecoveryBudgetAvailable = consumeAutoRecoveryBudget(detailedError)
                         if (autoRecoveryBudgetAvailable) {
+
+                        // DV2.3: a track this playback signalled as Dolby Vision failed to decode:
+                        // play the stream again with conversion off, before the DV7 rungs below.
+                        val convertedTarget = DolbyVisionConversionStats.getConvertedTrackTarget()
+                        if (isDvConversionArmedForCurrentPlayback && convertedTarget != null &&
+                            error.isDolbyVisionDecoderFailure()
+                        ) {
+                            dvConvertDisabledStreamUrls.add(currentStreamUrl)
+                            Log.i(
+                                PlayerRuntimeController.TAG,
+                                "DV_CONVERT_FALLBACK: Dolby Vision ${convertedTarget.label} failed to decode; " +
+                                    "retrying native host=${currentStreamUrl.safeHost()}"
+                            )
+                            retryCurrentStreamWithDolbyVisionFallback(currentPosition)
+                            return
+                        }
 
                         // Error handlers: DV codec failures, audio decoder issues, codec state errors.
                         if (error.isDolbyVisionDecoderFailure() && !isMapDv7ToHevcActiveForCurrentPlayback) {
