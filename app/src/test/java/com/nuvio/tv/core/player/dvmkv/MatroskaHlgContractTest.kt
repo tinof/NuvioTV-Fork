@@ -148,6 +148,10 @@ class MatroskaHlgContractTest {
             HlgDecision.Refused("bit depth 8/8, not 10"),
             record(HevcColourFixtures.hvcCOf("hlg_8bit"), null).decision
         )
+        assertEquals(
+            HlgDecision.Refused("chroma_format_idc 3, not 4:2:0"),
+            record(HevcColourFixtures.hvcCOf("hlg_444"), null).decision
+        )
     }
 
     @Test
