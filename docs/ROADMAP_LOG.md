@@ -10,6 +10,31 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-23: DV2.4 The HLG contract (PR #13)
+
+- [DV2.4][desk] The HLG contract: transfer from the SPS VUI at track init, refusal of contradicting
+  range, matrix or primaries, no HDR10 colour info on an HLG base layer, and the alternative-transfer
+  SEI logged but not acted on. Gate: unit tests with VUI-only, contradicting and untagged HLG samples.
+
+**Evidence**
+
+- Gate `:app:testFullDebugUnitTest`: 6665 tests, 0 failures, 10 skipped, on the reviewed head plus the F1 fix.
+- New tests: `HlgContractTest` (21), `HevcVuiColourTest` (8), `HevcInitNalsTest` (7),
+  `MatroskaColourFormatTest` (5), `MatroskaHlgContractTest` (11), `MatroskaSampleSeiTest` (2). The SPS
+  and SEI fixtures are x265 encodes: VUI-only HLG, untagged 10-bit (HLG from the container only),
+  contradicting range, matrix and primaries, 4:2:2, 4:4:4 and 8-bit, PQ, and an alternative-transfer
+  SEI; synthetic SPS vectors cover the layout branches the encodes skip. Generators in `app/src/test/resources/hevc-colour`.
+- CI: the `Checks` workflow on PR #13.
+- Review (Tier 2, codex and gemini): F1 FIXED (`MatroskaSampleSeiTest`): an alternative-transfer SEI in
+  the first sample instead of the hvcC was not logged. Gemini P2 notes: `HevcVuiColour` lists Main
+  (profile 1) although only 10-bit streams pass; the SEI walk stops at a malformed payload length.
+
+**Resolution:** `HlgContract` gives an HEVC Matroska track without Dolby Vision one `HlgDecision` at
+track init (not HLG, transfer unknown, refused with a reason, or HLG for 8.4 with a BT.2020 limited HLG
+base-layer `ColorInfo` that keeps only the container's own static block, never PQ or the HDR10
+defaults), and logs it with any alternative-transfer SEI from the
+hvcC or the first sample. Playback does not change; DV2.3 is the first reader.
+
 ## 2026-10-23: DV1.4 closed, DV2.1 done in hdr-analyze, DV2.2 repackaged
 
 - [DV1.4][device][owner] G-C, first half: `mkvdovi` files and L1 variants played through Nuvio. Gate:
