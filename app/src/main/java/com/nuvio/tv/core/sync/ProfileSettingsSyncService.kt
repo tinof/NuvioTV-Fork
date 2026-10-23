@@ -166,7 +166,8 @@ private val localOnlyPlayerProfileSettingsKeys = setOf(
     "audio_rejections_confirmed",
     "audio_rejection_reset_token",
     "migration_back_buffer_budget_done",
-    "inject_hdr10_metadata_on_strip"
+    "inject_hdr10_metadata_on_strip",
+    "convert_hdr_to_dolby_vision"
 )
 
 // 4K trailers depend on the device's RAM, so a choice made on one device must not reach another.
