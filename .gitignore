@@ -45,6 +45,7 @@ scripts/*
 !scripts/shield_snapshot.sh
 !scripts/shield_restore.sh
 !scripts/shield_build_install.sh
+!scripts/build_rpu_builder.sh
 !scripts/generate-release-notes.sh
 !scripts/generate_release_notes.py
 !scripts/release_notes/
@@ -75,5 +76,6 @@ sentry.properties
 # Local build log of scripts/shield_build_install.sh
 /.local/
 
-# Cargo output of native/rpu_builder
+# Cargo output of native/rpu_builder, and the library scripts/build_rpu_builder.sh copies for Gradle
 /native/rpu_builder/target/
+/app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so
