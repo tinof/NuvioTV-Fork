@@ -187,6 +187,13 @@ internal class DolbyVisionMatroskaTransformer(
         }
     }
 
+    // Strip mode removes every RPU, so it never signals a conversion (the gate excludes it too).
+    override fun isDolbyVisionConversionEnabled(): Boolean = config.convertNonDolbyVision && !stripRpuOnly
+
+    override fun onDolbyVisionConversionSignalled(trackId: Int, decision: DvSignallingDecision.Convert) {
+        config.stats.recordConvertedTrack(decision.target)
+    }
+
     override fun shouldTransform(codecs: String?, dolbyVisionConfigBytes: ByteArray?): Boolean {
         if (stripHdr10PlusSei) return true
         val isDv = codecs?.startsWith("dv", ignoreCase = true) == true ||
