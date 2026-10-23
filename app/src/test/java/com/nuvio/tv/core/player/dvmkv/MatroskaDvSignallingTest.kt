@@ -121,6 +121,14 @@ class MatroskaDvSignallingTest {
     }
 
     @Test
+    fun `a converted 8_4 Format keeps the container's static HDR block`() {
+        val out = extract("hlg_tagged", colour(uint(0x55BA, 18), masteringMetadata()), width = 1920, height = 1080)
+        assertEquals("dvhe.08.03", out.format.codecs)
+        assertEquals(C.COLOR_TRANSFER_HLG, out.format.colorInfo!!.colorTransfer)
+        assertArrayEquals(HDR_STATIC_INFO_HEX.hexToBytes(), out.format.colorInfo!!.hdrStaticInfo)
+    }
+
+    @Test
     fun `HLG over an untagged SPS is 8_4, its untagged fields accepted`() {
         val out = extract("untagged10", colour(uint(0x55BA, 18)), width = 1920, height = 1080, durationNs = 40_000_000)
         assertEquals("dvhe.08.04", out.format.codecs)
