@@ -31,12 +31,19 @@ cd "$crate"
 cargo ndk -t arm64-v8a --platform 24 -o "$out" build --release --locked
 
 [ -f "$lib" ] || { echo "cargo-ndk wrote no $lib" >&2; exit 1; }
-# 16 KB pages, as the app's other native libraries.
-readelf="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" -name llvm-readelf -type f | head -1)"
-if [ -n "$readelf" ]; then
-  bad_align="$("$readelf" -lW "$lib" | awk '$1 == "LOAD" && $NF != "0x4000"')"
-  [ -z "$bad_align" ] || { echo "LOAD segments not 16 KB aligned in $lib:" >&2; echo "$bad_align" >&2; exit 1; }
-fi
+# 16 KB pages, as the app's other native libraries. NDK 29's llvm-readelf is a symlink to
+# llvm-readobj, so a glob, not `find -type f`.
+readelf=""
+for candidate in "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-readelf; do
+  [ -x "$candidate" ] && { readelf="$candidate"; break; }
+done
+[ -n "$readelf" ] || {
+  echo "no llvm-readelf under $ANDROID_NDK_HOME/toolchains/llvm/prebuilt; cannot check the 16 KB alignment" >&2; exit 1; }
+loads="$("$readelf" -lW "$lib" | awk '$1 == "LOAD"')"
+[ -n "$loads" ] || { echo "$readelf found no LOAD segments in $lib" >&2; exit 1; }
+bad_align="$(echo "$loads" | awk '$NF != "0x4000"')"
+[ -z "$bad_align" ] || { echo "LOAD segments not 16 KB aligned in $lib:" >&2; echo "$bad_align" >&2; exit 1; }
 echo "== $lib"
+echo "   align   $(echo "$loads" | wc -l | tr -d ' ') LOAD segments at 0x4000"
 echo "   size    $(wc -c < "$lib" | tr -d ' ') bytes"
 echo "   sha256  $(shasum -a 256 "$lib" | cut -d' ' -f1)"
