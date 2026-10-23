@@ -53,6 +53,7 @@ scripts/*
 !scripts/release-metadata.sh
 !scripts/release_beta.py
 !scripts/verify_native_apk.py
+!scripts/rpu_dump_to_bin.py
 !scripts/tests/
 !scripts/tests/*.py
 /supabase
