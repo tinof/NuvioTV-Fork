@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import struct
+import sys
 import zipfile
 from pathlib import Path
 
@@ -14,7 +15,9 @@ RPU_BUILDER_MARKERS = (b"Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeRend
 REQUIRED_BY_ABI = {"arm64-v8a": REQUIRED | {RPU_BUILDER}, "armeabi-v7a": REQUIRED}
 
 
-def verify(apk: Path, abi: str) -> dict:
+def verify(apk: Path, abi: str, allow_missing_rpu_builder: bool = False) -> dict:
+    """allow_missing_rpu_builder: accept an APK without libnuvio_rpu.so (a build with no Rust step).
+    A present library is still checked."""
     elf_class, machine = MACHINES[abi]
     with zipfile.ZipFile(apk) as archive:
         names = archive.namelist()
@@ -24,7 +27,11 @@ def verify(apk: Path, abi: str) -> dict:
         if corrupt:
             raise ValueError(f"Corrupt ZIP entry: {corrupt}")
         libraries = [name for name in names if name.startswith("lib/") and name.endswith(".so")]
-        missing = REQUIRED_BY_ABI[abi] - {name.rsplit("/", 1)[-1] for name in libraries if name.startswith(f"lib/{abi}/")}
+        present = {name.rsplit("/", 1)[-1] for name in libraries if name.startswith(f"lib/{abi}/")}
+        missing = REQUIRED_BY_ABI[abi] - present
+        if allow_missing_rpu_builder and RPU_BUILDER in missing:
+            missing.discard(RPU_BUILDER)
+            print(f"notice: no {RPU_BUILDER} for {abi}; Dolby Vision conversion is off in this APK", file=sys.stderr)
         if missing:
             raise ValueError(f"Missing native playback libraries for {abi}: {sorted(missing)}")
         hashes = {}
@@ -40,7 +47,7 @@ def verify(apk: Path, abi: str) -> dict:
         bridge = archive.read(f"lib/{abi}/libdovi_bridge.so")
         if b"dovi-bridge-libdovi-capi-0.2" not in bridge or b"dovi_convert_rpu_with_mode" not in bridge:
             raise ValueError("Dolby Vision bridge lacks real libdovi linkage")
-        if RPU_BUILDER in REQUIRED_BY_ABI[abi]:
+        if RPU_BUILDER in REQUIRED_BY_ABI[abi] and RPU_BUILDER in present:
             rpu_builder = archive.read(f"lib/{abi}/{RPU_BUILDER}")
             if not all(marker in rpu_builder for marker in RPU_BUILDER_MARKERS):
                 raise ValueError("Dolby Vision RPU builder lacks its JNI entry points or version")
@@ -51,8 +58,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("apk", type=Path)
     parser.add_argument("--abi", required=True, choices=MACHINES)
+    parser.add_argument("--allow-missing-rpu-builder", action="store_true",
+                        help=f"accept an APK without {RPU_BUILDER} (built with no Rust step); a present one is still checked")
     args = parser.parse_args()
     try:
-        print(json.dumps(verify(args.apk, args.abi), indent=2))
+        print(json.dumps(verify(args.apk, args.abi, args.allow_missing_rpu_builder), indent=2))
     except (ValueError, zipfile.BadZipFile, OSError) as error:
         parser.exit(1, f"Native APK validation failed: {error}\n")
