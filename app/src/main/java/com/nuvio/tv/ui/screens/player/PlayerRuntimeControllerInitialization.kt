@@ -1091,6 +1091,9 @@ internal fun PlayerRuntimeController.initializePlayer(
             requestedLibassRenderMode = playerSettings.effectiveLibassRenderMode
             // RPU debug dump: N AUs per extractor generation, 0 = off (no wrapper). Read once per playback.
             val rpuDumpAus = DebugSwitches.int(com.nuvio.tv.core.player.RpuDumpTap.PROPERTY) ?: 0
+            com.nuvio.tv.core.player.RpuDumpTap.untappedSourceLine(rpuDumpAus, streamMime)?.let {
+                Log.i(com.nuvio.tv.core.player.RpuDumpFormat.TAG, it)
+            }
             // ── Track Selector Setup ──
             // Read once per build: the selector runs on the playback thread for every reselection.
             val hbrTunnelOn = hbrTunnelAllowed(DebugSwitches.flag("debug.nuvio.hbr_tunnel"))
