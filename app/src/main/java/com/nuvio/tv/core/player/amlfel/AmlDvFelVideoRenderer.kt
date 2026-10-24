@@ -48,6 +48,8 @@ internal class AmlDvFelVideoRenderer(
     private val playbackSpeedProvider: () -> Float = { 1f },
     private val nativeMelEnabled: Boolean = true,
     private val onSelectionChanged: (Boolean) -> Unit = {},
+    /** DV2.8: the RPU debug dump, null when `debug.nuvio.rpu_dump` is off. */
+    private val rpuDump: com.nuvio.tv.core.player.RpuDumpRecorder? = null,
 ) : BaseRenderer(C.TRACK_TYPE_VIDEO) {
 
     companion object {
@@ -241,6 +243,7 @@ internal class AmlDvFelVideoRenderer(
         eosSent = false
         lastQueuedTimeUs = C.TIME_UNSET
         lastPositionUs = positionUs
+        rpuDump?.onPositionReset(positionUs - streamOffsetUs)
     }
 
     override fun onStarted() {
@@ -379,6 +382,7 @@ internal class AmlDvFelVideoRenderer(
                         continue
                     }
                     sampleLiveDm(data, inputBuffer.timeUs - streamOffsetUs)
+                    rpuDump?.onQueueInputBuffer(data, inputBuffer.timeUs - streamOffsetUs, encrypted = false)
                     ensureSession()
                     val r = AmlFelNative.queueSample(handle, data, data.position(), length, toStreamPtsUs(inputBuffer.timeUs))
                     if (r < 0) throw failure("queue", r)
@@ -413,6 +417,7 @@ internal class AmlDvFelVideoRenderer(
         val previous = inputFormat
         inputFormat = format
         frameRateHint.onFrameRate(format.frameRate)
+        rpuDump?.onFormat(format)
         eventDispatcher.inputFormatChanged(format, null)
         if (format.width > 0 && format.height > 0) {
             eventDispatcher.videoSizeChanged(VideoSize(format.width, format.height, format.pixelWidthHeightRatio))

@@ -12,10 +12,11 @@ import java.util.zip.CRC32
  * generation and of every AU whose RPU sets `scene_refresh_flag`, with the AU's presentation time, in the
  * [RpuDumpFormat] lines; `scripts/rpu_dump_to_bin.py` rebuilds an `RPU.bin` from them for `dovi_tool info`.
  *
- * The video renderer (`DecodeOrderPtsVideoRenderer`) feeds it every input buffer at `onQueueInputBuffer`,
- * after Media3 has moved any Matroska BlockAdditional data out of the sample, and every position reset, so it
- * sees what the decoder gets for every source (progressive, HLS, DASH): native Profile 8 and 5 tracks, the
- * tracks the Dolby Vision factory converts and, later, those DV2.7 converts. A generation starts at a
+ * The video renderer (`DecodeOrderPtsVideoRenderer`, and `AmlDvFelVideoRenderer` on the native FEL path) feeds
+ * it every input buffer as it queues it, after Media3 has moved any Matroska BlockAdditional data out of the
+ * sample, and every position reset, both in media time (the renderer's stream offset taken off), so it sees
+ * what the decoder gets for every source (progressive, HLS, DASH): native Profile 8 and 5 tracks, the tracks
+ * the Dolby Vision factory converts and, later, those DV2.7 converts. A generation starts at a
  * position reset (the start and every seek, also one Media3 serves from samples it already extracted) or a
  * change of the video Format; one with no AU yet starts none. `trk` is the Format's id when it is a number
  * (the Matroska track number), else 0. At a codec reconfiguration the buffer starts with the parameter sets,
@@ -65,7 +66,7 @@ internal class RpuDumpRecorder(
     private var lastRpu: ByteArray? = null
     private var lastRefresh: Boolean? = null
 
-    /** The renderer's position reset: the start of playback or a seek. */
+    /** The renderer's position reset at media time [positionUs]: the start of playback or a seek. */
     fun onPositionReset(positionUs: Long) {
         startGeneration(EVENT_SEEK, positionUs)
     }
@@ -83,8 +84,8 @@ internal class RpuDumpRecorder(
     }
 
     /**
-     * One input buffer as the codec gets it: [data] from 0 to its limit (after `flip`), at [timeUs]. An
-     * [encrypted] AU is counted but not dumped.
+     * One input buffer as the decoder gets it: [data] from its position to its limit (after `flip`), at the
+     * media time [timeUs] (renderer time minus the stream offset). An [encrypted] AU is counted but not dumped.
      */
     fun onQueueInputBuffer(data: ByteBuffer?, timeUs: Long, encrypted: Boolean) {
         if (!supported || data == null) return
@@ -94,7 +95,7 @@ internal class RpuDumpRecorder(
             log(RpuDumpFormat.generationLine(generation, trackId, event, resetUs, firstAus, codecs))
             generationLogged = true
         }
-        val size = data.limit()
+        val size = data.remaining()
         if (!encrypted && size in 1..MAX_AU) inspect(data, size, timeUs)
         au++
     }
@@ -115,7 +116,7 @@ internal class RpuDumpRecorder(
 
     private fun inspect(data: ByteBuffer, size: Int, timeUs: Long) {
         if (sample.size < size) sample = ByteArray(maxOf(size, 256 * 1024))
-        data.duplicate().apply { position(0) }.get(sample, 0, size)
+        data.duplicate().get(sample, 0, size)
         val annexB = size >= 4 && sample[0].toInt() == 0 && sample[1].toInt() == 0 &&
             (sample[2].toInt() == 1 || (sample[2].toInt() == 0 && sample[3].toInt() == 1))
         val found = if (annexB) {
