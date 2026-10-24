@@ -3540,7 +3540,12 @@ private class SubtitleOffsetRenderersFactory(
         val videoExtensionMode = videoExtensionRendererMode(extensionRendererMode)
         if (nativeFelActive) {
             // Ahead of MediaCodec so it wins the DV profile 7 track (equal support -> first renderer).
-            out.add(com.nuvio.tv.core.player.amlfel.AmlDvFelVideoRenderer(eventHandler, eventListener, playbackSpeedProvider, nativeMelEnabled, onNativeSelectionChanged))
+            out.add(
+                com.nuvio.tv.core.player.amlfel.AmlDvFelVideoRenderer(
+                    eventHandler, eventListener, playbackSpeedProvider, nativeMelEnabled, onNativeSelectionChanged,
+                    com.nuvio.tv.core.player.RpuDumpRecorder.create(rpuDumpAus)
+                )
+            )
         }
         val vc1RestampTmp = ArrayList<Renderer>()
         super.buildVideoRenderers(
