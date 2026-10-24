@@ -38,6 +38,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
+import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.DisplayCapabilities
 import com.nuvio.tv.data.local.Dv7HandlingMode
 import com.nuvio.tv.data.local.FrameRateMatchingMode
@@ -124,6 +125,16 @@ internal fun PlaybackVideoSection(
                 subtitle = stringResource(R.string.audio_dv5_to_dv81_sub),
                 checked = settings.dv5ToDv81Enabled,
                 onToggle = { onUpdate { setDv5ToDv81Enabled(!settings.dv5ToDv81Enabled) } },
+                enabled = enabled
+            )
+        }
+        // DV2.7: only HLG converts so far, and only on Nvidia (DvConversionGate).
+        if (DeviceProfile.isNvidia()) {
+            SettingsToggleRow(
+                title = stringResource(R.string.playback_convert_hdr_to_dv_title),
+                subtitle = stringResource(R.string.playback_convert_hdr_to_dv_sub),
+                checked = settings.convertHdrToDolbyVision,
+                onToggle = { onUpdate { setConvertHdrToDolbyVision(!settings.convertHdrToDolbyVision) } },
                 enabled = enabled
             )
         }
