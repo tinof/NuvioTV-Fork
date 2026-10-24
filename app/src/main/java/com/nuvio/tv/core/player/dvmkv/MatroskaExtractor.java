@@ -231,6 +231,35 @@ public class MatroskaExtractor implements Extractor {
 
     /** Fork (DV2.3): called at track init when a track is signalled as converted. */
     default void onDolbyVisionConversionSignalled(int trackId, DvSignallingDecision.Convert decision) {}
+
+    /**
+     * Fork (DV2.7): called at track init, before the Format is built, when the decision table says
+     * {@code decision}. Returns {@code decision} when every AU of the track will carry an RPU through
+     * {@link #injectDolbyVisionRpu}, otherwise a {@link DvSignallingDecision.Native} decision: a Dolby
+     * Vision Format without RPUs must never reach the decoder.
+     */
+    default DvSignallingDecision prepareDolbyVisionConversion(
+        int trackId, DvSignallingDecision.Convert decision) {
+      return new DvSignallingDecision.Native("no RPU injector");
+    }
+
+    /**
+     * Fork (DV2.7): rewrites an AU of a converted track with its RPU, in place of {@link
+     * #transformHevcSample}; the result follows the same rules. {@code streamStart} is true for the
+     * first AU of the track in the Segment's first Cluster: frame 0 of the linear stream.
+     */
+    @Nullable
+    default byte[] injectDolbyVisionRpu(
+        int trackId,
+        byte[] sampleLengthDelimitedData,
+        int sampleLength,
+        int nalUnitLengthFieldLength,
+        boolean streamStart) {
+      return null;
+    }
+
+    /** Fork (DV2.7): the extractor starts reading at a new position, after a seek or a resync. */
+    default void onReset() {}
   }
 
   /**
@@ -683,6 +712,13 @@ public class MatroskaExtractor implements Extractor {
   private int primarySeekTrackNumber = C.INDEX_UNSET;
   private boolean seekForCues;
   private long cuesContentPosition = C.INDEX_UNSET;
+  // Fork (DV2.7): the content position of the Segment's first Cluster, learnt while the extractor
+  // reads from the start of the file; whether the current Cluster is that one; and a serial per
+  // Cluster read, so a converted track tells its first AU in a Cluster (frame 0 in the first one).
+  private long firstClusterContentPosition = C.INDEX_UNSET;
+  private boolean firstClusterUnknowable;
+  private boolean inFirstCluster;
+  private long clusterSerial;
   private long pendingSeekHeadPosition = C.INDEX_UNSET;
   private boolean seekForSeekHead;
   private int followedSeekHeadCount;
@@ -857,6 +893,11 @@ public class MatroskaExtractor implements Extractor {
   @CallSuper
   @Override
   public void seek(long position, long timeUs) {
+    // Fork (DV2.7): Media3 opens every load with seek(0, 0); a seek elsewhere before the first
+    // Cluster was read means the extractor can no longer tell which Cluster is the first.
+    if (position != 0 && firstClusterContentPosition == C.INDEX_UNSET) {
+      firstClusterUnknowable = true;
+    }
     resetParsingState();
   }
 
@@ -884,6 +925,11 @@ public class MatroskaExtractor implements Extractor {
     }
     for (int i = 0; i < tracks.size(); i++) {
       tracks.valueAt(i).reset();
+    }
+    // Fork (DV2.7): the first AU after a seek or a resync starts a new generation.
+    inFirstCluster = false;
+    if (dolbyVisionSampleTransformer != null) {
+      dolbyVisionSampleTransformer.onReset();
     }
   }
 
@@ -1017,6 +1063,10 @@ public class MatroskaExtractor implements Extractor {
         }
         long failPosition = input.getPosition();
         resyncBudget--;
+        // Fork (DV2.7): a resync lands on some later Cluster, never knowingly the first.
+        if (firstClusterContentPosition == C.INDEX_UNSET) {
+          firstClusterUnknowable = true;
+        }
         resetParsingState();
         if (!resyncToNextCluster(input)) {
           throw malformed;
@@ -1283,6 +1333,12 @@ public class MatroskaExtractor implements Extractor {
           returnFromTracks = true;
           break;
         }
+        // Fork (DV2.7): frame 0 of a converted track is its first AU in the Segment's first Cluster.
+        clusterSerial++;
+        if (firstClusterContentPosition == C.INDEX_UNSET && !firstClusterUnknowable) {
+          firstClusterContentPosition = contentPosition;
+        }
+        inFirstCluster = contentPosition == firstClusterContentPosition;
         if (shouldSeekForTracksBeforeCluster(
             tracks.size(), tracksContentPosition, contentPosition, seekedForTracks)) {
           // Tracks come after the Clusters. Read them first, or the Cues step below would end
@@ -2648,13 +2704,27 @@ public class MatroskaExtractor implements Extractor {
       int payloadLength = remainingSampleBytes;
       try {
         dolbyVisionSampleTransformer.onSampleTimeUs(blockTimeUs);
-        byte[] transformedPayload =
-            dolbyVisionSampleTransformer.transformHevcSample(
-                sampleLengthDelimitedData,
-                remainingSampleBytes,
-                track.nalUnitLengthFieldLength,
-                track.pendingDolbyVisionBlockAdditionalData,
-                track.dolbyVisionConfigBytes);
+        byte[] transformedPayload;
+        if (track.isDolbyVisionConverted()) {
+          // Fork (DV2.7): the first AU of a converted track in the first Cluster is frame 0.
+          boolean streamStart = inFirstCluster && track.dvLastClusterSerial != clusterSerial;
+          track.dvLastClusterSerial = clusterSerial;
+          transformedPayload =
+              dolbyVisionSampleTransformer.injectDolbyVisionRpu(
+                  track.number,
+                  sampleLengthDelimitedData,
+                  remainingSampleBytes,
+                  track.nalUnitLengthFieldLength,
+                  streamStart);
+        } else {
+          transformedPayload =
+              dolbyVisionSampleTransformer.transformHevcSample(
+                  sampleLengthDelimitedData,
+                  remainingSampleBytes,
+                  track.nalUnitLengthFieldLength,
+                  track.pendingDolbyVisionBlockAdditionalData,
+                  track.dolbyVisionConfigBytes);
+        }
         if (transformedPayload != null) {
           payloadToWrite = transformedPayload;
           payloadLength = dolbyVisionSampleTransformer.lastTransformedSampleLength();
@@ -3678,6 +3748,8 @@ public class MatroskaExtractor implements Extractor {
     // Fork (DV2.3): the signalling decision for an HEVC track without Dolby Vision, null while
     // conversion is off.
     @Nullable private DvSignallingDecision dvSignalling;
+    // Fork (DV2.7): the clusterSerial of the last converted AU written, -1 before the first.
+    private long dvLastClusterSerial = -1;
     // Fork (DV2.4): the first sample is still to be read for an alternative-transfer SEI.
     public boolean hlgSampleSeiPending;
     private int hlgTrackId;
@@ -4049,6 +4121,12 @@ public class MatroskaExtractor implements Extractor {
                   width,
                   height,
                   defaultSampleDurationNs);
+          // DV2.7: a track is converted only when the transformer can give every AU an RPU.
+          if (dvSignalling instanceof DvSignallingDecision.Convert) {
+            dvSignalling =
+                dolbyVisionSampleTransformer.prepareDolbyVisionConversion(
+                    trackId, (DvSignallingDecision.Convert) dvSignalling);
+          }
           android.util.Log.i(TAG, DvSignalling.logLine(trackId, dvSignalling));
           if (dvSignalling instanceof DvSignallingDecision.Convert) {
             DvSignallingDecision.Convert convert = (DvSignallingDecision.Convert) dvSignalling;
@@ -4169,13 +4247,15 @@ public class MatroskaExtractor implements Extractor {
               .setCodecs(codecs)
               .setDrmInitData(drmInitData)
               .build();
-      // Fork (DV2.3): a converted track is still asked with its HEVC codecs, so the strip and
-      // HDR10+ modes treat it as before; DV2.7's injection keys off getDolbyVisionSignalling().
+      // Fork (DV2.3, DV2.7): a converted track always takes the transform path, where its AUs get
+      // their RPUs; it is asked with its HEVC codecs so the strip and HDR10+ modes see the HEVC
+      // track it is.
       requiresDolbyVisionTransform =
           dolbyVisionSampleTransformer != null && !hasContentEncryption
-              && dolbyVisionSampleTransformer.shouldTransform(
-                  dvSignalling instanceof DvSignallingDecision.Convert ? hevcCodecsString : codecs,
-                  dolbyVisionConfigBytes);
+              && (isDolbyVisionConverted()
+                  || dolbyVisionSampleTransformer.shouldTransform(
+                      isDolbyVisionConverted() ? hevcCodecsString : codecs,
+                      dolbyVisionConfigBytes));
     }
 
     /**
@@ -4207,6 +4287,11 @@ public class MatroskaExtractor implements Extractor {
     @Nullable
     public DvSignallingDecision getDolbyVisionSignalling() {
       return dvSignalling;
+    }
+
+    /** Fork (DV2.7): whether the track is published as Dolby Vision and its AUs get RPUs. */
+    public boolean isDolbyVisionConverted() {
+      return dvSignalling instanceof DvSignallingDecision.Convert;
     }
 
     /** Forces any pending sample metadata to be flushed to the output. */
