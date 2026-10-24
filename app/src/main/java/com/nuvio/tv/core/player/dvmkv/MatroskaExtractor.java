@@ -756,6 +756,9 @@ public class MatroskaExtractor implements Extractor {
   private int sampleBytesWritten;
   private int sampleCurrentNalBytesRemaining;
   private boolean sampleEncodingHandled;
+  // Fork: the DV path writes the supplemental-data size prefix after the transform. A field, not a
+  // local, so a sample re-entered after a retryable read error still writes it.
+  private boolean deferSupplementalMainSampleSizePrefix;
   private boolean sampleSignalByteRead;
   private boolean samplePartitionCountRead;
   private int samplePartitionCount;
@@ -2460,7 +2463,6 @@ public class MatroskaExtractor implements Extractor {
       }
     }
 
-    boolean deferSupplementalMainSampleSizePrefix = false;
     if (CODEC_ID_SUBRIP.equals(track.codecId)) {
       writeSubtitleSampleData(input, SUBRIP_PREFIX, size);
       return finishWriteSampleData();
@@ -2872,6 +2874,7 @@ public class MatroskaExtractor implements Extractor {
     sampleBytesWritten = 0;
     sampleCurrentNalBytesRemaining = 0;
     sampleEncodingHandled = false;
+    deferSupplementalMainSampleSizePrefix = false;
     sampleSignalByteRead = false;
     samplePartitionCountRead = false;
     samplePartitionCount = 0;
