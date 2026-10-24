@@ -39,7 +39,8 @@ internal class DolbyVisionMatroskaTransformer(
     private val stripHdr10PlusSei: Boolean = false,
     private val injectHdr10Sei: Boolean = false,
     // DV2.7: the RPUs of tracks converted from HDR10 or HLG, and the scene-refresh debug switch.
-    private val rpuSource: DvRpuSource = StaticDvRpuSource,
+    // DV3.2: the HLG composer comes from debug.nuvio.dv_hlg_canary, read once per extractor.
+    private val rpuSource: DvRpuSource = StaticDvRpuSource.fromSwitches(),
     private val refreshEveryStart: Boolean = DebugSwitches.flag(REFRESH_EVERY_START_SWITCH) == true,
 ) : MatroskaExtractor.DolbyVisionSampleTransformer {
 
