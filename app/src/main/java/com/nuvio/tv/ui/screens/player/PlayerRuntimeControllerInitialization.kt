@@ -214,7 +214,9 @@ internal data class ExoConstructionFingerprint(
     val tunnelingEnabled: Boolean,
     val nativeFelActive: Boolean = false,
     // DV2.3: the extractor's conversion gate is fixed when the player is built.
-    val dvConversionArmed: Boolean = false
+    val dvConversionArmed: Boolean = false,
+    // DV2.8: the RPU dump lives in the video renderer, which a reused player keeps.
+    val rpuDumpAus: Int = 0
 )
 
 /**
@@ -1053,11 +1055,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                     libassRenderType = playerSettings.libassRenderType
                 )
             }
-            // RPU debug dump: N AUs per extractor generation, 0 = off (no wrapper). Read once per playback.
-            val rpuDumpAus = DebugSwitches.int(com.nuvio.tv.core.player.RpuDumpTap.PROPERTY) ?: 0
-            com.nuvio.tv.core.player.RpuDumpTap.untappedSourceLine(rpuDumpAus, streamMime)?.let {
-                Log.i(com.nuvio.tv.core.player.RpuDumpFormat.TAG, it)
-            }
+            // RPU debug dump (DV2.8): N AUs per generation at the video renderer, 0 = off. Read once per playback.
+            val rpuDumpAus = DebugSwitches.int(com.nuvio.tv.core.player.RpuDumpRecorder.PROPERTY)?.coerceAtLeast(0) ?: 0
             // ── Track Selector Setup ──
             // Read once per build: the selector runs on the playback thread for every reselection.
             val hbrTunnelOn = hbrTunnelAllowed(DebugSwitches.flag("debug.nuvio.hbr_tunnel"))
@@ -1541,6 +1540,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 playbackSpeedProvider = { _uiState.value.playbackSpeed },
                 initialForcePcm = hasTriedAudioPcmFallback || isBluetoothAudioOutput,
                 vendorUnstablePts = am9SystemProperty("debug.nuvio.aml_unstable_pts") == "1",
+                rpuDumpAus = rpuDumpAus,
                 forceSoftwareAv1 = am9SystemProperty("debug.nuvio.sw_av1") == "1",
                 videoCodecQueueing = videoQueueing,
                 mapDv7ToHevc = mapDv7ToHevcEnabled,
@@ -1609,10 +1609,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             // after its own Matroska swap.
             val effectiveExtractorsFactory: ExtractorsFactory =
                 com.nuvio.tv.core.player.thumbnail.PlaybackTap.wrap(
-                    com.nuvio.tv.core.player.RpuDumpTap.wrap(
-                        autoSyncExtractorsFactory(dolbyVisionExtractorsFactory, url, headers), // AutoSync hook
-                        rpuDumpAus
-                    )
+                    autoSyncExtractorsFactory(dolbyVisionExtractorsFactory, url, headers) // AutoSync hook
                 )
 
             setLoadingStatus(
@@ -1677,7 +1674,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 // prefer-app decoder): construction uses it, so reuse must too.
                 tunnelingEnabled = playerSettings.effectiveTunnelingEnabled,
                 nativeFelActive = nativeFelActive,
-                dvConversionArmed = isDvConversionArmedForCurrentPlayback
+                dvConversionArmed = isDvConversionArmedForCurrentPlayback,
+                rpuDumpAus = rpuDumpAus
             )
             val reuseCandidatePlayer = _exoPlayer
             // Native renderers bind stats and decoder ownership to one playback session.
@@ -1759,7 +1757,6 @@ internal fun PlayerRuntimeController.initializePlayer(
                         autoSyncSourceKey = url.takeIf {
                             com.nuvio.tv.ui.screens.player.autosync.AutoSyncPreferences.isEnabled(context)
                         },
-                        rpuDumpAus = rpuDumpAus,
                         assRendererWrapper = { assRenderer ->
                             SubtitleOffsetRenderer(
                                 baseRenderer = assRenderer,
@@ -3489,6 +3486,8 @@ private class SubtitleOffsetRenderersFactory(
     private val onNativeSelectionChanged: (Boolean) -> Unit = {},
     private val nativeMelEnabled: Boolean = true,
     private val vendorUnstablePts: Boolean = false,
+    /** DV2.8: the RPU dump's N, 0 = off ([com.nuvio.tv.core.player.RpuDumpRecorder]). */
+    private val rpuDumpAus: Int = 0,
     private val forceSoftwareAv1: Boolean = false,
     private val videoCodecQueueing: VideoCodecQueueing = VideoCodecQueueing.DEFAULT,
     private val mapDv7ToHevc: Boolean = false,
@@ -3566,7 +3565,8 @@ private class SubtitleOffsetRenderersFactory(
                     DecodeOrderPtsVideoRenderer(
                         vc1RestampBuilder,
                         vendorUnstablePts,
-                        { softwareAv1Index != null && dav1dLoaded() }
+                        { softwareAv1Index != null && dav1dLoaded() },
+                        com.nuvio.tv.core.player.RpuDumpRecorder.create(rpuDumpAus)
                     )
                 )
             } else {
