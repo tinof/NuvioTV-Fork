@@ -835,7 +835,8 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 - [DV3.2][device][owner][new-build] HLG → 8.4 static provider: `DoviRpuBuilder.createStatic84(BT2100)`
   (the crate's `static_84_params`) with `static84L1()` (`STATIC_84_L1`, 0 / 1283 / 3079, V29 average
   floor). The RPU carries the default L6 and the crate's CM v4.0 L3 and
-  L254. Gate: G-C second half: the canary turns green through the app's conversion, bt2100 shows no
+  L254. The canary comes from `debug.nuvio.dv_hlg_canary` = 1 (`DESIGN.md` 2.4), read once per
+  extractor. Gate: G-C second half: the canary turns green through the app's conversion, bt2100 shows no
   tint; the DV2.8 dump validates with `dovi_tool info`; a mid-file start and seeks played with both
   settings of the scene-refresh switch (`DESIGN.md` 2.2), the default kept or changed from what the TV
   shows. Needs: DV2.4, DV2.7, DV2.8.
