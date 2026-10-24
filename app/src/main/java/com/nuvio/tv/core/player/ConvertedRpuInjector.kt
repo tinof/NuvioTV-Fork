@@ -2,6 +2,7 @@ package com.nuvio.tv.core.player
 
 import androidx.media3.common.util.UnstableApi
 import com.nuvio.tv.core.player.DoviRpuBuilder.Outcome
+import com.nuvio.tv.core.util.DebugSwitches
 
 /**
  * Where the RPUs of a converted track come from (ROADMAP DV2.7): a Matroska HEVC track without Dolby
@@ -23,16 +24,19 @@ internal fun interface DvRpuSource {
 }
 
 /**
- * The static providers of `docs/dv-conversion/DESIGN.md` 2.1 through [DoviRpuBuilder]. 8.4: the BT.2100
- * composer with `STATIC_84_L1` (DV3.2 checks it on the TV). 8.1 has no provider before DV3.1 (HDR10+)
- * and DV3.3 (static HDR10), so a PQ track stays native.
+ * The static providers of `docs/dv-conversion/DESIGN.md` 2.1 through [DoviRpuBuilder]. 8.4: [composer]
+ * with `STATIC_84_L1`; the BT.2100 composer unless [CANARY_SWITCH] picks the canary, which DV3.2's G-C
+ * check plays to see that the TV applies the composer. 8.1 has no provider before DV3.1 (HDR10+) and
+ * DV3.3 (static HDR10), so a PQ track stays native.
  *
  * The one shot is written at track init and the builder handle released at once: [DoviRpuBuilder.ShotRpu]
  * holds its own bytes, so the track keeps no native resource. A provider that renders per shot keeps its
  * handle until the track is released.
  */
 @UnstableApi
-internal object StaticDvRpuSource : DvRpuSource {
+internal class StaticDvRpuSource(
+    private val composer: DoviRpuBuilder.HlgComposer = DoviRpuBuilder.HlgComposer.BT2100,
+) : DvRpuSource {
 
     override fun prepare(target: DvSignallingDecision.Target): DvRpuSource.Prepared = when (target) {
         DvSignallingDecision.Target.PROFILE_8_4 -> static84()
@@ -44,16 +48,13 @@ internal object StaticDvRpuSource : DvRpuSource {
             is Outcome.Ok -> outcome.value
             is Outcome.Failed -> return unavailable("static84L1", outcome.code)
         }
-        val handle = when (val outcome = DoviRpuBuilder.createStatic84(DoviRpuBuilder.HlgComposer.BT2100)) {
+        val handle = when (val outcome = DoviRpuBuilder.createStatic84(composer)) {
             is Outcome.Ok -> outcome.value
             is Outcome.Failed -> return unavailable("createStatic84", outcome.code)
         }
         try {
             return when (val outcome = DoviRpuBuilder.renderShot(handle, l1)) {
-                is Outcome.Ok -> DvRpuSource.Prepared.Ready(
-                    outcome.value,
-                    "static 8.4, BT.2100 composer, L1 ${l1.minPq}/${l1.avgPq}/${l1.maxPq}"
-                )
+                is Outcome.Ok -> DvRpuSource.Prepared.Ready(outcome.value, label(composer, l1))
                 is Outcome.Failed -> unavailable("renderShot", outcome.code)
             }
         } finally {
@@ -63,6 +64,31 @@ internal object StaticDvRpuSource : DvRpuSource {
 
     private fun unavailable(call: String, code: DoviRpuBuilder.Code) =
         DvRpuSource.Prepared.Unavailable("$call failed: $code")
+
+    companion object {
+        /**
+         * `adb shell setprop debug.nuvio.dv_hlg_canary 1`: converted HLG tracks get the canary composer, so a
+         * TV that applies the composer shows the picture green. Read once per extractor, like
+         * `debug.nuvio.dv_refresh_every_start`: a change needs a new playback, not a seek.
+         */
+        const val CANARY_SWITCH = "debug.nuvio.dv_hlg_canary"
+
+        /** The source the extractor uses: the composer [CANARY_SWITCH] picks. */
+        fun fromSwitches() = StaticDvRpuSource(composerFor(DebugSwitches.flag(CANARY_SWITCH)))
+
+        internal fun composerFor(canary: Boolean?): DoviRpuBuilder.HlgComposer =
+            if (canary == true) DoviRpuBuilder.HlgComposer.CANARY else DoviRpuBuilder.HlgComposer.BT2100
+
+        /** The `DV_INJECT` log line names the composer: the device record of which one a playback used. */
+        internal fun label(composer: DoviRpuBuilder.HlgComposer, l1: DoviRpuBuilder.L1): String {
+            val name = when (composer) {
+                DoviRpuBuilder.HlgComposer.PRESET -> "preset"
+                DoviRpuBuilder.HlgComposer.BT2100 -> "BT.2100"
+                DoviRpuBuilder.HlgComposer.CANARY -> "canary"
+            }
+            return "static 8.4, $name composer, L1 ${l1.minPq}/${l1.avgPq}/${l1.maxPq}"
+        }
+    }
 }
 
 /**
