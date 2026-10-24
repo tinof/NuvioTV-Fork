@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-24 | DV2.3 shipped: the signalling decision table for Matroska, Dolby Vision 8.1 from PQ and 8.4 from HLG at track init, behind a hidden setting, a per-playback gate and a native retry on a decoder failure. | DV2 | [log](docs/ROADMAP_LOG.md), PR #15 |
 | 2026-10-23 | Appendix A hand-off check: stale references in `DESIGN.md` fixed; DV2.3 and DV2.7 say what they must settle; DV4.5 needs DV1.8. | DV1–DV4 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-23 | DV2.2 shipped: `libnuvio_rpu.so`, a JNI `cdylib` over `dovi_rpu_builder` that renders static 8.1 and 8.4 RPUs, shot L1 RPUs and HDR10+ L1, byte-identical to hdr-analyze's fixtures. | DV2 | [log](docs/ROADMAP_LOG.md), PR #14 |
 | 2026-10-23 | DV2.4 shipped: the HLG contract decides HLG for 8.4 from the Matroska Colour values and the SPS VUI at track init, and logs the alternative-transfer SEI. | DV2 | [log](docs/ROADMAP_LOG.md), PR #13 |
@@ -789,6 +790,10 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   DV2.2 is done (PR #14): `nuvio_rpu` (`native/rpu_builder`), its own `cdylib` `libnuvio_rpu.so` over
   `dovi_rpu_builder` at hdr-analyze `f55c779` (its PR #68, E16.2), read through `DoviRpuBuilder`; built
   locally only (`scripts/build_rpu_builder.sh`), nothing calls it before DV2.3 and DV2.7.
+  DV2.3 is done (PR #15): `DvSignalling` publishes a Matroska HEVC track without Dolby Vision as 8.1
+  (PQ) or 8.4 (HLG) at track init when `DvConversionGate` allows it, and keeps the decision on the track
+  (`getDolbyVisionSignalling`) for DV2.7; the setting `convertHdrToDolbyVision` stays off and hidden
+  until DV2.7 injects the RPUs.
 - [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
   crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
   test corpus. Needs: DV2.1.
@@ -798,30 +803,6 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 - Deferred: one combined staticlib (`dolby_vision` 3.4 with `capi`, plus the builder) that replaces
   `libdovi.a`. It moves the Profile 7 path from 3.3.2 to 3.4.0, so it needs a Profile 7 regression check;
   worth it when DV7.3 needs a `scene_refresh_flag` setter.
-- [DV2.3][desk] The signalling decision table of `DESIGN.md` 2.5 for Matroska only: a branch in the
-  vendored extractor, the Dolby Vision level from the stream, native fallback when the decoder fails,
-  behind a setting that is off by default, a `DeviceProfile` gate and a `debug.nuvio.*` revert switch.
-  Gate: unit tests over every row of the table. Needs: DV2.4 (the HLG rows read its transfer).
-  What the step must settle, found by a fresh-session check (2026-10-23):
-  - Order: the HLG contract runs after `formatBuilder.build()` today (`MatroskaExtractor.java:3876`,
-    `:3884`); move it before, and give a converted 8.4 Format `Hlg84.baseLayerColorInfo`, so the HDR10
-    wrapper `HdrColorSignalingTrackOutput` (`DolbyVisionExtractorsFactory.kt:388-401`) leaves it HLG. A
-    test checks the Format after that wrapper.
-  - The PQ row uses the HLG contract's field rules with transfer 16: range limited, matrix 9, primaries 9,
-    a stated contradiction refuses, an untagged field is accepted and logged.
-  - The Dolby Vision level comes from width, height and frame rate in Dolby's profiles-and-levels table;
-    without a frame rate (no DefaultDuration) take the level for 60 fps. Unit-tested.
-  - Names, unless the code suggests better: a `PlayerSettings` field (`PlayerSettingsDataStore.kt`), off
-    by default and not shown before DV2.7, because a Dolby Vision Format without RPUs must never reach
-    the decoder; the gate `DeviceProfile.isNvidia()`,
-    `DolbyVisionCompatibility.isDolbyVisionDecoderPresent()` and `DoviRpuBuilder.isAvailable()`; the
-    revert switch `debug.nuvio.dv_convert`.
-  - Decoder failure: reuse the existing retry (`retryCurrentStreamWithDolbyVisionFallback`,
-    `PlayerRuntimeControllerObservers.kt:908`) with conversion off on the retry.
-  - HLG signalled only in an alternative-transfer SEI resolves to NotHlg and plays native, which the
-    `DESIGN.md` 2.5 row allows; its "Format-change path" has no step.
-  - A converted 8.4 Format keeps the container's static HDR block (`HlgContract` carries it); change
-    that only if DV3.2 shows a problem.
 - [DV2.7][desk] Extractor injection for tracks that carry no Dolby Vision: when DV2.3 converts a
   Matroska track, the existing transformer (`DolbyVisionMatroskaTransformer.kt`) adds the provider's RPU
   NAL to each AU, with the scene-refresh rule of `DESIGN.md` 2.2 and its debug switch. Gate: unit tests:
