@@ -220,6 +220,54 @@ class MatroskaRpuInjectionTest {
     }
 
     @Test
+    fun `frame 0 carries scene refresh when the first Cluster holds no AU of the track`() {
+        // A TS capture remuxed to MKV: the first Cluster holds only audio, the first IDR opens the second.
+        val audio = element(
+            TRACK_ENTRY,
+            uint(0xD7, 2),
+            uint(0x83, 2),
+            element(0x86, "A_PCM/INT/LIT".toByteArray()),
+            element(0xE1, uint(0x9F, 2), float(0xB5, 48_000f), uint(0x6264, 16))
+        )
+        val audioBlock = element(0xA3, byteArrayOf(0x82.toByte(), 0, 0, 0x80.toByte()), ByteArray(16) { 0x11 })
+        val file = mkvTracks(
+            listOf(trackEntry("hlg_tagged", hlgColour), audio),
+            cluster(0, audioBlock),
+            cluster(10, block(0, keyframe = true, sei, idr), block(40, keyframe = false, trail)),
+            cluster(90, block(0, keyframe = true, idr)),
+        )
+        val extractor = LiveExtractor(transformer())
+        val collector = SampleCollector()
+        init(extractor, collector)
+        readFrom(extractor, file, 0)
+        assertEquals(listOf(true, false, false), refreshFlags(collector.samples))
+        // A seek back to the start: the audio-only Cluster again, then frame 0.
+        collector.samples.clear()
+        extractor.seek(clusterPosition(file, 0).toLong(), 0)
+        readFrom(extractor, file, clusterPosition(file, 0))
+        assertEquals(listOf(true, false, false), refreshFlags(collector.samples))
+    }
+
+    @Test
+    fun `an RPU that does not fit the track's NAL length field keeps the track native`() {
+        val long = DvRpuSource { DvRpuSource.Prepared.Ready(DoviRpuBuilder.ShotRpu(ByteArray(416), ByteArray(417)), "test") }
+        val transformer = transformer(source = long)
+        val convert = DvSignallingDecision.Convert(
+            DvSignallingDecision.Target.PROFILE_8_4,
+            9,
+            "dvhe.08.09",
+            androidx.media3.common.ColorInfo.Builder().build(),
+            emptyList(),
+        )
+        assertEquals(
+            DvSignallingDecision.Native("no RPU: 416 bytes do not fit a 1-byte NAL length"),
+            transformer.prepareDolbyVisionConversion(1, convert, 1)
+        )
+        assertEquals(convert, transformer.prepareDolbyVisionConversion(1, convert, 2))
+        assertEquals(convert, transformer.prepareDolbyVisionConversion(1, convert, 4))
+    }
+
+    @Test
     fun `an AU that already carries an RPU leaves with exactly one`() {
         val stray = byteArrayOf(0x7C, 0x01, 0x99.toByte())
         val file = mkv(trackEntry("hlg_tagged", hlgColour), cluster(0, block(0, keyframe = true, idr, stray)))
@@ -317,9 +365,10 @@ class MatroskaRpuInjectionTest {
         return (field.get(transformer) as DolbyVisionConversionConfig).stats
     }
 
+    /** Track 1 (the video) goes to [collector], any other track to a sink. */
     private fun init(extractor: Extractor, collector: SampleCollector) {
         val output = mockk<ExtractorOutput>(relaxed = true)
-        every { output.track(any(), any()) } returns collector
+        every { output.track(any(), any()) } answers { if (firstArg<Int>() == 1) collector else SampleCollector() }
         extractor.init(output)
     }
 
@@ -410,7 +459,9 @@ class MatroskaRpuInjectionTest {
         return out.toByteArray()
     }
 
-    private fun mkv(entry: ByteArray, vararg clusters: ByteArray): ByteArray {
+    private fun mkv(entry: ByteArray, vararg clusters: ByteArray): ByteArray = mkvTracks(listOf(entry), *clusters)
+
+    private fun mkvTracks(entries: List<ByteArray>, vararg clusters: ByteArray): ByteArray {
         val header = element(
             0x1A45DFA3,
             element(0x4282, "matroska".toByteArray()),
@@ -418,8 +469,13 @@ class MatroskaRpuInjectionTest {
             uint(0x4285, 2)
         )
         val info = element(0x1549A966, uint(0x2AD7B1, 1_000_000))
-        val tracks = element(0x1654AE6B, entry)
+        val tracks = element(0x1654AE6B, *entries.toTypedArray())
         return header + element(0x18538067, info, tracks, *clusters)
+    }
+
+    private fun float(id: Int, value: Float): ByteArray {
+        val bits = java.lang.Float.floatToIntBits(value)
+        return element(id, ByteArray(4) { i -> (bits ushr (8 * (3 - i))).toByte() })
     }
 
     private fun colour(vararg children: ByteArray) = element(0x55B0, *children)

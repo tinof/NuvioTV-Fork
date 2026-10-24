@@ -209,9 +209,15 @@ internal class DolbyVisionMatroskaTransformer(
 
     override fun prepareDolbyVisionConversion(
         trackId: Int,
-        decision: DvSignallingDecision.Convert
+        decision: DvSignallingDecision.Convert,
+        nalUnitLengthFieldLength: Int
     ): DvSignallingDecision = when (val prepared = rpuSource.prepare(decision.target)) {
-        is DvRpuSource.Prepared.Ready -> {
+        is DvRpuSource.Prepared.Ready -> if (!ConvertedTrackInjector.fits(prepared.shot, nalUnitLengthFieldLength)) {
+            // Every AU would go out without its RPU.
+            DvSignallingDecision.Native(
+                "no RPU: ${prepared.shot.size(true)} bytes do not fit a $nalUnitLengthFieldLength-byte NAL length"
+            )
+        } else {
             convertedTracks[trackId] = ConvertedTrackInjector(prepared.shot, refreshEveryStart)
             val refresh = if (refreshEveryStart) "frame 0 and every start" else "frame 0 only"
             android.util.Log.i(
