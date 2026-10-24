@@ -10,6 +10,41 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-24: DV2.8 RPU debug dump (PR #16)
+
+- [DV2.8][desk] RPU debug dump behind a `debug.nuvio.*` switch: the RPU of the first N AUs after a start
+  or seek and of every scene-refresh AU, for the existing Dolby Vision path and for converted tracks,
+  written to logcat with its AU's presentation time; a script in `scripts/` (added to the `.gitignore`
+  exceptions) rebuilds an `RPU.bin` from it for `dovi_tool info`. Gate: unit test of the encoder; a
+  fixture round trip through the script.
+
+**Evidence**
+
+- Gate `:app:testFullDebugUnitTest`: 6729 tests, 0 failures, 10 skipped, on the final head; `scripts/tests`
+  (`cd scripts && python3 -m unittest discover -s tests`): 68 tests, OK, 1 skipped (`dovi_tool info`, not
+  installed). CI does not run `scripts/tests`.
+- Encoder: `RpuDumpFormatTest` (6: chunk boundaries, line length, hex and CRC round trip, fields) and
+  `RpuDumpRecorderTest` (17: first N per generation then refresh-only, a seek inside the buffer, a Format
+  change, the AU from the buffer's position to its limit, parameter sets before the sample, trailing zero
+  bytes, encrypted and non-HEVC AUs, length-delimited samples).
+- Fixture round trip: `p81_v29_shots.RPU.bin` (three shots, `dovi_tool generate` 2.3.4) through the
+  recorder into the committed `scripts/tests/fixtures/rpu_dump_p81_v29.logcat` (`RpuDumpFixtureTest`) and
+  back through the script into a byte-identical `RPU.bin` (`test_rpu_dump_to_bin.py`).
+- CI: the `Checks` workflow on PR #16.
+- Review (Tier 2, codex and gemini, two rounds). Round 1 (the dump at the extractor output): F1 FIXED (a
+  laced Matroska BlockGroup with supplemental data lost both RPUs; red on the reviewed head in a temporary
+  worktree); F2 (a seek Media3 serves from the buffer did not restart the first N) and F3 (HLS and DASH were
+  never tapped) NEEDS-HUMAN. The owner chose to move the dump to the video renderer, which fixes all three;
+  round 2 reviewed that move: F4 (renderer time with Media3's stream offset was logged as `pts=`) and F5
+  (native FEL playback was no longer dumped) fixed in code, NEEDS-HUMAN. F2 to F5 have no JVM
+  reproduction; DV2.9 checks them on the device. Gemini P2 notes: a repeated assertion in the script test;
+  a reused ExoPlayer keeps its recorder, so `seq` continues across playbacks.
+
+**Resolution:** `RpuDumpRecorder`, fed by `DecodeOrderPtsVideoRenderer` (and `AmlDvFelVideoRenderer` on the
+native FEL path) with every queued input buffer and position reset in media time, logs the RPU NAL of the
+first N AUs of each generation and of every scene-refresh AU as hex records under `NuvioRpuDump`;
+`scripts/rpu_dump_to_bin.py` checks and reassembles them into an `RPU.bin` in `dovi_tool`'s layout.
+
 ## 2026-10-24: DV2.3 The signalling decision table for Matroska (PR #15)
 
 - [DV2.3][desk] The signalling decision table of `DESIGN.md` 2.5 for Matroska only: a branch in the
