@@ -14,6 +14,8 @@ import androidx.media3.extractor.text.SubtitleParser
 import com.nuvio.tv.core.player.DolbyVisionConversionConfig
 import com.nuvio.tv.core.player.DolbyVisionMatroskaTransformer
 import com.nuvio.tv.core.player.DolbyVisionStatsSession
+import com.nuvio.tv.core.player.DoviRpuBuilder
+import com.nuvio.tv.core.player.DvRpuSource
 import com.nuvio.tv.core.player.DvSignallingDecision
 import com.nuvio.tv.core.player.HdrColorSignalingExtractor
 import com.nuvio.tv.core.player.HevcColourFixtures
@@ -220,16 +222,34 @@ class MatroskaDvSignallingTest {
     }
 
     @Test
-    fun `a converted track is not handed to the Profile 7 transform`() {
-        assertFalse(extract("pq", pqColour).requiresTransform)
-        // The HDR10+ strip mode still treats it as the HEVC track it is.
+    fun `a converted track takes the transform path, where its AUs get their RPUs`() {
+        assertTrue(extract("pq", pqColour).requiresTransform)
+        assertTrue(extract("hlg_tagged", hlgColour).requiresTransform)
+        // A native track does not, unless the HDR10+ strip mode wants it.
+        assertFalse(extract("pq", pqColour, transformer = transformer(convert = false)).requiresTransform)
         val hdr10Plus = DolbyVisionMatroskaTransformer(
             DolbyVisionConversionConfig(active = false, convertNonDolbyVision = true, stats = DolbyVisionStatsSession()),
-            stripHdr10PlusSei = true
+            stripHdr10PlusSei = true,
+            rpuSource = readySource,
         )
         val out = extract("pq", pqColour, transformer = hdr10Plus)
         assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format.sampleMimeType)
         assertTrue(out.requiresTransform)
+    }
+
+    @Test
+    fun `a track whose RPU cannot be written plays native`() {
+        // DV2.7: the transformer is asked before the Format is built and can keep the track native.
+        val noRpu = DolbyVisionMatroskaTransformer(
+            DolbyVisionConversionConfig(active = false, convertNonDolbyVision = true, stats = DolbyVisionStatsSession()),
+            rpuSource = { DvRpuSource.Prepared.Unavailable("test") },
+        )
+        for ((case, colour) in listOf("pq" to pqColour, "hlg_tagged" to hlgColour)) {
+            val out = extract(case, colour, transformer = noRpu)
+            assertNative(case, out)
+            assertEquals(case, DvSignallingDecision.Native("no RPU: test"), out.signalling)
+            assertFalse(case, out.requiresTransform)
+        }
     }
 
     @Test
@@ -250,8 +270,14 @@ class MatroskaDvSignallingTest {
         assertNull(case, out.stats.getConvertedTrackTarget())
     }
 
+    // The table is tested with a source that has an RPU for both targets; MatroskaRpuInjectionTest covers the real one.
+    private val readySource = DvRpuSource {
+        DvRpuSource.Prepared.Ready(DoviRpuBuilder.ShotRpu(byteArrayOf(0x7C, 0x01, 1), byteArrayOf(0x7C, 0x01, 2)), "test")
+    }
+
     private fun transformer(convert: Boolean = true) = DolbyVisionMatroskaTransformer(
-        DolbyVisionConversionConfig(active = false, convertNonDolbyVision = convert, stats = DolbyVisionStatsSession())
+        DolbyVisionConversionConfig(active = false, convertNonDolbyVision = convert, stats = DolbyVisionStatsSession()),
+        rpuSource = readySource,
     )
 
     private fun trackEntry(case: String, colour: ByteArray?, width: Int, height: Int, durationNs: Long?, extra: Array<ByteArray>): ByteArray {
