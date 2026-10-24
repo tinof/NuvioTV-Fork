@@ -5,6 +5,7 @@ import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.container.DolbyVisionConfig
 import com.nuvio.tv.core.player.dvmkv.MatroskaExtractor
+import com.nuvio.tv.core.util.DebugSwitches
 import java.io.ByteArrayOutputStream
 
 /**
@@ -25,6 +26,11 @@ import java.io.ByteArrayOutputStream
  * Mode selection, the manual-DV8.1 mode-2 default and its per-RPU fallback to
  * mode 1 all come from [config], so behaviour matches the MP4/TS path in
  * [DolbyVisionExtractorsFactory].
+ *
+ * DV2.7: a track without Dolby Vision that DV2.3 converts gets its RPUs from
+ * [rpuSource] ([prepareDolbyVisionConversion] at track init, which keeps the
+ * track native when there is no RPU) and [injectDolbyVisionRpu] per AU,
+ * written by one [ConvertedTrackInjector] per track.
  */
 @UnstableApi
 internal class DolbyVisionMatroskaTransformer(
@@ -32,6 +38,9 @@ internal class DolbyVisionMatroskaTransformer(
     private val stripRpuOnly: Boolean = false,
     private val stripHdr10PlusSei: Boolean = false,
     private val injectHdr10Sei: Boolean = false,
+    // DV2.7: the RPUs of tracks converted from HDR10 or HLG, and the scene-refresh debug switch.
+    private val rpuSource: DvRpuSource = StaticDvRpuSource,
+    private val refreshEveryStart: Boolean = DebugSwitches.flag(REFRESH_EVERY_START_SWITCH) == true,
 ) : MatroskaExtractor.DolbyVisionSampleTransformer {
 
     private var lastTransformedLength = 0
@@ -192,6 +201,53 @@ internal class DolbyVisionMatroskaTransformer(
 
     override fun onDolbyVisionConversionSignalled(trackId: Int, decision: DvSignallingDecision.Convert) {
         config.stats.recordConvertedTrack(decision.target)
+    }
+
+    // DV2.7: one injector per converted track, keyed by track number.
+    private val convertedTracks = HashMap<Int, ConvertedTrackInjector>()
+    private var injectFailureLogged = false
+
+    override fun prepareDolbyVisionConversion(
+        trackId: Int,
+        decision: DvSignallingDecision.Convert
+    ): DvSignallingDecision = when (val prepared = rpuSource.prepare(decision.target)) {
+        is DvRpuSource.Prepared.Ready -> {
+            convertedTracks[trackId] = ConvertedTrackInjector(prepared.shot, refreshEveryStart)
+            val refresh = if (refreshEveryStart) "frame 0 and every start" else "frame 0 only"
+            android.util.Log.i(
+                TAG,
+                "DV_INJECT track $trackId: ${prepared.label}, RPU ${prepared.shot.size(true)}/" +
+                    "${prepared.shot.size(false)} bytes, scene refresh on $refresh"
+            )
+            decision
+        }
+        is DvRpuSource.Prepared.Unavailable -> DvSignallingDecision.Native("no RPU: ${prepared.reason}")
+    }
+
+    override fun injectDolbyVisionRpu(
+        trackId: Int,
+        sampleLengthDelimitedData: ByteArray?,
+        sampleLength: Int,
+        nalUnitLengthFieldLength: Int,
+        streamStart: Boolean
+    ): ByteArray? {
+        val sample = sampleLengthDelimitedData ?: return null
+        val injector = convertedTracks[trackId] ?: return null
+        lastTransformedLength = sampleLength
+        if (!injector.inject(sample, sampleLength, nalUnitLengthFieldLength, streamStart, scratch)) {
+            // The extractor's Annex B writer refuses the same sample; the RPU cannot go anywhere.
+            if (!injectFailureLogged) {
+                injectFailureLogged = true
+                android.util.Log.w(TAG, "DV_INJECT track $trackId: a sample's NAL lengths do not parse; kept as read")
+            }
+            return null
+        }
+        val injected = finishScratch()
+        return stripHdr10PlusIfEnabled(injected, lastTransformedLength, nalUnitLengthFieldLength) ?: injected
+    }
+
+    override fun onReset() {
+        for (injector in convertedTracks.values) injector.onReset()
     }
 
     override fun shouldTransform(codecs: String?, dolbyVisionConfigBytes: ByteArray?): Boolean {
@@ -606,6 +662,9 @@ internal class DolbyVisionMatroskaTransformer(
         // Bound the diagnostics RPU probe (see probeRpuMetadata).
         const val METADATA_PROBE_ATTEMPT_LIMIT = 30
         const val TAG = "DolbyVisionMkvXform"
+
+        /** `adb shell setprop debug.nuvio.dv_refresh_every_start 1`: see [ConvertedTrackInjector]. */
+        const val REFRESH_EVERY_START_SWITCH = "debug.nuvio.dv_refresh_every_start"
 
         // Consecutive conversion failures before per-frame
         // attempts stop for the stream (~2.5s of 24fps video). Real failure
