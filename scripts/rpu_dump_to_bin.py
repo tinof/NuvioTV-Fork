@@ -15,11 +15,11 @@ app/src/main/java/com/nuvio/tv/core/player/RpuDump.kt:
 
     v1 seq=<n> trk=<id> gen=<g> au=<i> pts=<us> sr=<0|1|?> why=<start|refresh> len=<bytes> crc=<crc32>
        part=<i>/<n> <hex>
-    v1 gen=<g> trk=<id> event=<init|seek> seekUs=<us|-1> n=<N> codecs=<codecs|->
+    v1 gen=<g> trk=<id> event=<seek|format> seekUs=<us|-1> n=<N> codecs=<codecs|->
 
 Each record's parts are joined and checked against len, crc (CRC32 of the whole NAL) and the `7C 01` NAL
 header. A playback numbers its records from seq=0, so a missing seq is a lost record; a new seq=0 starts the
-next playback (a session). Records are written in seq order, which is the order the extractor read them (decode
+next playback (a session). Records are written in seq order, which is the order the renderer queued them (decode
 order), each as `00 00 00 01` followed by the NAL without its 2-byte header: the layout dovi_tool's
 parse_rpu_file splits on. Emulation prevention bytes stay in, as in the stream.
 
@@ -28,9 +28,10 @@ as above, and use --strict to fail on a gap. Gaps are found only up to the last 
 after it leave no trace, so the summary prints each session's last seq to compare with what the playback should
 have dumped (the first N AUs of each generation plus its scene refreshes).
 
-A generation starts at an extractor init or seek; Media3's first load seeks right after init, so a start usually
-shows as `event=seek seekUs=0`. AUs Media3 had already extracted before a seek are not read again and are not
-dumped again.
+The video renderer records what it queues to the decoder, from any source (Matroska, MP4, TS, HLS, DASH). A
+generation starts at each position reset of the renderer, the start included, which shows as
+`event=seek seekUs=<position>`, also for a seek Media3 serves from samples it already extracted; or at a change
+of the video Format (`event=format seekUs=-1`).
 """
 import argparse
 import re
