@@ -126,14 +126,17 @@ internal fun PlaybackVideoSection(
             onToggle = { onUpdate { setDv5ToDv81Enabled(!settings.dv5ToDv81Enabled) } },
             enabled = enabled && dv81Conversion
         )
-        // DV2.7: only HLG converts so far, and only on Nvidia (DvConversionGate).
+        // DV2.7: only HLG converts so far, only on Nvidia, and never in the strip or HDR10 base-layer
+        // modes (DvConversionGate).
         if (DeviceProfile.isNvidia()) {
+            val stripMode = settings.dv7HandlingMode == Dv7HandlingMode.STRIP_DV ||
+                settings.dv7HandlingMode == Dv7HandlingMode.HDR10_BASE_LAYER
             SettingsToggleRow(
                 title = stringResource(R.string.playback_convert_hdr_to_dv_title),
                 subtitle = stringResource(R.string.playback_convert_hdr_to_dv_sub),
                 checked = settings.convertHdrToDolbyVision,
                 onToggle = { onUpdate { setConvertHdrToDolbyVision(!settings.convertHdrToDolbyVision) } },
-                enabled = enabled
+                enabled = enabled && !stripMode
             )
         }
         SettingsToggleRow(
