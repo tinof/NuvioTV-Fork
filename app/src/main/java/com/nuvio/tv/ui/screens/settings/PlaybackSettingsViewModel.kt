@@ -350,6 +350,10 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setDv7LibdoviModeOverride(mode)
     }
 
+    suspend fun setConvertHdrToDolbyVision(enabled: Boolean) {
+        playerSettingsDataStore.setConvertHdrToDolbyVision(enabled)
+    }
+
     suspend fun setStripHdr10PlusSei(enabled: Boolean) {
         playerSettingsDataStore.setStripHdr10PlusSei(enabled)
     }
