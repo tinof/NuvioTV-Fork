@@ -228,7 +228,10 @@ injector:
   `prepareDolbyVisionConversion`. Without an RPU for the target, or when the RPU does not fit the
   hvcC's NAL length field, the track stays native (`Native("no RPU: …")`), so a Dolby Vision Format never
   goes out without RPUs.
-- `StaticDvRpuSource` is the only provider: 8.4 with the BT.2100 composer and `static84L1()`. It renders
+- `StaticDvRpuSource` is the only provider: 8.4 with the BT.2100 composer and `static84L1()`. For
+  DV3.2's G-C check, `debug.nuvio.dv_hlg_canary` = 1 gives it the canary composer instead (a TV that
+  applies the composer shows the picture green); like the refresh switch it is read once per extractor,
+  and the `DV_INJECT` log line names the composer a playback used. It renders
   the one shot at track init and releases the builder handle at once, because `ShotRpu` holds its own
   bytes. 8.1 has no provider before DV3.1 (HDR10+) and DV3.3 (static HDR10), so PQ tracks stay native.
   A provider that renders per shot keeps its handle and needs a release hook on the extractor, which
