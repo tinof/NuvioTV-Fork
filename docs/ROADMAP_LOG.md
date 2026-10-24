@@ -10,6 +10,48 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-24: DV2.7 Extractor injection for tracks that carry no Dolby Vision (PR #17)
+
+- [DV2.7][desk] Extractor injection for tracks that carry no Dolby Vision: when DV2.3 converts a
+  Matroska track, the existing transformer (`DolbyVisionMatroskaTransformer.kt`) adds the provider's RPU
+  NAL to each AU, with the scene-refresh rule of `DESIGN.md` 2.2 and its debug switch. Gate: unit tests:
+  one RPU per AU, every other NAL byte-identical, refresh as the rule says, native tracks untouched.
+  Needs: DV2.2, DV2.3. Calling `DoviRpuBuilder` (`DoviRpuBuilder.kt`): per converted track,
+  `createStatic84(BT2100)` (or `create(params)`) once; per shot, `renderShot(handle, l1)` once (static
+  8.4: one shot with `static84L1()`); per AU, `ShotRpu.copyInto(..., sceneRefresh)`; `release(handle)`
+  when the track is released. The library is thread-safe and `ShotRpu` is immutable; the extractor's
+  loading thread owns the handle.
+
+**Evidence**
+
+- Gate `:app:testFullDebugUnitTest`: 6756 tests, 0 failures, 10 skipped, on the reviewed head.
+- New tests: `ConvertedTrackInjectorTest` (11: byte-identical NALs and one RPU last, a stray RPU dropped,
+  frame-0 refresh with and without the switch, the switch waiting for an IRAP AU, length fields of 1 to 4
+  bytes and the fit check, malformed lengths refused) and `MatroskaRpuInjectionTest` (15, through the
+  vendored extractor: converted output equals the native output plus one RPU per AU; refresh on frame 0
+  only, after seeks, after Media3's opening `seek(0, 0)`, on a mid-file start, in a laced first block and
+  with an audio-only first Cluster; a PQ track and a missing library stay native; conversion off and a
+  native Dolby Vision track untouched; the HDR10+ strip mode keeps the RPU; the length-field veto).
+  `MatroskaDvSignallingTest` tests the table with a source that has an RPU for both targets.
+- CI: the `Checks` workflow on PR #17.
+- Before `/ship`, three Claude reviewers (Opus) read the branch. Five findings were fixed on it before the
+  cold review: frame 0 missed when the first Cluster holds no AU of the track; the switch flagged an AU
+  Media3 drops after a seek; an RPU too long for a 1- or 2-byte NAL length field left a Dolby Vision
+  track without RPUs; the setting stayed enabled in the strip modes; a re-entered Dolby Vision sample
+  with BlockAdditions lost its supplemental size prefix (no JVM reproduction).
+- Review (Tier 1): codex failed on the ChatGPT usage limit; gemini, substituted by the owner, said LGTM.
+  P2 note: the length-field rejection message names the scene-refresh size even when the other variant
+  is the one that does not fit.
+- Decisions that narrow the step: only the static 8.4 provider exists, so PQ tracks stay native until
+  DV3.1 or DV3.3; the static shot is rendered at track init and the builder handle released at once
+  (`ShotRpu` holds its own bytes; a per-shot provider will need a release hook on the extractor); the
+  owner chose to show the setting, on Nvidia, as "Convert HLG to Dolby Vision".
+
+**Resolution:** a Matroska HEVC track that DV2.3 converts gets its RPUs prepared at track init (native
+when there is none) and one RPU NAL appended to every AU by `ConvertedTrackInjector`, with
+`scene_refresh_flag` on frame 0 only and `debug.nuvio.dv_refresh_every_start` for every start; HLG plays
+as 8.4 with the setting on, PQ stays native.
+
 ## 2026-10-24: DV2.8 RPU debug dump (PR #16)
 
 - [DV2.8][desk] RPU debug dump behind a `debug.nuvio.*` switch: the RPU of the first N AUs after a start
