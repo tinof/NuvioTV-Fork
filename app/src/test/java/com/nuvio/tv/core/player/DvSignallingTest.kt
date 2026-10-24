@@ -76,6 +76,14 @@ class DvSignallingTest {
     }
 
     @Test
+    fun `a declared rate outside the Format bounds still sets the level`() {
+        // 125 fps (8 000 000 ns) is above the 121 fps bound of Format.frameRate but is a declared rate.
+        assertEquals("dvhe.08.08", (decide(container(), "pq", 1920, 1080, 8_000_000) as DvSignallingDecision.Convert).codecs)
+        // 4 fps (250 000 000 ns) is below it: 3840x2160 at 4 fps fits level 01's pixel rate but not its width.
+        assertEquals("dvhe.08.05", (decide(container(), "pq", 3840, 2160, 250_000_000) as DvSignallingDecision.Convert).codecs)
+    }
+
+    @Test
     fun `PQ is 8_1 over a BT_2020 limited PQ base layer`() {
         val convert = decide(container(), "pq") as DvSignallingDecision.Convert
         assertEquals(DvSignallingDecision.Target.PROFILE_8_1, convert.target)

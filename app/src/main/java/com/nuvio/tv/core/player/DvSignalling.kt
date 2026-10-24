@@ -53,7 +53,7 @@ internal object DvSignalling {
     )
     private val LEVEL_MAX_WIDTH = intArrayOf(0, 1280, 1280, 1920, 2560, 3840, 3840, 3840, 3840, 3840, 3840, 7680, 7680, 7680)
 
-    /** The rate assumed without a usable DefaultDuration (ROADMAP DV2.3). */
+    /** The rate assumed without a DefaultDuration (ROADMAP DV2.3). */
     const val FALLBACK_FRAME_RATE = 60.0
 
     // DefaultDuration is whole nanoseconds, so 30 fps is coded as 33333333 ns, a hair above 30. A
@@ -94,7 +94,7 @@ internal object DvSignalling {
                 PqDecision.TransferUnknown -> return DvSignallingDecision.Native("transfer unknown at track init")
             }
         }
-        val frameRate = declaredFrameRate(defaultSampleDurationNs) ?: FALLBACK_FRAME_RATE
+        val frameRate = levelFrameRate(defaultSampleDurationNs)
         val level = level(width, height, frameRate)
             ?: return DvSignallingDecision.Native(
                 "no Dolby Vision level for ${width}x$height at ${String.format(Locale.ROOT, "%.3f", frameRate)} fps"
@@ -107,6 +107,14 @@ internal object DvSignalling {
             untaggedAccepted = untagged,
         )
     }
+
+    /**
+     * The rate the level is taken at: the one any positive DefaultDuration declares, even outside the
+     * bounds of `Format.frameRate`, or [FALLBACK_FRAME_RATE] without a DefaultDuration.
+     */
+    @JvmStatic
+    fun levelFrameRate(defaultSampleDurationNs: Long): Double =
+        if (defaultSampleDurationNs > 0) 1_000_000_000.0 / defaultSampleDurationNs else FALLBACK_FRAME_RATE
 
     /**
      * The frame rate a Matroska DefaultDuration declares, with the bounds the extractor uses for
