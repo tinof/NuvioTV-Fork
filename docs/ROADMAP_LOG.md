@@ -10,6 +10,56 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-24: DV2.3 The signalling decision table for Matroska (PR #15)
+
+- [DV2.3][desk] The signalling decision table of `DESIGN.md` 2.5 for Matroska only: a branch in the
+  vendored extractor, the Dolby Vision level from the stream, native fallback when the decoder fails,
+  behind a setting that is off by default, a `DeviceProfile` gate and a `debug.nuvio.*` revert switch.
+  Gate: unit tests over every row of the table. Needs: DV2.4 (the HLG rows read its transfer).
+  What the step must settle, found by a fresh-session check (2026-10-23):
+  - Order: the HLG contract runs after `formatBuilder.build()` today (`MatroskaExtractor.java:3876`,
+    `:3884`); move it before, and give a converted 8.4 Format `Hlg84.baseLayerColorInfo`, so the HDR10
+    wrapper `HdrColorSignalingTrackOutput` (`DolbyVisionExtractorsFactory.kt:388-401`) leaves it HLG. A
+    test checks the Format after that wrapper.
+  - The PQ row uses the HLG contract's field rules with transfer 16: range limited, matrix 9, primaries 9,
+    a stated contradiction refuses, an untagged field is accepted and logged.
+  - The Dolby Vision level comes from width, height and frame rate in Dolby's profiles-and-levels table;
+    without a frame rate (no DefaultDuration) take the level for 60 fps. Unit-tested.
+  - Names, unless the code suggests better: a `PlayerSettings` field (`PlayerSettingsDataStore.kt`), off
+    by default and not shown before DV2.7, because a Dolby Vision Format without RPUs must never reach
+    the decoder; the gate `DeviceProfile.isNvidia()`,
+    `DolbyVisionCompatibility.isDolbyVisionDecoderPresent()` and `DoviRpuBuilder.isAvailable()`; the
+    revert switch `debug.nuvio.dv_convert`.
+  - Decoder failure: reuse the existing retry (`retryCurrentStreamWithDolbyVisionFallback`,
+    `PlayerRuntimeControllerObservers.kt:908`) with conversion off on the retry.
+  - HLG signalled only in an alternative-transfer SEI resolves to NotHlg and plays native, which the
+    `DESIGN.md` 2.5 row allows; its "Format-change path" has no step.
+  - A converted 8.4 Format keeps the container's static HDR block (`HlgContract` carries it); change
+    that only if DV3.2 shows a problem.
+
+**Evidence**
+
+- Gate `:app:testFullDebugUnitTest`: 6705 tests, 0 failures, 10 skipped, on the reviewed head plus the F1 fix.
+- New tests: `MatroskaDvSignallingTest` (16: every row of `DESIGN.md` 2.5 through the vendored extractor,
+  the Format after the HDR10 wrapper, the static HDR block for 8.1 and 8.4, the 60 fps fallback, strip and
+  HDR10+ modes), `DvSignallingTest` (9: level vectors for truncated DefaultDurations, the width tie-break,
+  above level 13, the PQ field rules), `DvConversionGateTest` (4: every reason and their order),
+  `DvConvertFallbackTest` (3: an init failure of a converted Format is a Dolby Vision decoder failure, only
+  a playback that converted a track retries native) and `ConvertHdrToDolbyVisionSettingTest` (1).
+- CI: the `Checks` workflow on PR #15.
+- Review (Tier 2, codex and gemini): F1 FIXED (`DvSignallingTest`): a DefaultDuration outside 5 to 121 fps
+  was discarded and the level taken at 60 fps. Gemini P2 note: `DolbyVisionStatsSession.reset()` does not
+  clear `convertedTrackTarget` (a new session is allocated per playback).
+- The level table is FFmpeg's `libavcodec/dovi_rpuenc.c` (`dv_levels`); Dolby's profiles-and-levels PDF
+  was not read.
+
+**Resolution:** a Matroska HEVC track without Dolby Vision is published as `video/dolby-vision`,
+`dvhe.08.LL`, with the HLG (8.4) or PQ (8.1) contract's base-layer colour when the per-playback
+`DvConversionGate` allows it (hidden setting `convertHdrToDolbyVision`, revert switch
+`debug.nuvio.dv_convert`, Nvidia, Dolby Vision decoder and display, `libnuvio_rpu`, no strip or map mode);
+a Dolby Vision decoder failure of such a playback replays the stream native. Nothing converts until DV2.7
+shows the setting.
+
 ## 2026-10-23: Appendix A hand-off check
 
 After DV2.2 and DV2.4 merged, three read-only Opus agents checked whether a fresh session could continue
