@@ -188,6 +188,19 @@ class RpuDumpRecorderTest {
     }
 
     @Test
+    fun theAuRunsFromThePositionToTheLimit() {
+        // The native FEL renderer hands its buffer over at position(), not 0, and keeps reading from there.
+        val h = Harness(firstAus = 1, FlagReader())
+        h.start()
+        val junk = startCode + rpu(9)
+        val sample = au(rpu(4))
+        val buffer = ByteBuffer.allocate(junk.size + sample.size + 8).apply { put(junk); put(sample); flip(); position(junk.size) }
+        h.recorder.onQueueInputBuffer(buffer, 0, false)
+        assertArrayEquals(rpu(4), h.records.single().nal)
+        assertEquals(junk.size, buffer.position())
+    }
+
+    @Test
     fun parameterSetsInFrontOfTheSampleAreSkipped() {
         // A codec reconfiguration puts the VPS, SPS and PPS before the sample.
         val h = Harness(firstAus = 1, FlagReader())
