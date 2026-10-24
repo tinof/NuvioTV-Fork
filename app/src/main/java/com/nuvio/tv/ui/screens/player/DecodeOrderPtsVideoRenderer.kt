@@ -13,6 +13,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import com.nuvio.tv.core.player.DecodeOrderTimestamps
 import com.nuvio.tv.core.player.DolbyVisionCodecFallback
+import com.nuvio.tv.core.player.RpuDumpRecorder
 import com.nuvio.tv.core.util.DebugSwitches
 import java.nio.ByteBuffer
 import java.util.Locale
@@ -36,6 +37,8 @@ internal class DecodeOrderPtsVideoRenderer(
     /** Also ask Amlogic decoders to rebuild the times themselves (vendor keys, ignored elsewhere). */
     private val vendorUnstablePts: Boolean = false,
     private val dav1dLoaded: () -> Boolean = { false },
+    /** DV2.8: the RPU debug dump, null when `debug.nuvio.rpu_dump` is off. */
+    private val rpuDump: RpuDumpRecorder? = null,
 ) : MediaCodecVideoRenderer(builder) {
 
     private var inputFormat: Format? = null
@@ -76,12 +79,19 @@ internal class DecodeOrderPtsVideoRenderer(
             loggedEngage = false
         }
         inputFormat = format
+        rpuDump?.onFormat(format)
         return evaluation
+    }
+
+    override fun onPositionReset(positionUs: Long, joining: Boolean) {
+        super.onPositionReset(positionUs, joining)
+        rpuDump?.onPositionReset(positionUs)
     }
 
     override fun onQueueInputBuffer(buffer: DecoderInputBuffer) {
         super.onQueueInputBuffer(buffer)
         timestamps?.onInputQueued(buffer.timeUs)
+        rpuDump?.onQueueInputBuffer(buffer.data, buffer.timeUs, buffer.isEncrypted)
     }
 
     override fun processOutputBuffer(
