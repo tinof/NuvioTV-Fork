@@ -82,9 +82,9 @@ keep-alive) and the fork's datasource AAR stays. Elsewhere upstream's new defaul
 listed in [`docs/shield-todo.md`](docs/shield-todo.md). Device numbers above predate them, and the installed
 build predates the sync.
 
-**Appendix A (2026-10-24).** On the separate Dolby Vision track, DV2.1 to DV2.4 and DV2.8 are done and DV1.4
-is closed. The next startable desk step is DV2.7; DV3.2 (HLG → 8.4 on the Shield), DV1.8 and DV2.9 (the
-dump's device checks) follow. A.4 ends with how device builds are made.
+**Appendix A (2026-10-24).** On the separate Dolby Vision track, DV2.1 to DV2.4, DV2.7 and DV2.8 are done
+and DV1.4 is closed. HLG titles can now play as Dolby Vision 8.4 with the setting on; DV3.2 (HLG → 8.4 on
+the Shield), DV1.8 and DV2.9 (the dump's device checks) are next. A.4 ends with how device builds are made.
 
 ### Waiting for the owner
 
@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-24 | DV2.7 shipped: the Matroska extractor injects the static 8.4 RPU into every AU of a converted HLG track, scene refresh on frame 0 only, with the setting shown on Nvidia; PQ stays native until an 8.1 provider exists. | DV2 | [log](docs/ROADMAP_LOG.md), PR #17 |
 | 2026-10-24 | DV2.8 shipped: the RPU debug dump at the video renderer (first N AUs after a start, seek or Format change, and every scene refresh) and `rpu_dump_to_bin.py`; DV2.9 added for the device checks. | DV2 | [log](docs/ROADMAP_LOG.md), PR #16 |
 | 2026-10-24 | DV2.3 shipped: the signalling decision table for Matroska, Dolby Vision 8.1 from PQ and 8.4 from HLG at track init, behind a hidden setting, a per-playback gate and a native retry on a decoder failure. | DV2 | [log](docs/ROADMAP_LOG.md), PR #15 |
 | 2026-10-23 | Appendix A hand-off check: stale references in `DESIGN.md` fixed; DV2.3 and DV2.7 say what they must settle; DV4.5 needs DV1.8. | DV1–DV4 | [log](docs/ROADMAP_LOG.md) |
@@ -793,11 +794,15 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   locally only (`scripts/build_rpu_builder.sh`), nothing calls it before DV2.3 and DV2.7.
   DV2.3 is done (PR #15): `DvSignalling` publishes a Matroska HEVC track without Dolby Vision as 8.1
   (PQ) or 8.4 (HLG) at track init when `DvConversionGate` allows it, and keeps the decision on the track
-  (`getDolbyVisionSignalling`) for DV2.7; the setting `convertHdrToDolbyVision` stays off and hidden
-  until DV2.7 injects the RPUs.
+  (`getDolbyVisionSignalling`) for DV2.7.
   DV2.8 is done (PR #16): with `debug.nuvio.rpu_dump` = N the video renderer logs the RPU of the first N
   AUs after a start, a seek or a Format change and of every scene-refresh AU (`RpuDumpRecorder`), and
   `scripts/rpu_dump_to_bin.py` rebuilds an `RPU.bin`; the device checks the review left are DV2.9.
+  DV2.7 is done (PR #17): a converted track gets one RPU NAL per AU in the extractor
+  (`ConvertedTrackInjector`), prepared at track init so a track without an RPU stays native; only the
+  static 8.4 provider exists, so PQ stays native until DV3.1 or DV3.3; `scene_refresh_flag` on frame 0
+  only, `debug.nuvio.dv_refresh_every_start` for every start; the setting is shown on Nvidia as
+  "Convert HLG to Dolby Vision", off by default.
 - [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
   crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
   test corpus. Needs: DV2.1.
@@ -807,15 +812,6 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 - Deferred: one combined staticlib (`dolby_vision` 3.4 with `capi`, plus the builder) that replaces
   `libdovi.a`. It moves the Profile 7 path from 3.3.2 to 3.4.0, so it needs a Profile 7 regression check;
   worth it when DV7.3 needs a `scene_refresh_flag` setter.
-- [DV2.7][desk] Extractor injection for tracks that carry no Dolby Vision: when DV2.3 converts a
-  Matroska track, the existing transformer (`DolbyVisionMatroskaTransformer.kt`) adds the provider's RPU
-  NAL to each AU, with the scene-refresh rule of `DESIGN.md` 2.2 and its debug switch. Gate: unit tests:
-  one RPU per AU, every other NAL byte-identical, refresh as the rule says, native tracks untouched.
-  Needs: DV2.2, DV2.3. Calling `DoviRpuBuilder` (`DoviRpuBuilder.kt`): per converted track,
-  `createStatic84(BT2100)` (or `create(params)`) once; per shot, `renderShot(handle, l1)` once (static
-  8.4: one shot with `static84L1()`); per AU, `ShotRpu.copyInto(..., sceneRefresh)`; `release(handle)`
-  when the track is released. The library is thread-safe and `ShotRpu` is immutable; the extractor's
-  loading thread owns the handle.
 - [DV2.9][device][new-build] The DV2.8 dump on the device, for what no JVM test reaches (PR #16 review
   F2 to F5): with `debug.nuvio.rpu_dump` set, a Matroska Dolby Vision title played from the start logs
   `pts=` equal to the file's presentation times (no Media3 stream offset); a seek back inside the buffer
