@@ -278,7 +278,7 @@ class MatroskaRpuInjectionTest {
     @Test
     fun `a PQ track has no 8_1 provider and plays native, its samples untouched`() {
         val native = readFile(file(pqColour), transformer = null)
-        val out = readFile(file(pqColour), transformer(source = com.nuvio.tv.core.player.StaticDvRpuSource))
+        val out = readFile(file(pqColour), transformer(source = com.nuvio.tv.core.player.StaticDvRpuSource()))
         assertEquals(MimeTypes.VIDEO_H265, out.format!!.sampleMimeType)
         assertEquals(
             DvSignallingDecision.Native("no RPU: no 8.1 RPU provider"),
@@ -291,7 +291,7 @@ class MatroskaRpuInjectionTest {
     @Test
     fun `without the RPU library an HLG track plays native`() {
         // The JVM has no libnuvio_rpu.so: the real static source cannot write the 8.4 RPU.
-        val out = readFile(file(hlgColour), transformer(source = com.nuvio.tv.core.player.StaticDvRpuSource))
+        val out = readFile(file(hlgColour), transformer(source = com.nuvio.tv.core.player.StaticDvRpuSource()))
         assertEquals(MimeTypes.VIDEO_H265, out.format!!.sampleMimeType)
         assertEquals(
             DvSignallingDecision.Native("no RPU: static84L1 failed: UNAVAILABLE"),
