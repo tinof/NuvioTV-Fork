@@ -145,7 +145,8 @@ internal class DecodeOrderPtsVideoRenderer(
 
     override fun onPositionReset(positionUs: Long, joining: Boolean) {
         super.onPositionReset(positionUs, joining)
-        rpuDump?.onPositionReset(positionUs)
+        // Renderer time carries Media3's stream offset; the dump logs media time.
+        rpuDump?.onPositionReset(positionUs - streamOffsetUs)
     }
 
     override fun onQueueInputBuffer(buffer: DecoderInputBuffer) {
@@ -156,7 +157,7 @@ internal class DecodeOrderPtsVideoRenderer(
         if (relabel != null && data != null && !buffer.isEncrypted) {
             H264LevelLabel.relabelParameterSets(data, data.position(), data.limit(), relabel)
         }
-        rpuDump?.onQueueInputBuffer(buffer.data, buffer.timeUs, buffer.isEncrypted)
+        rpuDump?.onQueueInputBuffer(buffer.data, buffer.timeUs - streamOffsetUs, buffer.isEncrypted)
     }
 
     override fun processOutputBuffer(
