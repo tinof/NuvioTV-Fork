@@ -136,6 +136,13 @@ internal object DoviRpuBuilder {
             return nal.size
         }
 
+        /** Writes the NAL to [out] (which copies it): its size. */
+        fun writeTo(out: java.io.OutputStream, sceneRefresh: Boolean): Int {
+            val nal = nal(sceneRefresh)
+            out.write(nal)
+            return nal.size
+        }
+
         fun toByteArray(sceneRefresh: Boolean): ByteArray = nal(sceneRefresh).copyOf()
     }
 
