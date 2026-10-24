@@ -66,6 +66,20 @@ class ConvertedTrackInjectorTest {
     }
 
     @Test
+    fun `with the switch the flag waits for the first IRAP AU after a seek, the one the decoder starts on`() {
+        val injector = ConvertedTrackInjector(shot, refreshEveryStart = true)
+        injector.onReset()
+        // Media3 drops the AUs before the first keyframe after a seek.
+        assertArrayEquals(lengthPrefixed(listOf(trail, plainRpu)), inject(injector, listOf(trail), streamStart = false))
+        assertArrayEquals(lengthPrefixed(listOf(prefixSei, idr, refreshRpu)), inject(injector, listOf(prefixSei, idr), streamStart = false))
+        assertArrayEquals(lengthPrefixed(listOf(idr, plainRpu)), inject(injector, listOf(idr), streamStart = false))
+        // A CRA (type 21) is IRAP too.
+        val cra = byteArrayOf(0x2A, 0x01, 0xA0.toByte())
+        injector.onReset()
+        assertArrayEquals(lengthPrefixed(listOf(cra, refreshRpu)), inject(injector, listOf(cra), streamStart = false))
+    }
+
+    @Test
     fun `every NAL length field size from 1 to 4 bytes`() {
         val injector = ConvertedTrackInjector(shot, refreshEveryStart = false)
         for (fieldLength in 1..4) {
@@ -117,6 +131,23 @@ class ConvertedTrackInjectorTest {
         val out = ExposedByteArrayOutputStream(16)
         assertTrue(injector.inject(wide, wide.size, 2, streamStart = false, out = out))
         assertEquals(wide.size + 2 + 256, out.size())
+    }
+
+    @Test
+    fun `fits checks both NALs against the length field`() {
+        // The larger NAL decides, whichever variant it is.
+        val refreshLarger = DoviRpuBuilder.ShotRpu(ByteArray(256), ByteArray(255))
+        val plainLarger = DoviRpuBuilder.ShotRpu(ByteArray(255), ByteArray(256))
+        for (s in listOf(refreshLarger, plainLarger)) {
+            assertFalse(ConvertedTrackInjector.fits(s, 1))
+            assertTrue(ConvertedTrackInjector.fits(s, 2))
+        }
+        assertTrue(ConvertedTrackInjector.fits(shot, 1))
+        assertTrue(ConvertedTrackInjector.fits(DoviRpuBuilder.ShotRpu(ByteArray(65_536), ByteArray(1)), 3))
+        assertFalse(ConvertedTrackInjector.fits(DoviRpuBuilder.ShotRpu(ByteArray(65_536), ByteArray(1)), 2))
+        assertTrue(ConvertedTrackInjector.fits(shot, 4))
+        assertFalse(ConvertedTrackInjector.fits(shot, 0))
+        assertFalse(ConvertedTrackInjector.fits(shot, 5))
     }
 
     private fun inject(injector: ConvertedTrackInjector, nals: List<ByteArray>, streamStart: Boolean): ByteArray {

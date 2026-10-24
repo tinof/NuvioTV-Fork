@@ -73,7 +73,8 @@ internal object StaticDvRpuSource : DvRpuSource {
  * `scene_refresh_flag` (`docs/dv-conversion/DESIGN.md` 2.2): set on the AU that starts the linear stream,
  * frame 0 (the extractor tells, [inject]'s `streamStart`), as an `mkvdovi` file has it; a mid-file start
  * or a seek carries 0. With [refreshEveryStart] (`debug.nuvio.dv_refresh_every_start`) it is also set on
- * the first AU after every start, seek or resync of the extractor.
+ * the first IRAP AU after every start, seek or resync of the extractor: Media3 drops the AUs before the
+ * first keyframe after a seek, so the AU the decoder starts on is the one that gets it.
  */
 @UnstableApi
 internal class ConvertedTrackInjector(
@@ -99,10 +100,9 @@ internal class ConvertedTrackInjector(
         streamStart: Boolean,
         out: ExposedByteArrayOutputStream,
     ): Boolean {
-        val sceneRefresh = streamStart || (refreshEveryStart && firstAuOfGenerationPending)
-        firstAuOfGenerationPending = false
         if (nalLengthFieldLength !in 1..4) return false
         out.reset()
+        var irap = false
         var position = 0
         while (position < length) {
             if (position + nalLengthFieldLength > length) return false
@@ -113,12 +113,15 @@ internal class ConvertedTrackInjector(
             val nalStart = position + nalLengthFieldLength
             if (nalSize > length - nalStart) return false
             val nalEnd = nalStart + nalSize.toInt()
-            val isRpu = nalSize > 0 && ((sample[nalStart].toInt() ushr 1) and 0x3F) == NAL_TYPE_RPU
-            if (!isRpu) out.write(sample, position, nalEnd - position)
+            val nalType = if (nalSize > 0) (sample[nalStart].toInt() ushr 1) and 0x3F else -1
+            if (nalType in NAL_TYPE_IRAP) irap = true
+            if (nalType != NAL_TYPE_RPU) out.write(sample, position, nalEnd - position)
             position = nalEnd
         }
+        val sceneRefresh = streamStart || (refreshEveryStart && firstAuOfGenerationPending && irap)
+        if (irap) firstAuOfGenerationPending = false
+        if (!fits(shot, nalLengthFieldLength)) return false
         val rpuSize = shot.size(sceneRefresh)
-        if (nalLengthFieldLength < 4 && rpuSize ushr (8 * nalLengthFieldLength) != 0) return false
         for (shift in nalLengthFieldLength - 1 downTo 0) {
             out.write((rpuSize ushr (8 * shift)) and 0xFF)
         }
@@ -126,7 +129,17 @@ internal class ConvertedTrackInjector(
         return true
     }
 
-    private companion object {
-        const val NAL_TYPE_RPU = 62
+    companion object {
+        private const val NAL_TYPE_RPU = 62
+        // BLA_W_LP to CRA_NUT: the pictures a decoder can start on.
+        private val NAL_TYPE_IRAP = 16..21
+
+        /** Whether both NALs of [shot] fit a [nalLengthFieldLength]-byte NAL length field. */
+        fun fits(shot: DoviRpuBuilder.ShotRpu, nalLengthFieldLength: Int): Boolean {
+            if (nalLengthFieldLength !in 1..4) return false
+            if (nalLengthFieldLength == 4) return true
+            val max = maxOf(shot.size(true), shot.size(false))
+            return max ushr (8 * nalLengthFieldLength) == 0
+        }
     }
 }
