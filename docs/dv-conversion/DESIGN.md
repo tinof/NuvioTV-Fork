@@ -168,14 +168,17 @@ extracted without running the extractor again; such samples keep the flag they w
 that path). `scene_refresh_flag` is coded ue(v), so the two variants of an RPU can differ in size: the
 fork's wrapper renders both once per shot, and the headroom check below uses both.
 
-**Implemented in DV2.7 (Matroska).** Frame 0 is the track's first AU in the Segment's first Cluster.
-The vendored extractor learns that Cluster's position while it reads from the start of the file (Media3
-opens every load with `seek(0, 0)`, which counts as the start), so a start from the beginning and a seek
-back to the first Cluster both set the flag on frame 0, and a laced first block sets it on its first frame
-only. A seek to a non-zero position or a resync before the first Cluster was read leaves that Cluster
-unknown for the rest of the extractor's life; then no AU gets the flag by default, which is what a
-mid-file resume shows anyway. The switch is `debug.nuvio.dv_refresh_every_start` (1: also the first AU
-after every `Extractor.seek` or resync); it is read once per extractor.
+**Implemented in DV2.7 (Matroska).** Frame 0 is the first AU of the track that the vendored extractor
+reads while it reads from the start of the file (Media3 opens every load with `seek(0, 0)`, which
+counts as the start). The extractor records the Cluster that holds it, which need not be the Segment's
+first Cluster (a TS capture remuxed to MKV can open with an audio-only Cluster). A start from the
+beginning and a seek back to that Cluster both set the flag on the track's first AU in it, and a laced
+block sets it on its first frame only. If a seek to a non-zero position or a resync comes before the
+track's first AU was read, frame 0 stays unknown for the rest of the extractor's life. Then no AU gets
+the flag by default, which is what a mid-file resume shows anyway. The switch is
+`debug.nuvio.dv_refresh_every_start`: with 1 the flag is also set on the first IRAP AU after every
+`Extractor.seek` or resync. It is the first IRAP AU, not simply the first AU, because Media3 drops the
+AUs before the first keyframe after a seek. The switch is read once per extractor.
 
 Before a late provider is committed for a shot, a size and headroom guarantee must hold for every AU of
 that shot, including the scene-refresh variant and any reconfiguration prefix; checking only the first AU
@@ -222,8 +225,9 @@ installed.
 **Extractor injection, implemented in DV2.7 (Matroska).** `DolbyVisionMatroskaTransformer` is the
 injector:
 - At track init, after the decision table and before the Format is built, the extractor asks
-  `prepareDolbyVisionConversion`. Without an RPU for the target the track stays native
-  (`Native("no RPU: …")`), so a Dolby Vision Format never goes out without RPUs.
+  `prepareDolbyVisionConversion`. Without an RPU for the target, or when the RPU does not fit the
+  hvcC's NAL length field, the track stays native (`Native("no RPU: …")`), so a Dolby Vision Format never
+  goes out without RPUs.
 - `StaticDvRpuSource` is the only provider: 8.4 with the BT.2100 composer and `static84L1()`. It renders
   the one shot at track init and releases the builder handle at once, because `ShotRpu` holds its own
   bytes. 8.1 has no provider before DV3.1 (HDR10+) and DV3.3 (static HDR10), so PQ tracks stay native.
@@ -266,7 +270,8 @@ contract, for HEVC tracks without a dvcC or `dv*` codecs, and keeps the result o
   `libavcodec/dovi_rpuenc.c` table (Dolby's PDF was not read), with the DefaultDuration rate or 60 fps
   without one; above level 13 the track plays native.
 - The gate, once per playback (`DvConversionGate`): the setting `convertHdrToDolbyVision` (off; shown
-  on Nvidia since DV2.7 as "Convert HLG to Dolby Vision", because only 8.4 has a provider), the revert switch `debug.nuvio.dv_convert` (0 turns it off, nothing turns it on),
+  on Nvidia since DV2.7 as "Convert HLG to Dolby Vision", because only 8.4 has a provider; greyed out in
+  the strip and HDR10 base-layer modes), the revert switch `debug.nuvio.dv_convert` (0 turns it off, nothing turns it on),
   Nvidia, a Dolby Vision decoder and display, `DoviRpuBuilder.isAvailable()`, and neither the strip,
   HDR10 base-layer nor map-to-HEVC mode. A Dolby Vision decoder failure of a playback that signalled a
   converted track adds the stream to `dvConvertDisabledStreamUrls` and replays it native through
