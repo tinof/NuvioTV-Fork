@@ -10,6 +10,49 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-25: DV3.2 device session, part 1 (step stays open)
+
+The first device session of DV3.2 (HLG → 8.4 static provider) on the Shield (mdarcy) and the owner's LG
+OLED C9 (measured peak about 680 nits), with local builds of `perf/shield-pass` and the DV2.11 branch
+(`scripts/shield_build_install.sh --install`, `new-build` probe passing for each install). M2 snapshot
+before and after in `~/shield-snapshots/20261024-dv32/` (local); captures in its `runs/`.
+
+**Findings that became steps**
+
+- A BBC broadcast HLG sample played native as SDR with "Convert HLG to Dolby Vision" on: the SPS states
+  BT.2020 10-bit (14, also logged by the Nvidia decoder as primaries 9, transfer 14, matrix 9) and HLG is
+  only in the alternative-transfer SEI (`HLG contract, track 1: not HLG; alternative transfer SEI 18 (not
+  acted on)`). Became DV2.10 (PR #19).
+- With the DV2.10 build the sample still played native: its hvcC carries no parameter sets (the new
+  `HLG inputs` line: container Colour 9/14/9 without Range, `SPS unreadable, hvcC 0 buffers`), so track
+  init had no SPS and the contract refused. Became DV2.11.
+
+**With the DV2.11 build** (a resume about 9.6 minutes in, conversion on, `debug.nuvio.rpu_dump` 8)
+
+- Log: `HLG for 8.4 from the alternative transfer SEI (SPS from the first AU)`; `DV_INJECT track 1:
+  static 8.4, BT.2100 composer, L1 0/1283/3079, RPU 418/419 bytes, scene refresh on frame 0 only`;
+  `Dolby Vision 8.4 as dvhe.08.07`.
+- Decoder: `OMX.Nvidia.DOVI.decode`, `RPU Decoder init success`, no fallback or codec error.
+- Dump: 8 AUs through `scripts/rpu_dump_to_bin.py --strict` (0 problems); `dovi_tool info` 2.3.4: Profile
+  8, CM v4.0, L1 max 1000.6 nits and average 11.86 nits, L6 1000/0.005 nits with MaxCLL 1000 and MaxFALL
+  400, L2 trims 100/600/1000, L9 BT.2020; scene count 0, as a resume should have. Every AU is
+  byte-identical to frame 1 (scene refresh 0) of the builder fixture `static_84_bt2100.RPU.bin`
+  (`dovi_tool generate`); against its frame 0 only `scene_refresh_flag` and the CRC differ.
+- Owner on the TV: the Dolby Vision badge, colours normal (no tint). Highlights in some scenes look a
+  little too bright, slightly clipped.
+
+**Brightness note.** The code does not take the display's peak into account, and in Dolby Vision it
+should not: the RPU describes the content and the TV's display management maps it to the panel. What
+the static provider tells the TV is the same for every scene: L1 max 3079 (about 1000 nits, the HLG
+source-range ceiling, not a measurement) and a fixed average of 1283 (about 12 nits), with L6 1000
+nits. A bright scene described as averaging about 12 nits can be mapped too bright. Measured per-shot
+L1 (T1 shot lists, T2/T3 analysis) is the fix; whether static 8.4 beats native HLG on this TV is G-E,
+and the L1 average (1283, owner 2026-10-22) and the trims can be revisited there.
+
+**Still open for DV3.2:** the canary through the app (`debug.nuvio.dv_hlg_canary` 1, a new playback); a
+start from frame 0 (scene refresh on the first AU); seeks with `debug.nuvio.dv_refresh_every_start` at 0
+and 1; the comparison with the `mkvdovi` reference RPUs (on the owner's hdr-analyze host).
+
 ## 2026-10-25: DV2.10 HLG signalled in the alternative-transfer SEI (PR #19)
 
 - [DV2.10][desk] HLG signalled in the alternative-transfer SEI (BBC broadcast HLG, found in the DV3.2
