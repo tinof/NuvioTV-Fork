@@ -4106,6 +4106,27 @@ public class MatroskaExtractor implements Extractor {
           boolean blocksReadable =
               !hasContentEncryption && contentCompressionAlgorithm == CONTENT_COMPRESSION_NONE;
           waitingForHlgSeiScan = seiCouldMakeHlg && blocksReadable;
+          // DV3.2: the inputs of the decision, so a device log shows why a track is not HLG.
+          android.util.Log.i(
+              TAG,
+              "HLG inputs, track "
+                  + trackId
+                  + ": "
+                  + containerColour
+                  + ", SPS "
+                  + (vui == null ? "unreadable" : vui.toString())
+                  + (vui == null ? ", hvcC " + HevcInitNals.describe(initializationData) : ""));
+          if (convert == null
+              && hevcPreferredTransfer == null
+              && !(hlgDecision instanceof HlgDecision.Hlg84)
+              && !seiCouldMakeHlg) {
+            android.util.Log.i(
+                TAG,
+                "HLG SEI scan, track "
+                    + trackId
+                    + ": not scanned, an HLG SEI would give "
+                    + HlgContract.resolve(containerColour, vui, HlgContract.TRANSFER_HLG));
+          }
           if (seiCouldMakeHlg && !blocksReadable) {
             android.util.Log.i(
                 TAG,
