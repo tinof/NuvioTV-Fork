@@ -857,7 +857,10 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   tint; a BBC broadcast HLG sample (HLG only in the SEI, DV2.10) converts and its HLG contract log line names
   the SEI; the DV2.8 dump validates with `dovi_tool info`; a mid-file start and seeks played with both
   settings of the scene-refresh switch (`DESIGN.md` 2.2), the default kept or changed from what the TV
-  shows. Needs: DV2.4, DV2.7, DV2.8, DV2.10, DV2.11.
+  shows. Needs: DV2.4, DV2.7, DV2.8, DV2.10, DV2.11. Session 1 (2026-10-25, log): a BBC broadcast
+  HLG sample plays as Dolby Vision with normal colour on the owner's TV, its RPUs byte-identical to
+  `dovi_tool generate`; still to run: the canary, a start from frame 0, seeks with both refresh
+  settings and the `mkvdovi` comparison. The owner saw highlights slightly too bright (static L1; G-E).
 - [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. The MaxCLL/MaxFALL heuristic is
   not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); where it lives is decided when this step
   starts. Gate: G-E A/B recorded; the default stays off unless the owner prefers it. Needs: DV2.7.
