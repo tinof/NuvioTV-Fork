@@ -23,7 +23,7 @@ playback and display chain, and links the log entry with the measurements.
 | G-C | all | L1 variants of one title | not run | | DV1.8 |
 | G-C | all | Pulse clip (L1 alternating, pixels constant) | not run | | DV7.7 |
 | G-C | DV7 candidates b, c | 8.1 mapping canary against identity control, on the recorded playback chain | not run | | DV7.7 |
-| G-C | all | Conversion in the app, per source type | not run | | DV3.1, DV3.2, DV3.3 |
+| G-C | all | Conversion in the app, per source type | partial: HLG → 8.4 bt2100 (BBC broadcast HLG, Matroska, 4K25, Shield → LG C9) shows Dolby Vision without tint (owner), RPUs validate and match `dovi_tool`; canary, frame-0 start and seeks not run; PQ sources not run | 2026-10-25 | DV3.2 session 1 in the log; DV3.1, DV3.3 |
 | G-D | T1 server, T3 | Renderer replacement, Matroska | not run | | DV1.1, DV5.1 |
 | G-E | T0 HDR10, T1, T3 | Static HDR10 → 8.1 against native HDR10 | not run | | DV3.3 |
 | G-E | T1, T3 | Shot list against static | not run | | DV4.5 |
