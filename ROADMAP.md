@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-26 | M2.1 shipped: `shield_snapshot.sh` and `shield_restore.sh` save the Shield's state before a device session and put it back after, writing a setting back only when the session named it; one round trip on the Shield ended clean with an empty diff. | M2 | [log](docs/ROADMAP_LOG.md), PR #21 |
 | 2026-10-25 | DV2.11 shipped: a Matroska HEVC track whose hvcC carries no parameter sets (BBC broadcast HLG) takes its SPS and alternative-transfer SEI from the first AU before the formats are published, and a converted track gets the AU's parameter sets as its initialization data. | DV2 | [log](docs/ROADMAP_LOG.md), PR #20 |
 | 2026-10-25 | DV2.10 shipped: HLG signalled only in the alternative-transfer SEI (BBC broadcast HLG) converts to Dolby Vision 8.4; the SEI is read from the hvcC at track init or from the first AU by the extractor's early scan before the formats are published, and every case the scan cannot read stays native with a log line. | DV2 | [log](docs/ROADMAP_LOG.md), PR #19 |
 | 2026-10-24 | DV2.7 shipped: the Matroska extractor injects the static 8.4 RPU into every AU of a converted HLG track, scene refresh on frame 0 only, with the setting shown on Nvidia; PQ stays native until an 8.1 provider exists. | DV2 | [log](docs/ROADMAP_LOG.md), PR #17 |
@@ -523,14 +524,16 @@ because a wrong passthrough path is invisible until measured.
 
 ### M2: device-safety protocol
 
-- **Status:** Open. The Shield is in daily use; every session leaves it as it was.
+- **Status:** Done (M2.1, PR #21). The Shield is in daily use; every session leaves it as it was. This
+  item stays as the protocol every device session follows.
 - **Before a session**, save to a dated local folder: `settings list global`, `secure` and `system`;
   `getprop | grep debug.nuvio`; the display mode from `dumpsys display`; `pm list packages
   --show-versioncode`; the installed path and SHA-256 of `com.nuvio.tv.test.shield`.
   `scripts/shield_snapshot.sh --serial "$s" --label <step>` saves all of this, plus the logcat buffer sizes
   and every `com.nuvio.tv.test.*` test build (`--pull-apk` keeps a copy of each APK), to
   `~/shield-snapshots/<date>-<label>/before/`. It first checks that the logs show no Watchdog or `flush_work`
-  lines. It writes `before/complete` last, and restore uses only a snapshot that has it. The session names
+  lines. It refuses to finish when a setting has a multi-line value or a listed test build has no APK
+  path. It writes `before/complete` last, and restore uses only a snapshot that has it. The session names
   every settings key it changes in that folder's `session-changes.txt`.
 - **App data.** The manifest sets `allowBackup="false"` and CI APKs are not debuggable
   (`app/build.gradle.kts:208`), so the debug app's data cannot be backed up. Safe without a backup:
@@ -562,9 +565,6 @@ because a wrong passthrough path is invisible until measured.
     5 stop.
 - **If the Shield stops answering**, or Watchdog or `flush_work` shows up: stop, save the logs, and tell
   the owner. Only a power cycle recovers it.
-- [M2.1][desk][device] Scripts `scripts/shield_snapshot.sh` and `scripts/shield_restore.sh` (serial and
-  timeouts as in M1; `scripts/` is gitignored, and `.gitignore` already lists these and `shield_measure.py` as
-  exceptions). Gate: one snapshot and restore round trip on the Shield with an empty diff.
 
 ### M3: diagnostics
 
