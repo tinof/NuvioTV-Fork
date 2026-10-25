@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-25 | DV2.11 shipped: a Matroska HEVC track whose hvcC carries no parameter sets (BBC broadcast HLG) takes its SPS and alternative-transfer SEI from the first AU before the formats are published, and a converted track gets the AU's parameter sets as its initialization data. | DV2 | [log](docs/ROADMAP_LOG.md), PR #20 |
 | 2026-10-25 | DV2.10 shipped: HLG signalled only in the alternative-transfer SEI (BBC broadcast HLG) converts to Dolby Vision 8.4; the SEI is read from the hvcC at track init or from the first AU by the extractor's early scan before the formats are published, and every case the scan cannot read stays native with a log line. | DV2 | [log](docs/ROADMAP_LOG.md), PR #19 |
 | 2026-10-24 | DV2.7 shipped: the Matroska extractor injects the static 8.4 RPU into every AU of a converted HLG track, scene refresh on frame 0 only, with the setting shown on Nvidia; PQ stays native until an 8.1 provider exists. | DV2 | [log](docs/ROADMAP_LOG.md), PR #17 |
 | 2026-10-24 | DV2.8 shipped: the RPU debug dump at the video renderer (first N AUs after a start, seek or Format change, and every scene refresh) and `rpu_dump_to_bin.py`; DV2.9 added for the device checks. | DV2 | [log](docs/ROADMAP_LOG.md), PR #16 |
@@ -808,6 +809,9 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   transfer in the VUI) converts as 8.4 when that SEI says 18 over an HLG-compatible stated transfer; an
   SEI in the hvcC decides at track init, one in the first AU is read by the extractor's early scan before
   the formats are published.
+  DV2.11 is done (PR #20): a track whose hvcC carries no SPS (BBC broadcast HLG, parameter sets only in
+  the access units) takes the SPS and the SEI from the first AU in the early scan; the contract decides
+  again with that SPS, and a converted track gets the AU's parameter sets as its initialization data.
 - [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
   crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
   test corpus. Needs: DV2.1.
@@ -823,18 +827,6 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   starts a generation that dumps its first N AUs again; an HLS or a DASH Dolby Vision title is dumped; on
   an Amlogic box with native FEL, if one is at hand, a Profile 7 title is dumped. Gate: the captures and
   `scripts/rpu_dump_to_bin.py --list` output in the log. Needs: DV2.8.
-- [DV2.11][desk] HLG tracks whose hvcC carries no parameter sets (found in the DV3.2 device session on
-  2026-10-25 with the DV2.10 build: the BBC broadcast HLG samples have an hvcC with no arrays, so the
-  VPS, SPS and PPS travel only in the access units; with no SPS at track init the HLG contract refused
-  and the SEI was never acted on). A track whose hvcC has no SPS waits for the early scan, which reads
-  the parameter sets and the alternative-transfer SEI from the first AU before the formats are
-  published; the contract decides again with that SPS, and a converted track gets the AU's parameter
-  sets as its initialization data. The extractor logs the decision's inputs (container Colour, the
-  parsed SPS, and for an unreadable SPS the hvcC's NAL types and SPS bytes). Gate: unit tests through the
-  vendored extractor: an empty hvcC with the device's container Colour (9/14/9) and the SPS and HLG SEI
-  in the first AU converts before `endTracks` with one RPU per AU and the AU's parameter sets as
-  initialization data; an in-band SPS that states HLG converts without an SEI; an in-band SPS that is
-  not HLG, a first AU without parameter sets and conversion off stay native. Needs: DV2.10.
 - [DV5.1][desk] Renderer replacement (moved here from DV5, ID kept): RPUs written off the renderer
   thread, the swap at `onQueueInputBuffer` in the verified framings, shot commitment, AU identity,
   analysis generations and the completeness watermark. Gate: the tests of `DESIGN.md` 2.3 and 2.4 pass.
