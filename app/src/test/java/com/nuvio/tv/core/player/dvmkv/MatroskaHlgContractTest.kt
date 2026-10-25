@@ -15,6 +15,7 @@ import io.mockk.mockk
 import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -194,7 +195,41 @@ class MatroskaHlgContractTest {
     }
 
     @Test
-    fun `the alternative-transfer SEI is recorded but never changes the decision`() {
+    fun `an HLG alternative-transfer SEI in the hvcC makes an HLG-compatible track HLG`() {
+        // DV2.10. atc_sei's VUI states BT.2020 10-bit (14): not HLG without the SEI, HLG with it.
+        val sei = HevcColourFixtures.sei("atc_sei")!!
+        fun arrays(case: String, withSei: Boolean) = listOfNotNull(
+            32 to listOf(HevcColourFixtures.vps(case)),
+            33 to listOf(HevcColourFixtures.sps(case)),
+            34 to listOf(HevcColourFixtures.pps(case)),
+            (39 to listOf(sei)).takeIf { withSei }
+        ).toTypedArray()
+        fun decision(case: String, colour: ByteArray?, withSei: Boolean) =
+            record(HevcColourFixtures.hvcC(*arrays(case, withSei)), colour).decision
+
+        assertEquals(HlgDecision.NotHlg, decision("atc_sei", null, withSei = false))
+        assertTrue((decision("atc_sei", null, withSei = true) as HlgDecision.Hlg84).transferFromSei)
+        // A container HLG tag over the SPS's 14 contradicts without the SEI and agrees with it.
+        assertTrue(decision("atc_sei", colour(uint(0x55BA, 18)), withSei = false) is HlgDecision.Refused)
+        assertTrue((decision("atc_sei", colour(uint(0x55BA, 18)), withSei = true) as HlgDecision.Hlg84).transferFromSei)
+        // So does a container 14 (as FFmpeg writes it from the VUI).
+        assertTrue((decision("atc_sei", colour(uint(0x55BA, 14)), withSei = true) as HlgDecision.Hlg84).transferFromSei)
+        // A container PQ tag is not HLG-compatible: the SEI does not override it.
+        assertEquals(
+            decision("atc_sei", colour(uint(0x55BA, 16)), withSei = false),
+            decision("atc_sei", colour(uint(0x55BA, 16)), withSei = true)
+        )
+        // HLG stated already: the SEI changes nothing.
+        val tagged = decision("hlg_tagged", null, withSei = true) as HlgDecision.Hlg84
+        assertFalse(tagged.transferFromSei)
+        assertEquals(decision("hlg_tagged", null, withSei = false), tagged)
+        // No transfer stated: the SEI is the only statement, and it says HLG.
+        assertEquals(HlgDecision.TransferUnknown, decision("untagged10", null, withSei = false))
+        assertTrue((decision("untagged10", null, withSei = true) as HlgDecision.Hlg84).transferFromSei)
+    }
+
+    @Test
+    fun `the alternative-transfer SEI of the hvcC is recorded`() {
         val cases = listOf(
             "atc_sei" to null,
             "atc_sei" to colour(uint(0x55BA, 18)),
@@ -212,10 +247,7 @@ class MatroskaHlgContractTest {
             val without = record(HevcColourFixtures.hvcC(*arrays.toTypedArray()), colour)
             assertEquals(case, 18, with.preferredTransfer)
             assertNull(case, without.preferredTransfer)
-            assertEquals(case, without.decision, with.decision)
         }
-        // The VUI of atc_sei states BT.2020 10-bit (14); HLG only in the SEI stays not HLG.
-        assertEquals(HlgDecision.NotHlg, record(HevcColourFixtures.hvcCOf("atc_sei"), null).decision)
     }
 
     @Test
