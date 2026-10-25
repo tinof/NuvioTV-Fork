@@ -3466,8 +3466,8 @@ public class MatroskaExtractor implements Extractor {
   }
 
   /**
-   * Fork (DV2.10): reads the alternative-transfer SEI of a track's first block, the first AU, before
-   * the formats are published (ROADMAP DV2.10). {@code headerStart} is the peek offset after the
+   * Fork (DV2.10, DV2.11): reads the alternative-transfer SEI and the parameter sets of a track's first
+   * block, the first AU, before the formats are published (ROADMAP DV2.10, DV2.11). {@code headerStart} is the peek offset after the
    * block's track number. Only the NALs before the first slice are peeked, at most {@link
    * #MAX_EARLY_HLG_SEI_PREFIX_BYTES}. Every outcome ends the scan for the track, so a later block is
    * never read as the first AU; a laced or empty block, malformed NAL lengths, a prefix past the cap
@@ -3506,17 +3506,15 @@ public class MatroskaExtractor implements Extractor {
           "the first block lies past the scan budget or the end of the input", /* firstAuRead= */ false);
       return;
     }
-    int result =
-        HevcInitNals.preferredTransferInAuPrefix(
+    HevcInitNals.AuPrefix prefix =
+        HevcInitNals.readAuPrefix(
             Arrays.copyOfRange(earlyDtsScanBuffer, payloadStart, payloadStart + available),
             available,
             auLength,
             track.nalUnitLengthFieldLength);
-    if (result >= 0) {
-      track.applyFirstAuHlgSei(result, checkNotNull(dolbyVisionSampleTransformer));
-    } else if (result == HevcInitNals.PREFIX_NO_SEI) {
-      track.endHlgSeiScan(
-          "no alternative transfer SEI before the first slice of the first AU", /* firstAuRead= */ true);
+    int result = prefix.getStatus();
+    if (result == HevcInitNals.PREFIX_COMPLETE || prefix.getPreferredTransfer() != null) {
+      track.applyFirstAu(prefix, checkNotNull(dolbyVisionSampleTransformer));
     } else if (result == HevcInitNals.PREFIX_TRUNCATED) {
       track.endHlgSeiScan(
           "the NALs before the first slice run past the " + available + " bytes the scan reads",
@@ -4048,13 +4046,15 @@ public class MatroskaExtractor implements Extractor {
           }
           // DV2.10: a track that only an HLG alternative-transfer SEI in its first AU would make
           // HLG waits for the early scan, which reads that AU before the formats are published.
+          // DV2.11: so does a track whose hvcC carries no SPS; the scan reads it from the first AU.
           // Encrypted or compressed blocks cannot be read there.
           boolean seiCouldMakeHlg =
               convert == null
-                  && hevcPreferredTransfer == null
                   && !(hlgDecision instanceof HlgDecision.Hlg84)
-                  && HlgContract.resolve(containerColour, vui, HlgContract.TRANSFER_HLG)
-                      instanceof HlgDecision.Hlg84;
+                  && ((hevcPreferredTransfer == null
+                          && HlgContract.resolve(containerColour, vui, HlgContract.TRANSFER_HLG)
+                              instanceof HlgDecision.Hlg84)
+                      || hevcFirstSps == null);
           boolean blocksReadable =
               !hasContentEncryption && contentCompressionAlgorithm == CONTENT_COMPRESSION_NONE;
           waitingForHlgSeiScan = seiCouldMakeHlg && blocksReadable;
@@ -4071,7 +4071,8 @@ public class MatroskaExtractor implements Extractor {
           if (convert == null
               && hevcPreferredTransfer == null
               && !(hlgDecision instanceof HlgDecision.Hlg84)
-              && !seiCouldMakeHlg) {
+              && !seiCouldMakeHlg
+              && hevcFirstSps != null) {
             android.util.Log.i(
                 TAG,
                 "HLG SEI scan, track "
@@ -4240,17 +4241,41 @@ public class MatroskaExtractor implements Extractor {
     }
 
     /**
-     * Fork (DV2.10): the early scan read the alternative-transfer SEI of the track's first AU before
-     * the formats were published. When it makes the track HLG, the decision table runs again and a
-     * converted track gets its Dolby Vision Format now, so no sample goes out under the HEVC one.
+     * Fork (DV2.10, DV2.11): the early scan read the NALs before the first slice of the track's first
+     * AU before the formats were published: the preferred transfer of its alternative-transfer SEI
+     * (null without one) and its parameter sets. A track whose hvcC had no SPS takes the AU's. When the
+     * AU makes the track HLG, the decision table runs again and a converted track gets its Dolby Vision
+     * Format now, so no sample goes out under the HEVC one; a converted track without parameter sets in
+     * its hvcC gets the AU's as its initialization data.
      */
-    private void applyFirstAuHlgSei(int preferredTransfer, DolbyVisionSampleTransformer transformer) {
+    private void applyFirstAu(
+        HevcInitNals.AuPrefix prefix, DolbyVisionSampleTransformer transformer) {
+      @Nullable Integer preferredTransfer = prefix.getPreferredTransfer();
+      @Nullable byte[] sps = hevcFirstSps == null ? prefix.getSps() : null;
+      if (sps != null) {
+        hevcFirstSps = sps;
+        hlgVui = HevcVuiColour.parse(sps);
+      }
+      if (preferredTransfer == null && sps == null) {
+        endHlgSeiScan(
+            "no alternative transfer SEI before the first slice of the first AU", /* firstAuRead= */ true);
+        return;
+      }
       waitingForHlgSeiScan = false;
       hlgSampleSeiPending = false;
-      hevcPreferredTransfer = preferredTransfer;
+      if (preferredTransfer != null) {
+        hevcPreferredTransfer = preferredTransfer;
+      }
       HlgDecision decision =
-          HlgContract.resolve(checkNotNull(hlgContainerColour), hlgVui, preferredTransfer);
-      android.util.Log.i(TAG, HlgContract.logLine(hlgTrackId, decision, preferredTransfer));
+          HlgContract.resolve(checkNotNull(hlgContainerColour), hlgVui, hevcPreferredTransfer);
+      android.util.Log.i(
+          TAG,
+          HlgContract.logLine(hlgTrackId, decision, hevcPreferredTransfer)
+              + (sps == null ? "" : " (SPS from the first AU" + (hlgVui == null ? ", unreadable)" : ")")));
+      if (sps != null) {
+        // The decision at track init had no SPS to read; this one replaces it.
+        hlgDecision = decision;
+      }
       if (!(decision instanceof HlgDecision.Hlg84)) {
         return;
       }
@@ -4259,13 +4284,16 @@ public class MatroskaExtractor implements Extractor {
       if (convert == null) {
         return;
       }
-      format =
+      Format.Builder converted =
           checkNotNull(format)
               .buildUpon()
               .setSampleMimeType(MimeTypes.VIDEO_DOLBY_VISION)
               .setCodecs(convert.getCodecs())
-              .setColorInfo(convert.getColorInfo())
-              .build();
+              .setColorInfo(convert.getColorInfo());
+      if (format.initializationData.isEmpty() && !prefix.getParameterSets().isEmpty()) {
+        converted.setInitializationData(ImmutableList.of(prefix.parameterSetsAnnexB()));
+      }
+      format = converted.build();
       // A converted track always takes the transform path, where its AUs get their RPUs.
       requiresDolbyVisionTransform = !hasContentEncryption;
       if (output != null) {
