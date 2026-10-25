@@ -32,8 +32,9 @@ EXIT_OWNER=4
 EXIT_DEVICE=5
 # Test builds install as com.nuvio.tv.test.<suffix>; the trailing dot keeps the daily app out.
 TEST_PKG_RE='^com\.nuvio\.tv\.test\.'
-# What M2 says to stop on.
-HEALTH_RE='Watchdog.*(KILLING|Blocked)|flush_work'
+# What M2 says to stop on: any line with the Watchdog tag, whatever it says, and flush_work. Only
+# the tag counts: a healthy Looper line can name com.android.server.Watchdog$HandlerChecker.
+HEALTH_RE='(^|[[:space:]])[VDIWEF] Watchdog[[:space:]]*:|flush_work'
 # Settings the system rewrites between snapshots with no session action, as ns/key globs. Add a key
 # only with the session it was seen in. ~/shield-snapshots/volatile-keys.txt adds local patterns.
 VOLATILE_KEYS=(
