@@ -167,10 +167,16 @@ class MatroskaDvSignallingTest {
         val untagged = extract("untagged10", null)
         assertNative("untagged", untagged)
         assertEquals(DvSignallingDecision.Native("transfer unknown at track init"), untagged.signalling)
-        // HLG only in the alternative-transfer SEI: the VUI states 14, neither PQ nor HLG.
+    }
+
+    @Test
+    fun `HLG in an alternative-transfer SEI of the hvcC is Dolby Vision 8_4 from track init`() {
+        // DV2.10: the VUI of atc_sei states BT.2020 10-bit (14), its hvcC SEI HLG (18).
         val atc = extract("atc_sei", null)
-        assertNative("atc_sei", atc)
-        assertEquals(DvSignallingDecision.Native("transfer neither PQ nor HLG"), atc.signalling)
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, atc.format.sampleMimeType)
+        assertEquals(C.COLOR_TRANSFER_HLG, atc.format.colorInfo!!.colorTransfer)
+        assertEquals(DvSignallingDecision.Target.PROFILE_8_4, (atc.signalling as DvSignallingDecision.Convert).target)
+        assertTrue(atc.requiresTransform)
     }
 
     @Test
