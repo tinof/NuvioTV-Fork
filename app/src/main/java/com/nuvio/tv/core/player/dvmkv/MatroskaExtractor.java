@@ -3429,7 +3429,11 @@ public class MatroskaExtractor implements Extractor {
       long dataEndLong = unknownSize ? Long.MAX_VALUE : (long) dataStart + dataSize;
       int dataEnd = dataEndLong > sequenceEnd ? sequenceEnd : (int) dataEndLong;
 
-      if (id == ID_CLUSTER || id == ID_BLOCK_GROUP) {
+      if (id == ID_CLUSTER && depth == 1) {
+        // A Cluster where a Cluster's children are read: the unknown-size Cluster before it ended
+        // here. Read the sibling's children in this loop, at the same depth, without a new frame.
+        cursor = dataStart;
+      } else if (id == ID_CLUSTER || id == ID_BLOCK_GROUP) {
         if (depth >= MAX_EARLY_SCAN_DEPTH) {
           return;
         }
