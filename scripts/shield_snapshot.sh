@@ -270,7 +270,8 @@ snap_packages() {  # <dir>: name=versionCode
 }
 
 # apks.tsv: package, versionCode, sha256 and path of the base APK of every test build. A split APK
-# prints several pm path lines; only base.apk is hashed.
+# prints several pm path lines; only base.apk is hashed. A listed test build that pm path cannot
+# locate goes to apk-errors, which keeps the snapshot from completing.
 snap_apks() {  # <dir> <pull: true|false>
   local d="$1" pull="$2" pkgs=() line pkg ver path sha rc
   : >"$d/apks.tsv"
@@ -280,10 +281,10 @@ snap_apks() {  # <dir> <pull: true|false>
     ver="${line#*=}"
     rc=0
     shield_sh_may "$d/.tmp" "pm path $(shq "$pkg")" || rc=$?
-    [ "$rc" = 0 ] || continue
+    if [ "$rc" != 0 ]; then echo "$pkg: pm path exited $rc" >>"$d/apk-errors"; continue; fi
     path="$(awk '/^package:.*\/base\.apk$/ { sub(/^package:/, ""); print; exit }' "$d/.tmp")"
     [ -n "$path" ] || path="$(awk '/^package:/ { sub(/^package:/, ""); print; exit }' "$d/.tmp")"
-    [ -n "$path" ] || continue
+    if [ -z "$path" ]; then echo "$pkg: pm path printed no package path" >>"$d/apk-errors"; continue; fi
     shield_sh "$d/.tmp" "sha256sum $(shq "$path")"
     sha="$(awk '{ print $1; exit }' "$d/.tmp")"
     printf '%s\t%s\t%s\t%s\n' "$pkg" "$ver" "$sha" "$path" >>"$d/apks.tsv"
@@ -403,6 +404,8 @@ main() {
   for f in settings-global.txt settings-secure.txt settings-system.txt packages.txt; do
     [ -s "$before/$f" ] || shield_die "$EXIT_REFUSED" "$f came back empty; the snapshot is not complete"
   done
+  [ ! -f "$before/apk-errors" ] ||
+    shield_die "$EXIT_REFUSED" "a listed test build has no APK path ($(tr '\n' ' ' <"$before/apk-errors")); the snapshot is not complete"
   # A multi-line value is cut at its first line, and restore would write that cut value back.
   for f in settings-global settings-secure settings-system; do
     [ ! -f "$before/$f.unparsed" ] ||
