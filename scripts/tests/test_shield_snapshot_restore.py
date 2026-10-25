@@ -486,6 +486,13 @@ class ShieldSnapshotRestoreTest(unittest.TestCase):
         session = self.snapshot()
         self.assertTrue((session / "before" / "complete").is_file())
 
+    def test_multi_line_setting_leaves_no_baseline(self):
+        self.change(lambda s: s["settings"]["global"].update({"device_name": "Living\nRoom"}))
+        result = self.run_script("shield_snapshot.sh", "--out", str(self.home / "ml"))
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("settings-global.unparsed", result.stderr)
+        self.assertFalse((self.home / "ml" / "before" / "complete").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
