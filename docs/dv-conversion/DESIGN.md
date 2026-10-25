@@ -295,7 +295,8 @@ has no SPS is a scan candidate too: the early scan collects the parameter sets w
 NALs before the first slice of the first AU (`HevcInitNals.readAuPrefix`), the contract decides again
 with that SPS (an in-band SPS that states HLG converts without an SEI), and a converted track gets the
 AU's parameter sets as its initialization data, one Annex B buffer as Media3's `HevcConfig` builds it,
-so the Dolby Vision decoder has them before the first sample. A native track keeps its empty
+followed by whatever the hvcC held (an SEI array), so the Dolby Vision decoder has them before the first
+sample. A native track keeps its empty
 initialization data. Track init logs the decision's inputs (`HLG inputs`: the container Colour, the
 parsed SPS, and for an unreadable SPS the hvcC's NAL types and SPS bytes), and an HEVC track an HLG SEI
 could not convert says why (`not scanned, an HLG SEI would give …`).
