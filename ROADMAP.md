@@ -818,6 +818,21 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   starts a generation that dumps its first N AUs again; an HLS or a DASH Dolby Vision title is dumped; on
   an Amlogic box with native FEL, if one is at hand, a Profile 7 title is dumped. Gate: the captures and
   `scripts/rpu_dump_to_bin.py --list` output in the log. Needs: DV2.8.
+- [DV2.10][desk] HLG signalled in the alternative-transfer SEI (BBC broadcast HLG, found in the DV3.2
+  device session on 2026-10-25: a BBC HLG sample states a non-HLG transfer in the SPS and carries
+  preferred transfer 18 in the SEI of its first AU, so it played native as SDR). When that SEI
+  says 18 and every transfer the container and the SPS state is one with the HLG-compatible curve (1,
+  6, 14 or 15, H.273) or unspecified, the HLG contract reads the track as HLG; the other field rules
+  stay. An SEI in the hvcC decides at track init; an SEI in the first AU is found by the extractor's
+  early scan (the DTS one) before the formats are published, and the Dolby Vision Format replaces the
+  provisional HEVC one before `endTracks` and any sample. An SEI found later, a laced, empty, compressed
+  or encrypted first block, or an SEI past the scan cap leaves the track native, with a `HLG SEI scan`
+  log line; a read error during the scan is rethrown so the loader's retry scans again. Gate: unit tests: the contract rows (14 and 1 lifted, a container 18 over
+  SPS 14 accepted, SPS 16 with SEI 18 not HLG, the unspecified case); through the vendored extractor, an
+  SEI in the hvcC and in the first block converts with one RPU per AU and the Dolby Vision Format
+  before `endTracks`, an audio block before the first video block, an SEI only in a later AU, a laced
+  first block, zlib and header-strip compression, conversion off (no scan) and a non-VCL prefix past
+  the cap stay native. Needs: DV2.4, DV2.7.
 - [DV5.1][desk] Renderer replacement (moved here from DV5, ID kept): RPUs written off the renderer
   thread, the swap at `onQueueInputBuffer` in the verified framings, shot commitment, AU identity,
   analysis generations and the completeness watermark. Gate: the tests of `DESIGN.md` 2.3 and 2.4 pass.
@@ -837,9 +852,10 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   floor). The RPU carries the default L6 and the crate's CM v4.0 L3 and
   L254. The canary comes from `debug.nuvio.dv_hlg_canary` = 1 (`DESIGN.md` 2.4), read once per
   extractor. Gate: G-C second half: the canary turns green through the app's conversion, bt2100 shows no
-  tint; the DV2.8 dump validates with `dovi_tool info`; a mid-file start and seeks played with both
+  tint; a BBC broadcast HLG sample (HLG only in the SEI, DV2.10) converts and its HLG contract log line names
+  the SEI; the DV2.8 dump validates with `dovi_tool info`; a mid-file start and seeks played with both
   settings of the scene-refresh switch (`DESIGN.md` 2.2), the default kept or changed from what the TV
-  shows. Needs: DV2.4, DV2.7, DV2.8.
+  shows. Needs: DV2.4, DV2.7, DV2.8, DV2.10.
 - [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. The MaxCLL/MaxFALL heuristic is
   not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); where it lives is decided when this step
   starts. Gate: G-E A/B recorded; the default stays off unless the owner prefers it. Needs: DV2.7.
