@@ -44,15 +44,23 @@ internal sealed interface HlgDecision {
     /** No transfer is stated at track init, for example HLG signalled only in an SEI. */
     data object TransferUnknown : HlgDecision
 
-    /** HLG, but a tag or the stream contradicts the 8.4 base layer: native playback. */
-    data class Refused(val reason: String) : HlgDecision
+    /**
+     * HLG, but a tag or the stream contradicts the 8.4 base layer: native playback. [transferFromSei]:
+     * HLG came from an alternative-transfer SEI (DV2.10).
+     */
+    data class Refused(val reason: String, val transferFromSei: Boolean = false) : HlgDecision
 
     /**
      * HLG that a Profile 8.4 RPU describes. [untaggedAccepted] names the fields neither the container
      * nor the SPS states, for the caller to log. [baseLayerColorInfo] is the colour the base layer is
-     * signalled with: BT.2020, limited range, HLG, never PQ or the HDR10 defaults.
+     * signalled with: BT.2020, limited range, HLG, never PQ or the HDR10 defaults. [transferFromSei]:
+     * HLG comes from an alternative-transfer SEI over an HLG-compatible stated transfer (DV2.10).
      */
-    data class Hlg84(val untaggedAccepted: List<String>, val baseLayerColorInfo: ColorInfo) : HlgDecision
+    data class Hlg84(
+        val untaggedAccepted: List<String>,
+        val baseLayerColorInfo: ColorInfo,
+        val transferFromSei: Boolean = false,
+    ) : HlgDecision
 }
 
 /**
@@ -91,6 +99,15 @@ internal object HlgContract {
     const val TRANSFER_UNSPECIFIED = 2
     const val TRANSFER_PQ = 16
     const val TRANSFER_HLG = 18
+
+    /**
+     * BT.709 (1), BT.601 (6) and BT.2020 10- and 12-bit (14, 15): H.273 gives them one curve, the SDR
+     * curve HLG is backward compatible with. Broadcast HLG states one of them in the VUI and HLG (18)
+     * in an alternative-transfer SEI (H.265 D.2.38), so a decoder that ignores the SEI shows SDR;
+     * BBC broadcast HLG states 14, and hdr-analyze met 1 in broadcast cuts as well.
+     */
+    @JvmField
+    val HLG_COMPATIBLE_TRANSFERS: Set<Int> = setOf(1, 6, 14, 15)
     const val PRIMARIES_UNSPECIFIED = 2
     const val PRIMARIES_BT2020 = 9
     const val MATRIX_UNSPECIFIED = 2
@@ -117,6 +134,41 @@ internal object HlgContract {
             is Contract.Refused -> HlgDecision.Refused(result.reason)
             is Contract.Accepted -> HlgDecision.Hlg84(result.untaggedAccepted, result.colorInfo)
         }
+
+    /**
+     * [resolve] with the preferred transfer of an alternative-transfer SEI ([seiPreferredTransfer], null
+     * without one), ROADMAP DV2.10. When the SEI says HLG and every transfer the container and the SPS
+     * state is HLG, unspecified or in [HLG_COMPATIBLE_TRANSFERS], they are read as HLG and the other
+     * field rules decide as before; a [HlgDecision.Hlg84] or [HlgDecision.Refused] that needed the SEI
+     * has `transferFromSei`. A stated transfer outside that set (PQ, for example) keeps the decision
+     * without the SEI.
+     */
+    @JvmStatic
+    fun resolve(container: ContainerColour, vui: HevcVuiColour?, seiPreferredTransfer: Int?): HlgDecision {
+        val stated = resolve(container, vui)
+        if (seiPreferredTransfer != TRANSFER_HLG || stated is HlgDecision.Hlg84) return stated
+        val statedTransfers = listOfNotNull(container.transfer, vui?.transferCharacteristics)
+        if (statedTransfers.any { !liftsToHlg(it) }) return stated
+        val lifted = resolve(
+            ContainerColour(
+                container.primaries,
+                TRANSFER_HLG,
+                container.matrix,
+                container.range,
+                container.hdrStaticInfo
+            ),
+            vui?.copy(transferCharacteristics = TRANSFER_HLG),
+        )
+        return when (lifted) {
+            is HlgDecision.Hlg84 -> lifted.copy(transferFromSei = true)
+            // Already refused as HLG without the SEI: the SEI changed nothing.
+            is HlgDecision.Refused -> if (stated is HlgDecision.Refused) stated else lifted.copy(transferFromSei = true)
+            else -> lifted
+        }
+    }
+
+    private fun liftsToHlg(transfer: Int): Boolean =
+        transfer == TRANSFER_HLG || transfer == TRANSFER_UNSPECIFIED || transfer in HLG_COMPATIBLE_TRANSFERS
 
     /** The same rules with transfer 16: whether a Profile 8.1 RPU describes the track (DV2.3). */
     @JvmStatic
@@ -252,15 +304,23 @@ internal object HlgContract {
         val what = when (decision) {
             HlgDecision.NotHlg -> "not HLG"
             HlgDecision.TransferUnknown -> "transfer unknown"
-            is HlgDecision.Refused -> "HLG refused: ${decision.reason}"
-            is HlgDecision.Hlg84 ->
-                if (decision.untaggedAccepted.isEmpty()) {
-                    "HLG for 8.4"
+            is HlgDecision.Refused ->
+                if (decision.transferFromSei) {
+                    "HLG from the alternative transfer SEI refused: ${decision.reason}"
                 } else {
-                    "HLG for 8.4, untagged accepted: ${decision.untaggedAccepted.joinToString()}"
+                    "HLG refused: ${decision.reason}"
                 }
+            is HlgDecision.Hlg84 -> buildString {
+                append("HLG for 8.4")
+                if (decision.transferFromSei) append(" from the alternative transfer SEI")
+                if (decision.untaggedAccepted.isNotEmpty()) {
+                    append(", untagged accepted: ${decision.untaggedAccepted.joinToString()}")
+                }
+            }
         }
-        val sei = preferredTransferSei?.let { "; alternative transfer SEI $it (not acted on)" } ?: ""
+        val actedOn = (decision is HlgDecision.Hlg84 && decision.transferFromSei) ||
+            (decision is HlgDecision.Refused && decision.transferFromSei)
+        val sei = preferredTransferSei?.takeIf { !actedOn }?.let { "; alternative transfer SEI $it (not acted on)" } ?: ""
         return "HLG contract, track $trackNumber: $what$sei"
     }
 }
