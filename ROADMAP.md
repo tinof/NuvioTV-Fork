@@ -527,6 +527,11 @@ because a wrong passthrough path is invisible until measured.
 - **Before a session**, save to a dated local folder: `settings list global`, `secure` and `system`;
   `getprop | grep debug.nuvio`; the display mode from `dumpsys display`; `pm list packages
   --show-versioncode`; the installed path and SHA-256 of `com.nuvio.tv.test.shield`.
+  `scripts/shield_snapshot.sh --serial "$s" --label <step>` saves all of this, plus the logcat buffer sizes
+  and every `com.nuvio.tv.test.*` test build (`--pull-apk` keeps a copy of each APK), to
+  `~/shield-snapshots/<date>-<label>/before/`. It first checks that the logs show no Watchdog or `flush_work`
+  lines. It writes `before/complete` last, and restore uses only a snapshot that has it. The session names
+  every settings key it changes in that folder's `session-changes.txt`.
 - **App data.** The manifest sets `allowBackup="false"` and CI APKs are not debuggable
   (`app/build.gradle.kts:208`), so the debug app's data cannot be backed up. Safe without a backup:
   `adb install -r` of an APK signed with the same key (data kept), setprop, launching and measuring.
@@ -547,6 +552,14 @@ because a wrong passthrough path is invisible until measured.
   with the empty value quoted inside the device command, `adb -s <serial> shell "setprop <name> ''"`:
   adb drops a bare `""` argument and `setprop` then fails with a usage error. Restore changed
   settings and the UI display mode, then diff against the snapshot.
+  `scripts/shield_restore.sh --serial "$s" [--setting ns/key]` does this.
+  - It restores the properties and the logcat buffer sizes.
+  - It writes a changed setting back only when the session named it. Any other changed setting is
+    reported and left alone, so a change the owner made by hand survives.
+  - adb cannot set the display mode on Android 11. When a test build is in front, restore sends HOME
+    once. Otherwise the mode is an owner action.
+  - It then diffs `after/` against `before/`. Exit codes: 0 clean, 3 drift remains, 4 owner action,
+    5 stop.
 - **If the Shield stops answering**, or Watchdog or `flush_work` shows up: stop, save the logs, and tell
   the owner. Only a power cycle recovers it.
 - [M2.1][desk][device] Scripts `scripts/shield_snapshot.sh` and `scripts/shield_restore.sh` (serial and
