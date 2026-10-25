@@ -10,6 +10,38 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-25: DV2.11 HLG tracks whose hvcC carries no parameter sets (PR #20)
+
+- [DV2.11][desk] HLG tracks whose hvcC carries no parameter sets (found in the DV3.2 device session on
+  2026-10-25 with the DV2.10 build: the BBC broadcast HLG samples have an hvcC with no arrays, so the
+  VPS, SPS and PPS travel only in the access units; with no SPS at track init the HLG contract refused
+  and the SEI was never acted on). A track whose hvcC has no SPS waits for the early scan, which reads
+  the parameter sets and the alternative-transfer SEI from the first AU before the formats are
+  published; the contract decides again with that SPS, and a converted track gets the AU's parameter
+  sets as its initialization data. The extractor logs the decision's inputs (container Colour, the
+  parsed SPS, and for an unreadable SPS the hvcC's NAL types and SPS bytes). Gate: unit tests through the
+  vendored extractor: an empty hvcC with the device's container Colour (9/14/9) and the SPS and HLG SEI
+  in the first AU converts before `endTracks` with one RPU per AU and the AU's parameter sets as
+  initialization data; an in-band SPS that states HLG converts without an SEI; an in-band SPS that is
+  not HLG, a first AU without parameter sets and conversion off stay native. Needs: DV2.10.
+
+**Evidence**
+
+- Gate `:app:testFullDebugUnitTest`: 6797 tests, 0 failures, 10 skipped, on the final head.
+- New tests through the vendored extractor in `MatroskaSeiHlgScanTest`: an empty hvcC with the device's
+  container Colour (9/14/9) and the SPS and HLG SEI in the first AU converts before `endTracks` with one
+  RPU per AU and the AU's parameter sets as initialization data; an in-band SPS that states HLG converts
+  without an SEI; an in-band SPS that is not HLG, a first AU without parameter sets and conversion off
+  stay native; an hvcC with only an HLG SEI gets the AU's parameter sets ahead of its SEI. The prefix
+  walker keeps the parameter sets in order with the SEI in `HevcInitNalsTest`.
+- Review (Tier 1, codex gpt-6.1-sol/high): F1 FIXED (an hvcC holding only an SEI kept the SEI alone as
+  the converted track's initialization data and dropped the first AU's parameter sets; red on the
+  reviewed head). No P2 notes.
+- CI: the `Checks` workflow on PR #20.
+
+Resolution: the early scan now supplies the SPS and the initialization data a parameter-set-free hvcC
+lacks; the Shield check of the BBC samples stays with DV3.2.
+
 ## 2026-10-25: DV3.2 device session, part 1 (step stays open)
 
 The first device session of DV3.2 (HLG → 8.4 static provider) on the Shield (mdarcy) and the owner's LG
