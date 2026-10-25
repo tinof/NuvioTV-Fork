@@ -151,4 +151,22 @@ class HevcInitNalsTest {
         val overrun = lengthPrefixed(aud).also { it[3] = 100 }
         assertNull(HevcInitNals.preferredTransferInSample(overrun, overrun.size, 4))
     }
+
+    @Test
+    fun `the AU prefix keeps the parameter sets in order and the SEI`() {
+        val vps = HevcColourFixtures.vps("atc_sei")
+        val sps = HevcColourFixtures.sps("atc_sei")
+        val pps = HevcColourFixtures.pps("atc_sei")
+        val au = lengthPrefixed(aud, vps, sps, pps, sei, idr)
+        val prefix = HevcInitNals.readAuPrefix(au, au.size, au.size, 4)
+        assertEquals(HevcInitNals.PREFIX_COMPLETE, prefix.status)
+        assertEquals(18, prefix.preferredTransfer)
+        assertEquals(3, prefix.parameterSets.size)
+        assertArrayEquals(sps, prefix.sps)
+        val annexB = byteArrayOf(0, 0, 0, 1) + vps + byteArrayOf(0, 0, 0, 1) + sps + byteArrayOf(0, 0, 0, 1) + pps
+        assertArrayEquals(annexB, prefix.parameterSetsAnnexB())
+        // A slice ends the walk: parameter sets after it are not this AU's prefix.
+        val late = lengthPrefixed(idr, sps)
+        assertNull(HevcInitNals.readAuPrefix(late, late.size, late.size, 4).sps)
+    }
 }
