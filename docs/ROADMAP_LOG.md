@@ -10,6 +10,34 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-26: M2.1 Snapshot and restore scripts (PR #21)
+
+- [M2.1][desk][device] Scripts `scripts/shield_snapshot.sh` and `scripts/shield_restore.sh` (serial and
+  timeouts as in M1; `scripts/` is gitignored, and `.gitignore` already lists these and `shield_measure.py` as
+  exceptions). Gate: one snapshot and restore round trip on the Shield with an empty diff.
+
+**Evidence**
+
+- Device gate on 2026-10-26 with the final scripts (clean tree at the PR head): `shield_snapshot.sh
+  --label m21-gate4` completed, the session set the test property `debug.nuvio.m21_probe=1`, and
+  `shield_restore.sh` cleared it with `setprop debug.nuvio.m21_probe ''`, exited 0 with verdict clean and
+  an empty `restore/diff.txt` (DRIFT 0, OWNER 0, INFO 0, IGNORED 0). Folder
+  `~/shield-snapshots/20261026-0025-m21-gate4/`. An earlier round trip on 2026-10-25 with the scripts
+  before the review fixes was also clean (`20261025-2349-m21-gate3`).
+- `scripts/tests/test_shield_snapshot_restore.py`: 42 tests against a fake adb that records every command
+  and fails a test on any forbidden one (install, clear, force-stop, compile, a daily app, a setprop
+  outside `debug.nuvio.*`, the address or the raw hardware serial in any output or saved file).
+- Gate `:app:testFullDebugUnitTest` green on the final head (no app code changed).
+- Review (Tier 1, codex gpt-6.1-sol/high): F1 FIXED (the health check matched only Watchdog lines saying
+  KILLING or Blocked; it now matches the Watchdog tag, and a healthy Looper line naming
+  `com.android.server.Watchdog$HandlerChecker` still passes), F2 FIXED (a multi-line setting was cut at its
+  first line and the snapshot still completed), F3 FIXED (a listed test build whose `pm path` failed was
+  skipped silently). Each new test was red on the reviewed head. No P2 notes.
+- CI: the `Checks` workflow on PR #21.
+
+Resolution: the M2 snapshot and restore steps are scripted and checked once on the Shield. M2 has no
+open step left but stays in the roadmap, because it is the protocol every device session follows.
+
 ## 2026-10-25: DV2.11 HLG tracks whose hvcC carries no parameter sets (PR #20)
 
 - [DV2.11][desk] HLG tracks whose hvcC carries no parameter sets (found in the DV3.2 device session on
