@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-25 | DV2.10 shipped: HLG signalled only in the alternative-transfer SEI (BBC broadcast HLG) converts to Dolby Vision 8.4; the SEI is read from the hvcC at track init or from the first AU by the extractor's early scan before the formats are published, and every case the scan cannot read stays native with a log line. | DV2 | [log](docs/ROADMAP_LOG.md), PR #19 |
 | 2026-10-24 | DV2.7 shipped: the Matroska extractor injects the static 8.4 RPU into every AU of a converted HLG track, scene refresh on frame 0 only, with the setting shown on Nvidia; PQ stays native until an 8.1 provider exists. | DV2 | [log](docs/ROADMAP_LOG.md), PR #17 |
 | 2026-10-24 | DV2.8 shipped: the RPU debug dump at the video renderer (first N AUs after a start, seek or Format change, and every scene refresh) and `rpu_dump_to_bin.py`; DV2.9 added for the device checks. | DV2 | [log](docs/ROADMAP_LOG.md), PR #16 |
 | 2026-10-24 | DV2.3 shipped: the signalling decision table for Matroska, Dolby Vision 8.1 from PQ and 8.4 from HLG at track init, behind a hidden setting, a per-playback gate and a native retry on a decoder failure. | DV2 | [log](docs/ROADMAP_LOG.md), PR #15 |
@@ -803,6 +804,10 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   static 8.4 provider exists, so PQ stays native until DV3.1 or DV3.3; `scene_refresh_flag` on frame 0
   only, `debug.nuvio.dv_refresh_every_start` for every start; the setting is shown on Nvidia as
   "Convert HLG to Dolby Vision", off by default.
+  DV2.10 is done (PR #19): HLG signalled only in an alternative-transfer SEI (BBC broadcast HLG, an SDR
+  transfer in the VUI) converts as 8.4 when that SEI says 18 over an HLG-compatible stated transfer; an
+  SEI in the hvcC decides at track init, one in the first AU is read by the extractor's early scan before
+  the formats are published.
 - [DV2.5][desk] In hdr-analyze, extract the per-frame statistics on plain planes and shot L1 into the lib
   crate, with no behaviour change. Gate: `mkvdovi` and `hdr_analyzer_mvp` output byte-identical on the
   test corpus. Needs: DV2.1.
@@ -818,21 +823,6 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   starts a generation that dumps its first N AUs again; an HLS or a DASH Dolby Vision title is dumped; on
   an Amlogic box with native FEL, if one is at hand, a Profile 7 title is dumped. Gate: the captures and
   `scripts/rpu_dump_to_bin.py --list` output in the log. Needs: DV2.8.
-- [DV2.10][desk] HLG signalled in the alternative-transfer SEI (BBC broadcast HLG, found in the DV3.2
-  device session on 2026-10-25: a BBC HLG sample states a non-HLG transfer in the SPS and carries
-  preferred transfer 18 in the SEI of its first AU, so it played native as SDR). When that SEI
-  says 18 and every transfer the container and the SPS state is one with the HLG-compatible curve (1,
-  6, 14 or 15, H.273) or unspecified, the HLG contract reads the track as HLG; the other field rules
-  stay. An SEI in the hvcC decides at track init; an SEI in the first AU is found by the extractor's
-  early scan (the DTS one) before the formats are published, and the Dolby Vision Format replaces the
-  provisional HEVC one before `endTracks` and any sample. An SEI found later, a laced, empty, compressed
-  or encrypted first block, or an SEI past the scan cap leaves the track native, with a `HLG SEI scan`
-  log line; a read error during the scan is rethrown so the loader's retry scans again. Gate: unit tests: the contract rows (14 and 1 lifted, a container 18 over
-  SPS 14 accepted, SPS 16 with SEI 18 not HLG, the unspecified case); through the vendored extractor, an
-  SEI in the hvcC and in the first block converts with one RPU per AU and the Dolby Vision Format
-  before `endTracks`, an audio block before the first video block, an SEI only in a later AU, a laced
-  first block, zlib and header-strip compression, conversion off (no scan) and a non-VCL prefix past
-  the cap stay native. Needs: DV2.4, DV2.7.
 - [DV5.1][desk] Renderer replacement (moved here from DV5, ID kept): RPUs written off the renderer
   thread, the swap at `onQueueInputBuffer` in the verified framings, shot commitment, AU identity,
   analysis generations and the completeness watermark. Gate: the tests of `DESIGN.md` 2.3 and 2.4 pass.
