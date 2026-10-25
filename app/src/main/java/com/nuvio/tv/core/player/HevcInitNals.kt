@@ -93,6 +93,16 @@ internal object HevcInitNals {
         return PREFIX_NO_SEI
     }
 
+    /** DV3.2 diagnostics: the NAL types of [initializationData] and the first SPS as hex. */
+    @JvmStatic
+    fun describe(initializationData: List<ByteArray>?): String {
+        val nals = nals(initializationData)
+        val types = nals.joinToString(",") { nalType(it).toString() }
+        val sps = nals.firstOrNull { nalType(it) == NAL_TYPE_SPS }
+            ?.joinToString("") { "%02x".format(it.toInt() and 0xFF) } ?: "none"
+        return "${initializationData?.size ?: 0} buffers, NAL types [$types], SPS $sps"
+    }
+
     /** The NAL units of Annex B [initializationData], start codes and trailing zero bytes removed. */
     fun nals(initializationData: List<ByteArray>?): List<ByteArray> {
         val out = mutableListOf<ByteArray>()
