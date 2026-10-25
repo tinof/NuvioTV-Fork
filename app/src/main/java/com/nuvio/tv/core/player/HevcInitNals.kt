@@ -38,26 +38,59 @@ internal object HevcInitNals {
     /**
      * preferred_transfer_characteristics of the first alternative-transfer SEI in the prefix SEI NALs
      * of one access unit ([length] bytes of [sample], NALs behind [nalUnitLengthFieldLength]-byte
-     * lengths, as a Matroska block holds them), or null. The walk stops at the first VCL NAL, which
-     * every prefix SEI of the access unit precedes, and at a NAL length that overruns the sample.
+     * lengths, as a Matroska block holds them), or null. The walk stops at the first VCL NAL and at a
+     * NAL length that overruns the sample. H.265 (7.4.2.4.4) lets a prefix SEI follow a slice that is
+     * not the last of the access unit; encoders put the alternative-transfer SEI before the first slice,
+     * and one between slices is not read.
      */
     @JvmStatic
-    fun preferredTransferInSample(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int): Int? {
-        if (nalUnitLengthFieldLength !in 1..4) return null
+    fun preferredTransferInSample(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int): Int? =
+        preferredTransferInAuPrefix(sample, length, length, nalUnitLengthFieldLength).takeIf { it >= 0 }
+
+    /** [preferredTransferInAuPrefix]: the access unit has no alternative-transfer SEI before its first VCL NAL. */
+    const val PREFIX_NO_SEI = -1
+
+    /** [preferredTransferInAuPrefix]: the NALs before the first VCL NAL run past the available bytes. */
+    const val PREFIX_TRUNCATED = -2
+
+    /** [preferredTransferInAuPrefix]: a NAL length below 2 or past the end of the access unit. */
+    const val PREFIX_MALFORMED = -3
+
+    /**
+     * The walk of [preferredTransferInSample] over the first [available] bytes of an access unit of
+     * [auLength] bytes (ROADMAP DV2.10: the extractor's early scan peeks only the start of a block). Only
+     * the NALs before the first VCL NAL are needed, so a VCL NAL ends the walk even when its body is not
+     * available. Returns the preferred transfer (0 to 255), [PREFIX_NO_SEI], [PREFIX_TRUNCATED] or
+     * [PREFIX_MALFORMED].
+     */
+    @JvmStatic
+    fun preferredTransferInAuPrefix(
+        buffer: ByteArray,
+        available: Int,
+        auLength: Int,
+        nalUnitLengthFieldLength: Int,
+    ): Int {
+        if (nalUnitLengthFieldLength !in 1..4) return PREFIX_MALFORMED
+        val limit = minOf(available, auLength)
         var pos = 0
-        while (pos + nalUnitLengthFieldLength <= length) {
+        while (pos < auLength) {
+            if (pos + nalUnitLengthFieldLength > auLength) return PREFIX_MALFORMED
+            // A NAL needs its length field and its 2-byte header.
+            if (pos + nalUnitLengthFieldLength + 2 > auLength) return PREFIX_MALFORMED
+            if (pos + nalUnitLengthFieldLength + 2 > limit) return PREFIX_TRUNCATED
             var nalLength = 0L
-            repeat(nalUnitLengthFieldLength) { nalLength = (nalLength shl 8) or (sample[pos++].toLong() and 0xFF) }
-            if (nalLength < 2 || nalLength > length - pos) return null
+            repeat(nalUnitLengthFieldLength) { nalLength = (nalLength shl 8) or (buffer[pos++].toLong() and 0xFF) }
+            if (nalLength < 2 || nalLength > auLength - pos) return PREFIX_MALFORMED
+            val type = (buffer[pos].toInt() ushr 1) and 0x3F
+            if (type < NAL_TYPE_FIRST_NON_VCL) return PREFIX_NO_SEI
             val end = pos + nalLength.toInt()
-            val type = (sample[pos].toInt() ushr 1) and 0x3F
-            if (type < NAL_TYPE_FIRST_NON_VCL) return null
+            if (end > limit) return PREFIX_TRUNCATED
             if (type == NAL_TYPE_PREFIX_SEI) {
-                preferredTransferInSei(sample.copyOfRange(pos, end))?.let { return it }
+                preferredTransferInSei(buffer.copyOfRange(pos, end))?.let { return it }
             }
             pos = end
         }
-        return null
+        return PREFIX_NO_SEI
     }
 
     /** The NAL units of Annex B [initializationData], start codes and trailing zero bytes removed. */

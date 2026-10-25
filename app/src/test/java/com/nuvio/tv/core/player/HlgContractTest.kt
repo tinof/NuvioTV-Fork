@@ -3,6 +3,7 @@ package com.nuvio.tv.core.player
 import androidx.media3.common.C
 import androidx.media3.common.ColorInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -290,5 +291,105 @@ class HlgContractTest {
             HlgContract.logLine(4, HlgDecision.TransferUnknown, 18)
         )
         assertEquals("HLG contract, track 5: not HLG", HlgContract.logLine(5, HlgDecision.NotHlg, null))
+    }
+
+    // DV2.10: HLG in an alternative-transfer SEI over an HLG-compatible stated transfer.
+
+    private fun withTransfer(case: String, transfer: Int?) = vui(case).copy(transferCharacteristics = transfer)
+
+    private fun hlg84FromSei(vararg untagged: String) = HlgDecision.Hlg84(untagged.toList(), hlgBase, transferFromSei = true)
+
+    @Test
+    fun `an HLG SEI over every HLG-compatible SPS transfer is 8_4 from the SEI`() {
+        assertEquals(setOf(1, 6, 14, 15), HlgContract.HLG_COMPATIBLE_TRANSFERS)
+        for (transfer in listOf(1, 6, 14, 15)) {
+            val vui = withTransfer("hlg_tagged", transfer)
+            assertEquals("$transfer", HlgDecision.NotHlg, HlgContract.resolve(untaggedContainer, vui))
+            assertEquals("$transfer", hlg84FromSei(), HlgContract.resolve(untaggedContainer, vui, 18))
+        }
+    }
+
+    @Test
+    fun `an HLG SEI over agreeing or HLG container tags is 8_4 from the SEI`() {
+        val vui = vui("atc_sei")
+        assertEquals(14, vui.transferCharacteristics)
+        assertEquals(hlg84FromSei(), HlgContract.resolve(container(primaries = 9, transfer = 14, matrix = 9, range = 1), vui, 18))
+        // Container HLG over SPS 14: a contradiction without the SEI.
+        assertTrue(HlgContract.resolve(hlgContainer, vui) is HlgDecision.Refused)
+        assertEquals(hlg84FromSei(), HlgContract.resolve(hlgContainer, vui, 18))
+        // Container BT.709 transfer over SPS 14: both HLG-compatible.
+        assertEquals(hlg84FromSei(), HlgContract.resolve(container(transfer = 1), vui, 18))
+    }
+
+    @Test
+    fun `an HLG SEI with no stated transfer is 8_4 from the SEI`() {
+        assertEquals(HlgDecision.TransferUnknown, resolve(untaggedContainer, "untagged10"))
+        assertEquals(
+            hlg84FromSei("range", "matrix", "primaries"),
+            HlgContract.resolve(untaggedContainer, vui("untagged10"), 18)
+        )
+        assertEquals(hlg84FromSei(), HlgContract.resolve(untaggedContainer, withTransfer("hlg_tagged", 2), 18))
+    }
+
+    @Test
+    fun `a stated transfer outside the compatible set keeps the decision without the SEI`() {
+        // PQ in the SPS.
+        assertEquals(HlgContract.resolve(untaggedContainer, vui("pq")), HlgContract.resolve(untaggedContainer, vui("pq"), 18))
+        // PQ in the container over SPS 14: not lifted, so not HLG.
+        val pqOver14 = container(transfer = 16)
+        assertEquals(HlgContract.resolve(pqOver14, vui("atc_sei")), HlgContract.resolve(pqOver14, vui("atc_sei"), 18))
+        // Linear (8) in the SPS.
+        val linear = withTransfer("hlg_tagged", 8)
+        assertEquals(HlgDecision.NotHlg, HlgContract.resolve(untaggedContainer, linear, 18))
+    }
+
+    @Test
+    fun `an SEI that is not HLG or no SEI changes nothing`() {
+        val vui = vui("atc_sei")
+        for (sei in listOf(null, 1, 14, 16)) {
+            assertEquals("$sei", HlgDecision.NotHlg, HlgContract.resolve(untaggedContainer, vui, sei))
+        }
+        // HLG stated already: the SEI does not mark the decision.
+        val tagged = HlgContract.resolve(untaggedContainer, vui("hlg_tagged"), 18) as HlgDecision.Hlg84
+        assertFalse(tagged.transferFromSei)
+    }
+
+    @Test
+    fun `the other field rules still refuse under an HLG SEI`() {
+        val matrix709 = vui("hlg_matrix709").copy(transferCharacteristics = 14)
+        val decision = HlgContract.resolve(untaggedContainer, matrix709, 18)
+        assertTrue(decision.toString(), decision is HlgDecision.Refused)
+        assertTrue((decision as HlgDecision.Refused).reason.contains("matrix"))
+        assertTrue(decision.transferFromSei)
+        assertEquals(
+            "HLG contract, track 1: HLG from the alternative transfer SEI refused: ${decision.reason}",
+            HlgContract.logLine(1, decision, 18)
+        )
+        // Without the SEI the same stream is simply not HLG.
+        assertEquals(HlgDecision.NotHlg, HlgContract.resolve(untaggedContainer, matrix709))
+        // Stated HLG that is refused without the SEI: the SEI changed nothing and is not credited.
+        val statedRefused = HlgContract.resolve(untaggedContainer, vui("hlg_matrix709"))
+        assertTrue(statedRefused is HlgDecision.Refused)
+        assertEquals(statedRefused, HlgContract.resolve(untaggedContainer, vui("hlg_matrix709"), 18))
+        assertFalse((statedRefused as HlgDecision.Refused).transferFromSei)
+        val fullRange = vui("hlg_full_range").copy(transferCharacteristics = 14)
+        assertTrue(HlgContract.resolve(untaggedContainer, fullRange, 18) is HlgDecision.Refused)
+    }
+
+    @Test
+    fun `the log line says when the SEI decided and when it was not acted on`() {
+        assertEquals(
+            "HLG contract, track 1: HLG for 8.4 from the alternative transfer SEI",
+            HlgContract.logLine(1, hlg84FromSei(), 18)
+        )
+        assertEquals(
+            "HLG contract, track 1: HLG for 8.4 from the alternative transfer SEI, untagged accepted: range",
+            HlgContract.logLine(1, hlg84FromSei("range"), 18)
+        )
+        assertEquals(
+            "HLG contract, track 1: not HLG; alternative transfer SEI 18 (not acted on)",
+            HlgContract.logLine(1, HlgDecision.NotHlg, 18)
+        )
+        assertEquals("HLG contract, track 1: HLG for 8.4; alternative transfer SEI 18 (not acted on)", HlgContract.logLine(1, hlg84(), 18))
     }
 }
