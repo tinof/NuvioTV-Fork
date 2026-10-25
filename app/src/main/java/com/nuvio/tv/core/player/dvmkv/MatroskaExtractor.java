@@ -1048,6 +1048,15 @@ public class MatroskaExtractor implements Extractor {
       throws IOException {
     haveOutputSample = false;
     boolean continueReading = true;
+    // Fork (DV2.10): a scan rethrown for a retry left the Tracks finish pending. Finish before the
+    // reader reads on, so the retry scans from the same place and no sample of the first Cluster is
+    // read before the formats are final.
+    if (pendingFinishTracks) {
+      finishPendingTracks(input);
+      if (maybeSeekForCues(seekPosition, input.getPosition())) {
+        return Extractor.RESULT_SEEK;
+      }
+    }
     while (continueReading && !haveOutputSample) {
       try {
         continueReading = reader.read(input);
@@ -1083,12 +1092,7 @@ public class MatroskaExtractor implements Extractor {
         continue;
       }
       if (pendingFinishTracks) {
-        pendingFinishTracks = false;
-        // Input is positioned right after the Tracks element (typically the first cluster),
-        // so the early scan can peek the first DTS block (and, DV2.10, the first video block of a
-        // track waiting for its HLG SEI) before formats are published.
-        analyzePendingTracksEarly(input);
-        finishTracksElement();
+        finishPendingTracks(input);
       }
       if (continueReading && maybeSeekForCues(seekPosition, input.getPosition())) {
         return Extractor.RESULT_SEEK;
@@ -1101,6 +1105,17 @@ public class MatroskaExtractor implements Extractor {
       return finishReadAtEndOfInput();
     }
     return Extractor.RESULT_CONTINUE;
+  }
+
+  /**
+   * Input is positioned right after the Tracks element (typically the first cluster), so the early
+   * scan can peek the first DTS block (and, DV2.10, the first video block of a track waiting for its
+   * HLG SEI) before formats are published.
+   */
+  private void finishPendingTracks(ExtractorInput input) throws IOException {
+    pendingFinishTracks = false;
+    analyzePendingTracksEarly(input);
+    finishTracksElement();
   }
 
   private int finishReadAtEndOfInput() throws ParserException {
