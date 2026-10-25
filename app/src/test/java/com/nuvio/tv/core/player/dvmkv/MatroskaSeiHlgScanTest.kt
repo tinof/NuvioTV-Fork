@@ -447,6 +447,53 @@ class MatroskaSeiHlgScanTest {
         assertEquals(6, recorder.outputs.getValue(1).samples.size)
     }
 
+    @Test
+    fun `repeated read errors in the scan never let the parser advance past the first AU`() {
+        // PR #19 review F1: each resumed retry must service the pending scan before reading on.
+        val file = mkv(listOf(videoEntry()), clusters)
+        var failures = 0
+        var position = 0
+        val reader = object : DataReader {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (position >= file.size) return C.RESULT_END_OF_INPUT
+                // The first three reads the early scan makes fail, as a dropped connection would.
+                val scanning = Throwable().stackTrace.any { it.methodName == "scanElementSequence" }
+                if (scanning && failures < 3) {
+                    failures++
+                    throw IOException("connection reset $failures")
+                }
+                val count = minOf(length, file.size - position)
+                System.arraycopy(file, position, buffer, offset, count)
+                position += count
+                return count
+            }
+        }
+        val recorder = Recorder()
+        val extractor = LiveExtractor(transformer())
+        extractor.init(recorder)
+        var done = false
+        repeat(10) {
+            if (done) return@repeat
+            // Media3 resumes a known-length stream at the committed input position.
+            val input = DefaultExtractorInput(reader, position.toLong(), file.size.toLong())
+            try {
+                while (extractor.read(input, PositionHolder()) != Extractor.RESULT_END_OF_INPUT) Unit
+                done = true
+            } catch (expected: IOException) {
+                position = input.position.toInt()
+            }
+        }
+        assertEquals(3, failures)
+        assertTrue(done)
+        val events = recorder.events
+        val dolbyVision = events.indexOf("format 1 ${MimeTypes.VIDEO_DOLBY_VISION}")
+        assertTrue(events.toString(), dolbyVision in 0 until events.indexOf("sample 1"))
+        assertTrue(events.toString(), dolbyVision < events.indexOf("endTracks"))
+        val video = recorder.outputs.getValue(1)
+        assertEquals(6, video.samples.size)
+        assertTrue(video.samples[0].endsWith(annexB(refreshRpu)))
+    }
+
     /** [file] with [extra] appended inside its Segment (the Segment's size field grows with it). */
     private fun segmentWith(file: ByteArray, extra: ByteArray): ByteArray {
         val id = byteArrayOf(0x18, 0x53, 0x80.toByte(), 0x67)
