@@ -471,6 +471,21 @@ class ShieldSnapshotRestoreTest(unittest.TestCase):
         session = self.snapshot()
         self.assertIn("getprop_unparsed=2\n", (session / "before" / "meta").read_text())
 
+    def test_any_watchdog_line_stops_the_snapshot(self):
+        self.change(lambda s: s["logcat_lines"].append("10-25 19:00:01.000  3714  3760 I Watchdog: WAITED_HALF"))
+        result = self.run_script("shield_snapshot.sh", "--out", str(self.home / "half"))
+        self.assertEqual(5, result.returncode, result.stderr)
+        self.assertTrue((self.home / "half" / "before" / "unhealthy.txt").is_file())
+        self.assertFalse((self.home / "half" / "before" / "complete").exists())
+
+    def test_a_line_naming_the_watchdog_class_is_healthy(self):
+        # Seen on the healthy Shield on 2026-10-21: another tag's line names com.android.server.Watchdog.
+        self.change(lambda s: s["logcat_lines"].append(
+            "583288.636  3713  3731 W Looper  : Slow dispatch took 265ms android.fg h=android.os.Handler "
+            "c=com.android.server.Watchdog$HandlerChecker@9a940fb m=0"))
+        session = self.snapshot()
+        self.assertTrue((session / "before" / "complete").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()
