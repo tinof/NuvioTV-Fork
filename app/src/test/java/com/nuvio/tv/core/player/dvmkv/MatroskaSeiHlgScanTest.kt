@@ -1,5 +1,6 @@
 package com.nuvio.tv.core.player.dvmkv
 
+import android.text.TextUtils
 import android.util.Log
 import android.util.SparseArray
 import androidx.media3.common.C
@@ -492,6 +493,33 @@ class MatroskaSeiHlgScanTest {
         val video = recorder.outputs.getValue(1)
         assertEquals(6, video.samples.size)
         assertTrue(video.samples[0].endsWith(annexB(refreshRpu)))
+    }
+
+    @Test
+    fun `the first video block in a Cluster after an unknown-size Cluster is scanned`() {
+        // PR #19 review F2: an unknown-size Cluster ends where the next Cluster starts; that Cluster
+        // is a sibling, and its BlockGroup is an ordinary one.
+        val audio = element(0xA3, byteArrayOf(0x82.toByte(), 0, 0, 0x80.toByte()), ByteArray(64))
+        val unknownSizeCluster = byteArrayOf(0x1F, 0x43, 0xB6.toByte(), 0x75, 0xFF.toByte()) +
+            uint(0xE7, 0) + audio
+        val blockGroup = element(
+            0xA0,
+            element(0xA1, byteArrayOf(0x81.toByte(), 0, 0, 0), lengthPrefixed(hlgSei, idr)),
+        )
+        val second = cluster(40, blockGroup, block(40, keyframe = false, trail))
+        val file = segmentWith(mkv(listOf(videoEntry(), audioEntry), emptyList()), unknownSizeCluster + second)
+        // A scan that misses the block warns at the end of the input through Media3's Log, which needs
+        // TextUtils (a stub on the JVM).
+        mockkStatic(TextUtils::class)
+        every { TextUtils.isEmpty(any()) } answers { firstArg<CharSequence?>().isNullOrEmpty() }
+        val out = try {
+            read(file)
+        } finally {
+            unmockkStatic(TextUtils::class)
+        }
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format.sampleMimeType)
+        assertEquals(2, out.samples.size)
+        assertEquals(emptyList<String>(), scanLines)
     }
 
     /** [file] with [extra] appended inside its Segment (the Segment's size field grows with it). */
