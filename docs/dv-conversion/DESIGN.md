@@ -281,8 +281,9 @@ last of its AU; encoders put the alternative-transfer SEI before the first slice
 is not read. A read error during the scan (not the end of the input) is rethrown with the Tracks
 element still pending: the scan only peeks, so Media3's retry reuses the extractor at the same position
 and scans again (a retry of a stream of unknown length restarts at 0, where the re-read Tracks element
-starts the scan again). A Cluster or BlockGroup nested deeper than a BlockGroup in a Cluster is not
-descended into. The HLG contract log line says `HLG for 8.4 from the
+starts the scan again); a pending scan runs before the parser reads on, so a retry never reads past
+the first AU. A Cluster after an unknown-size Cluster is read as its sibling, and a Cluster or BlockGroup
+nested deeper than a BlockGroup in a Cluster is not descended into. The HLG contract log line says `HLG for 8.4 from the
 alternative transfer SEI` when the SEI decided. With conversion off nothing is scanned and nothing
 changes: the native Format keeps the transfer the container states.
 
