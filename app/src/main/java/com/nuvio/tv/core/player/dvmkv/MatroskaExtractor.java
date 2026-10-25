@@ -300,6 +300,11 @@ public class MatroskaExtractor implements Extractor {
   private static final int MAX_EARLY_DTS_FRAME_BYTES = 256 * 1024;
   private static final int MAX_EARLY_DTS_BLOCK_HEADER_BYTES = 4096;
   private static final int MAX_EBML_HEADER_SIZE = 12; // 4-byte id + 8-byte data size.
+  // Fork (DV2.10): the most of a first video block the early scan peeks for the alternative-transfer
+  // SEI. Only the NALs before the first slice are read (AUD, parameter sets, prefix SEIs: a few KB).
+  private static final int MAX_EARLY_HLG_SEI_PREFIX_BYTES = 64 * 1024;
+  // Fork (DV2.10): Segment -> Cluster -> BlockGroup; anything deeper is not a valid layout.
+  private static final int MAX_EARLY_SCAN_DEPTH = 2;
   private static final int MAX_SEEK_HEAD_FOLLOWS = 4;
 
   private static final String DOC_TYPE_MATROSKA = "matroska";
@@ -890,6 +895,12 @@ public class MatroskaExtractor implements Extractor {
     // Fork (DV2.7): Media3 opens every load with seek(0, 0), the start of the file; any other
     // position is a seek into the file.
     readingFromStart = position == 0;
+    // Fork (DV2.10): a scan rethrown for a retry leaves the Tracks finish pending. A retry of a
+    // stream of unknown length restarts at 0 instead of resuming, and the re-read Tracks element
+    // sets it again; finishing here would scan from the file start and publish the formats early.
+    if (position == 0) {
+      pendingFinishTracks = false;
+    }
     resetParsingState();
   }
 
@@ -1074,8 +1085,9 @@ public class MatroskaExtractor implements Extractor {
       if (pendingFinishTracks) {
         pendingFinishTracks = false;
         // Input is positioned right after the Tracks element (typically the first cluster),
-        // so the early scan can peek the first DTS block before formats are published.
-        analyzePendingDtsTracksEarly(input);
+        // so the early scan can peek the first DTS block (and, DV2.10, the first video block of a
+        // track waiting for its HLG SEI) before formats are published.
+        analyzePendingTracksEarly(input);
         finishTracksElement();
       }
       if (continueReading && maybeSeekForCues(seekPosition, input.getPosition())) {
@@ -1094,6 +1106,7 @@ public class MatroskaExtractor implements Extractor {
   private int finishReadAtEndOfInput() throws ParserException {
     if (pendingFinishTracks) {
       pendingFinishTracks = false;
+      endMissedHlgSeiScans();
       finishTracksElement();
     }
     for (int i = 0; i < tracks.size(); i++) {
@@ -3298,30 +3311,65 @@ public class MatroskaExtractor implements Extractor {
    * Any failure leaves tracks provisional; the late refinement in writeSampleData() still
    * applies in that case. Never consumes input; always resets the peek position.
    */
-  private void analyzePendingDtsTracksEarly(ExtractorInput input) {
-    if (!hasWaitingDtsTrack()) {
+  private void analyzePendingTracksEarly(ExtractorInput input) throws IOException {
+    if (!hasEarlyScanWork()) {
       return;
     }
     try {
-      scanElementSequence(input, 0, MAX_EARLY_DTS_SCAN_BYTES);
-    } catch (IOException | RuntimeException e) {
-      Log.w(TAG, "Early DTS analysis aborted, keeping provisional mime: " + e.getMessage());
-    } finally {
-      try {
-        input.resetPeekPosition();
-      } catch (RuntimeException ignored) {
-        // Nothing to reset.
+      scanElementSequence(input, 0, MAX_EARLY_DTS_SCAN_BYTES, /* depth= */ 0);
+    } catch (IOException e) {
+      if (!(e instanceof EOFException) && hasWaitingHlgSeiTrack()) {
+        // Fork (DV2.10): a read error, not the end of the input. The scan only peeked, so the
+        // input still sits after the Tracks element; the loader's retry reuses this extractor and
+        // runs the scan again instead of leaving the track native for the whole playback.
+        resetPeekQuietly(input);
+        pendingFinishTracks = true;
+        throw e;
       }
+      Log.w(TAG, "Early scan aborted, keeping provisional formats: " + e.getMessage());
+    } catch (RuntimeException e) {
+      Log.w(TAG, "Early scan aborted, keeping provisional formats: " + e.getMessage());
+    }
+    resetPeekQuietly(input);
+    endMissedHlgSeiScans();
+  }
+
+  private static void resetPeekQuietly(ExtractorInput input) {
+    try {
+      input.resetPeekPosition();
+    } catch (RuntimeException ignored) {
+      // Nothing to reset.
     }
   }
 
-  private boolean hasWaitingDtsTrack() {
+  private boolean hasWaitingHlgSeiTrack() {
     for (int i = 0; i < tracks.size(); i++) {
-      if (tracks.valueAt(i).waitingForDtsAnalysis) {
+      if (tracks.valueAt(i).waitingForHlgSeiScan) {
         return true;
       }
     }
     return false;
+  }
+
+  /** A DTS track awaiting its mime, or (DV2.10) a video track awaiting its first AU's HLG SEI. */
+  private boolean hasEarlyScanWork() {
+    for (int i = 0; i < tracks.size(); i++) {
+      Track track = tracks.valueAt(i);
+      if (track.waitingForDtsAnalysis || track.waitingForHlgSeiScan) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Fork (DV2.10): tracks whose first AU the early scan did not reach stay native. */
+  private void endMissedHlgSeiScans() {
+    for (int i = 0; i < tracks.size(); i++) {
+      Track track = tracks.valueAt(i);
+      if (track.waitingForHlgSeiScan) {
+        track.endHlgSeiScan("the early scan did not reach the first block", /* firstAuRead= */ false);
+      }
+    }
   }
 
   private boolean ensureScanBytes(ExtractorInput input, int length) throws IOException {
@@ -3338,12 +3386,15 @@ public class MatroskaExtractor implements Extractor {
 
   /**
    * Walks a sequence of EBML elements starting at {@code cursor} (a peek offset), descending
-   * into clusters and block groups and analyzing blocks of DTS tracks. Stops at {@code
-   * sequenceEnd}, at the scan budget, or once every DTS track has been analyzed.
+   * into clusters and block groups and analyzing blocks of DTS tracks and (DV2.10) of video tracks
+   * awaiting their HLG SEI. Stops at {@code sequenceEnd}, at the scan budget, or once every such
+   * track has been analyzed. {@code depth} is 0 for the Segment's children; a Cluster or BlockGroup
+   * nested deeper than a BlockGroup in a Cluster is not descended into (DV2.10: an unbounded recursion
+   * on crafted unknown-size elements could overflow the loader thread's stack).
    */
-  private void scanElementSequence(ExtractorInput input, int cursor, int sequenceEnd)
+  private void scanElementSequence(ExtractorInput input, int cursor, int sequenceEnd, int depth)
       throws IOException {
-    while (cursor < sequenceEnd && hasWaitingDtsTrack()) {
+    while (cursor < sequenceEnd && hasEarlyScanWork()) {
       if (!ensureScanBytes(input, cursor + MAX_EBML_HEADER_SIZE)) {
         return;
       }
@@ -3364,10 +3415,13 @@ public class MatroskaExtractor implements Extractor {
       int dataEnd = dataEndLong > sequenceEnd ? sequenceEnd : (int) dataEndLong;
 
       if (id == ID_CLUSTER || id == ID_BLOCK_GROUP) {
-        scanElementSequence(input, dataStart, dataEnd);
+        if (depth >= MAX_EARLY_SCAN_DEPTH) {
+          return;
+        }
+        scanElementSequence(input, dataStart, dataEnd, depth + 1);
         cursor = unknownSize ? sequenceEnd : dataEnd;
       } else if (id == ID_SIMPLE_BLOCK || id == ID_BLOCK) {
-        analyzeDtsBlock(input, dataStart, dataEnd);
+        analyzeDtsBlock(input, dataStart, dataEnd, dataEndLong);
         if (unknownSize) {
           return;
         }
@@ -3383,9 +3437,11 @@ public class MatroskaExtractor implements Extractor {
 
   /**
    * Parses the header of one SimpleBlock/Block at the given peek range and, if it belongs to
-   * a DTS track awaiting analysis, refines that track's mime type from the frame data.
+   * a DTS track awaiting analysis, refines that track's mime type from the frame data. A block of a
+   * video track awaiting its HLG SEI goes to {@link #analyzeHlgSeiBlock}. {@code blockEnd} is the
+   * block's end before the scan budget clips it ({@code Long.MAX_VALUE} for an unknown size).
    */
-  private void analyzeDtsBlock(ExtractorInput input, int dataStart, int dataEnd)
+  private void analyzeDtsBlock(ExtractorInput input, int dataStart, int dataEnd, long blockEnd)
       throws IOException {
     if (dataEnd <= dataStart || !ensureScanBytes(input, dataStart + 8)) {
       return;
@@ -3396,6 +3452,10 @@ public class MatroskaExtractor implements Extractor {
     }
     int trackNumber = (int) readEbmlVintValue(dataStart, trackNumberLength);
     Track track = tracks.get(trackNumber);
+    if (track != null && track.waitingForHlgSeiScan) {
+      analyzeHlgSeiBlock(input, track, dataStart + trackNumberLength, blockEnd);
+      return;
+    }
     if (track == null || !track.waitingForDtsAnalysis) {
       return;
     }
@@ -3432,6 +3492,67 @@ public class MatroskaExtractor implements Extractor {
       track.format = track.format.buildUpon().setSampleMimeType(mimeType).build();
     }
     track.waitingForDtsAnalysis = false;
+  }
+
+  /**
+   * Fork (DV2.10): reads the alternative-transfer SEI of a track's first block, the first AU, before
+   * the formats are published (ROADMAP DV2.10). {@code headerStart} is the peek offset after the
+   * block's track number. Only the NALs before the first slice are peeked, at most {@link
+   * #MAX_EARLY_HLG_SEI_PREFIX_BYTES}. Every outcome ends the scan for the track, so a later block is
+   * never read as the first AU; a laced or empty block, malformed NAL lengths, a prefix past the cap
+   * or the end of the input leave the track native.
+   */
+  private void analyzeHlgSeiBlock(
+      ExtractorInput input, Track track, int headerStart, long blockEnd) throws IOException {
+    // Relative timecode (2 bytes), then the flags byte.
+    int flagsOffset = headerStart + 2;
+    if (!ensureScanBytes(input, flagsOffset + 1)) {
+      track.endHlgSeiScan("the input ends inside the first block", /* firstAuRead= */ false);
+      return;
+    }
+    if ((earlyDtsScanBuffer[flagsOffset] & 0x06) != 0) {
+      track.endHlgSeiScan("the first block is laced", /* firstAuRead= */ true);
+      return;
+    }
+    int payloadStart = flagsOffset + 1;
+    if (blockEnd == Long.MAX_VALUE || blockEnd - payloadStart > Integer.MAX_VALUE) {
+      track.endHlgSeiScan("the first block has no usable size", /* firstAuRead= */ true);
+      return;
+    }
+    int auLength = (int) (blockEnd - payloadStart);
+    if (auLength <= 0) {
+      track.endHlgSeiScan("the first block is empty", /* firstAuRead= */ true);
+      return;
+    }
+    int available =
+        (int)
+            Math.min(
+                Math.min((long) auLength, MAX_EARLY_HLG_SEI_PREFIX_BYTES),
+                (long) MAX_EARLY_DTS_SCAN_BYTES - payloadStart);
+    // The first block is the first AU, whatever happens to it: a later block is never read instead.
+    if (available <= 0 || !ensureScanBytes(input, payloadStart + available)) {
+      track.endHlgSeiScan(
+          "the first block lies past the scan budget or the end of the input", /* firstAuRead= */ false);
+      return;
+    }
+    int result =
+        HevcInitNals.preferredTransferInAuPrefix(
+            Arrays.copyOfRange(earlyDtsScanBuffer, payloadStart, payloadStart + available),
+            available,
+            auLength,
+            track.nalUnitLengthFieldLength);
+    if (result >= 0) {
+      track.applyFirstAuHlgSei(result, checkNotNull(dolbyVisionSampleTransformer));
+    } else if (result == HevcInitNals.PREFIX_NO_SEI) {
+      track.endHlgSeiScan(
+          "no alternative transfer SEI before the first slice of the first AU", /* firstAuRead= */ true);
+    } else if (result == HevcInitNals.PREFIX_TRUNCATED) {
+      track.endHlgSeiScan(
+          "the NALs before the first slice run past the " + available + " bytes the scan reads",
+          /* firstAuRead= */ true);
+    } else {
+      track.endHlgSeiScan("malformed NAL lengths in the first AU", /* firstAuRead= */ true);
+    }
   }
 
   private static int ebmlVintLength(int firstByte) {
@@ -3574,8 +3695,9 @@ public class MatroskaExtractor implements Extractor {
     @Nullable public Integer containerColourRange;
     // Fork (DV2.4): the first SPS NAL of an HEVC track's hvcC, or null.
     public byte @MonotonicNonNull [] hevcFirstSps;
-    // Fork (DV2.4): preferred_transfer_characteristics of an alternative-transfer SEI in the
-    // hvcC or the first sample, or null. Logged only; it never changes the HLG decision.
+    // Fork (DV2.4, DV2.10): preferred_transfer_characteristics of an alternative-transfer SEI in the
+    // hvcC or the first sample, or null. Since DV2.10 an SEI that says HLG, read from the hvcC or by
+    // the early scan before the Format is published, can make the track HLG (HlgContract.resolve).
     @Nullable public Integer hevcPreferredTransfer;
     // Fork (DV2.4): the HLG contract's decision for an HEVC track without Dolby Vision.
     @Nullable private HlgDecision hlgDecision;
@@ -3590,6 +3712,13 @@ public class MatroskaExtractor implements Extractor {
     // Fork (DV2.4): the first sample is still to be read for an alternative-transfer SEI.
     public boolean hlgSampleSeiPending;
     private int hlgTrackId;
+    // Fork (DV2.10): the colour inputs of the HLG decision, kept for the early scan's re-decision; and
+    // whether the early scan is still to read the first AU's alternative-transfer SEI (a track that
+    // would be HLG if that SEI said so), and whether it ended without reaching that AU.
+    @Nullable private ContainerColour hlgContainerColour;
+    @Nullable private HevcVuiColour hlgVui;
+    public boolean waitingForHlgSeiScan;
+    private boolean hlgSeiScanMissed;
 
     // Audio elements. Initially set to their default values.
     public int channelCount = 1;
@@ -3912,7 +4041,8 @@ public class MatroskaExtractor implements Extractor {
       isHevc = CODEC_ID_H265.equals(codecId);
       // Fork (DV2.4, DV2.3): the HLG contract and then the signalling decision table, for HEVC tracks
       // that carry no Dolby Vision, before the Format is built: a converted track is published as
-      // Dolby Vision from the start. The HLG decision itself changes nothing.
+      // Dolby Vision from the start. The HLG decision itself changes nothing. DV2.10: an
+      // alternative-transfer SEI in the hvcC counts; one in the first AU is left to the early scan.
       @Nullable ColorInfo convertedColorInfo = null;
       if (isHevc && dolbyVisionConfigBytes == null && MimeTypes.VIDEO_H265.equals(mimeType)) {
         ContainerColour containerColour =
@@ -3924,7 +4054,9 @@ public class MatroskaExtractor implements Extractor {
                 getHdrStaticInfo());
         @Nullable
         HevcVuiColour vui = hevcFirstSps == null ? null : HevcVuiColour.parse(hevcFirstSps);
-        hlgDecision = HlgContract.resolve(containerColour, vui);
+        hlgContainerColour = containerColour;
+        hlgVui = vui;
+        hlgDecision = HlgContract.resolve(containerColour, vui, hevcPreferredTransfer);
         // android.util.Log, like the chapters line: Media3's Log throws in JVM unit tests, where
         // the stubbed Log.getStackTraceString returns null.
         android.util.Log.i(TAG, HlgContract.logLine(trackId, hlgDecision, hevcPreferredTransfer));
@@ -3935,28 +4067,32 @@ public class MatroskaExtractor implements Extractor {
                 && contentCompressionAlgorithm != CONTENT_COMPRESSION_HEADER_STRIP;
         if (dolbyVisionSampleTransformer != null
             && dolbyVisionSampleTransformer.isDolbyVisionConversionEnabled()) {
-          dvSignalling =
-              DvSignalling.decide(
-                  hasContentEncryption,
-                  containerColour,
-                  vui,
-                  hlgDecision,
-                  width,
-                  height,
-                  defaultSampleDurationNs);
-          // DV2.7: a track is converted only when the transformer can give every AU an RPU.
-          if (dvSignalling instanceof DvSignallingDecision.Convert) {
-            dvSignalling =
-                dolbyVisionSampleTransformer.prepareDolbyVisionConversion(
-                    trackId, (DvSignallingDecision.Convert) dvSignalling, nalUnitLengthFieldLength);
-          }
-          android.util.Log.i(TAG, DvSignalling.logLine(trackId, dvSignalling));
-          if (dvSignalling instanceof DvSignallingDecision.Convert) {
-            DvSignallingDecision.Convert convert = (DvSignallingDecision.Convert) dvSignalling;
+          @Nullable
+          DvSignallingDecision.Convert convert =
+              decideDolbyVisionSignalling(dolbyVisionSampleTransformer);
+          if (convert != null) {
             mimeType = MimeTypes.VIDEO_DOLBY_VISION;
             codecs = convert.getCodecs();
             convertedColorInfo = convert.getColorInfo();
-            dolbyVisionSampleTransformer.onDolbyVisionConversionSignalled(trackId, convert);
+          }
+          // DV2.10: a track that only an HLG alternative-transfer SEI in its first AU would make
+          // HLG waits for the early scan, which reads that AU before the formats are published.
+          // Encrypted or compressed blocks cannot be read there.
+          boolean seiCouldMakeHlg =
+              convert == null
+                  && hevcPreferredTransfer == null
+                  && !(hlgDecision instanceof HlgDecision.Hlg84)
+                  && HlgContract.resolve(containerColour, vui, HlgContract.TRANSFER_HLG)
+                      instanceof HlgDecision.Hlg84;
+          boolean blocksReadable =
+              !hasContentEncryption && contentCompressionAlgorithm == CONTENT_COMPRESSION_NONE;
+          waitingForHlgSeiScan = seiCouldMakeHlg && blocksReadable;
+          if (seiCouldMakeHlg && !blocksReadable) {
+            android.util.Log.i(
+                TAG,
+                "HLG SEI scan, track "
+                    + trackId
+                    + ": encrypted or compressed blocks are not scanned; native");
           }
         }
       }
@@ -4081,8 +4217,89 @@ public class MatroskaExtractor implements Extractor {
     }
 
     /**
+     * Fork (DV2.3, DV2.7): the signalling decision table on {@link #hlgDecision}. A track is
+     * converted only when the transformer can give every AU an RPU. Returns the Convert decision
+     * (already announced to the transformer), or null for native playback.
+     */
+    @Nullable
+    private DvSignallingDecision.Convert decideDolbyVisionSignalling(
+        DolbyVisionSampleTransformer transformer) {
+      dvSignalling =
+          DvSignalling.decide(
+              hasContentEncryption,
+              checkNotNull(hlgContainerColour),
+              hlgVui,
+              checkNotNull(hlgDecision),
+              width,
+              height,
+              defaultSampleDurationNs);
+      if (dvSignalling instanceof DvSignallingDecision.Convert) {
+        dvSignalling =
+            transformer.prepareDolbyVisionConversion(
+                hlgTrackId, (DvSignallingDecision.Convert) dvSignalling, nalUnitLengthFieldLength);
+      }
+      android.util.Log.i(TAG, DvSignalling.logLine(hlgTrackId, dvSignalling));
+      if (!(dvSignalling instanceof DvSignallingDecision.Convert)) {
+        return null;
+      }
+      DvSignallingDecision.Convert convert = (DvSignallingDecision.Convert) dvSignalling;
+      transformer.onDolbyVisionConversionSignalled(hlgTrackId, convert);
+      return convert;
+    }
+
+    /**
+     * Fork (DV2.10): the early scan read the alternative-transfer SEI of the track's first AU before
+     * the formats were published. When it makes the track HLG, the decision table runs again and a
+     * converted track gets its Dolby Vision Format now, so no sample goes out under the HEVC one.
+     */
+    private void applyFirstAuHlgSei(int preferredTransfer, DolbyVisionSampleTransformer transformer) {
+      waitingForHlgSeiScan = false;
+      hlgSampleSeiPending = false;
+      hevcPreferredTransfer = preferredTransfer;
+      HlgDecision decision =
+          HlgContract.resolve(checkNotNull(hlgContainerColour), hlgVui, preferredTransfer);
+      android.util.Log.i(TAG, HlgContract.logLine(hlgTrackId, decision, preferredTransfer));
+      if (!(decision instanceof HlgDecision.Hlg84)) {
+        return;
+      }
+      hlgDecision = decision;
+      @Nullable DvSignallingDecision.Convert convert = decideDolbyVisionSignalling(transformer);
+      if (convert == null) {
+        return;
+      }
+      format =
+          checkNotNull(format)
+              .buildUpon()
+              .setSampleMimeType(MimeTypes.VIDEO_DOLBY_VISION)
+              .setCodecs(convert.getCodecs())
+              .setColorInfo(convert.getColorInfo())
+              .build();
+      // A converted track always takes the transform path, where its AUs get their RPUs.
+      requiresDolbyVisionTransform = !hasContentEncryption;
+      if (output != null) {
+        output.format(format);
+      }
+    }
+
+    /**
+     * Fork (DV2.10): the early scan ends for this track without an HLG SEI it can act on: the track
+     * stays as its track init decided. {@code firstAuRead} is false when the scan never reached the
+     * first AU; an HLG SEI in the first sample is then logged as found too late.
+     */
+    private void endHlgSeiScan(String reason, boolean firstAuRead) {
+      waitingForHlgSeiScan = false;
+      if (firstAuRead) {
+        hlgSampleSeiPending = false;
+      } else {
+        hlgSeiScanMissed = true;
+      }
+      android.util.Log.i(TAG, "HLG SEI scan, track " + hlgTrackId + ": " + reason + "; native");
+    }
+
+    /**
      * Fork (DV2.4): records and logs the preferred transfer of an alternative-transfer SEI found in
-     * the first sample; null leaves the track as it is. It never changes the decision.
+     * the first sample; null leaves the track as it is. It never changes the decision: the Format is
+     * out by then (DV2.10 acts on the first AU only through the early scan).
      */
     private void logHlgSampleSei(@Nullable Integer preferredTransfer) {
       if (preferredTransfer == null || hlgDecision == null) {
@@ -4090,6 +4307,13 @@ public class MatroskaExtractor implements Extractor {
       }
       hevcPreferredTransfer = preferredTransfer;
       android.util.Log.i(TAG, HlgContract.logLine(hlgTrackId, hlgDecision, preferredTransfer));
+      if (hlgSeiScanMissed && preferredTransfer == HlgContract.TRANSFER_HLG) {
+        android.util.Log.i(
+            TAG,
+            "HLG SEI scan, track "
+                + hlgTrackId
+                + ": HLG in the SEI of the first sample read, after the Format was published; native");
+      }
     }
 
     /**
