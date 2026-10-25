@@ -527,12 +527,12 @@ class MatroskaSeiHlgScanTest {
 
     private val bbcColour = element(0x55B0, uint(0x55B1, 9), uint(0x55BA, 14), uint(0x55BB, 9))
 
-    private fun inBandEntry(colour: ByteArray? = bbcColour) = element(
+    private fun inBandEntry(colour: ByteArray? = bbcColour, hvcC: ByteArray = HevcColourFixtures.hvcC()) = element(
         TRACK_ENTRY,
         uint(0xD7, 1),
         uint(0x83, 1),
         element(0x86, "V_MPEGH/ISO/HEVC".toByteArray()),
-        element(0x63A2, HevcColourFixtures.hvcC()),
+        element(0x63A2, hvcC),
         element(0xE0, *listOfNotNull(uint(0xB0, 1920), uint(0xBA, 1080), colour).toTypedArray()),
         uint(0x23E383, 40_000_000L),
     )
@@ -573,6 +573,27 @@ class MatroskaSeiHlgScanTest {
         assertTrue(
             logs.toString(),
             "HLG contract, track 1: HLG for 8.4 from the alternative transfer SEI (SPS from the first AU)" in logs
+        )
+    }
+
+    @Test
+    fun `an hvcC with only an HLG SEI takes the parameter sets from the first AU into the initialization data`() {
+        val file = mkv(
+            listOf(inBandEntry(hvcC = HevcColourFixtures.hvcC(39 to listOf(hlgSei)))),
+            listOf(
+                cluster(
+                    0,
+                    block(0, keyframe = true, *(parameterSets("atc_sei") + listOf(idr)).toTypedArray()),
+                    block(40, keyframe = false, trail),
+                )
+            ),
+        )
+        val converted = read(file)
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, converted.format.sampleMimeType)
+        // The AU's VPS, SPS and PPS come first; the hvcC's SEI is kept behind them.
+        assertArrayEquals(
+            annexB(*(parameterSets("atc_sei") + listOf(hlgSei)).toTypedArray()),
+            converted.format.initializationData.single()
         )
     }
 
