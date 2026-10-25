@@ -12,7 +12,10 @@ import androidx.media3.container.NalUnitUtil
 internal object HevcInitNals {
 
     private const val NAL_TYPE_FIRST_NON_VCL = 32
+    private const val NAL_TYPE_VPS = 32
     private const val NAL_TYPE_SPS = 33
+    private const val NAL_TYPE_PPS = 34
+    private val START_CODE = byteArrayOf(0, 0, 0, 1)
     private const val NAL_TYPE_PREFIX_SEI = 39
     private const val SEI_PAYLOAD_ALTERNATIVE_TRANSFER = 147
 
@@ -70,27 +73,66 @@ internal object HevcInitNals {
         auLength: Int,
         nalUnitLengthFieldLength: Int,
     ): Int {
-        if (nalUnitLengthFieldLength !in 1..4) return PREFIX_MALFORMED
+        val prefix = readAuPrefix(buffer, available, auLength, nalUnitLengthFieldLength)
+        return prefix.preferredTransfer ?: if (prefix.status == PREFIX_COMPLETE) PREFIX_NO_SEI else prefix.status
+    }
+
+    /** [readAuPrefix]: every NAL before the first VCL NAL (or the end of the access unit) was read. */
+    const val PREFIX_COMPLETE = 0
+
+    /**
+     * What the NALs before the first VCL NAL of an access unit hold: the preferred transfer of the
+     * first alternative-transfer SEI, or null, and the VPS, SPS and PPS NALs in order (ROADMAP DV2.11: a
+     * track whose hvcC carries no parameter sets has them only in its access units). [status] is
+     * [PREFIX_COMPLETE], [PREFIX_TRUNCATED] or [PREFIX_MALFORMED]; what was read before a truncation or
+     * a malformed length is kept.
+     */
+    class AuPrefix(val status: Int, val preferredTransfer: Int?, val parameterSets: List<ByteArray>) {
+        /** The first SPS NAL, or null. */
+        val sps: ByteArray? get() = parameterSets.firstOrNull { nalType(it) == NAL_TYPE_SPS }
+
+        /** The parameter sets as one Annex B buffer, as Media3's HevcConfig builds initialization data. */
+        fun parameterSetsAnnexB(): ByteArray {
+            val out = java.io.ByteArrayOutputStream()
+            for (nal in parameterSets) {
+                out.write(START_CODE)
+                out.write(nal)
+            }
+            return out.toByteArray()
+        }
+    }
+
+    /**
+     * Walks the NALs before the first VCL NAL in the first [available] bytes of an access unit of
+     * [auLength] bytes, NALs behind [nalUnitLengthFieldLength]-byte lengths, as a Matroska block holds
+     * them. A VCL NAL ends the walk even when its body is not available.
+     */
+    @JvmStatic
+    fun readAuPrefix(buffer: ByteArray, available: Int, auLength: Int, nalUnitLengthFieldLength: Int): AuPrefix {
+        val parameterSets = mutableListOf<ByteArray>()
+        var preferredTransfer: Int? = null
+        fun result(status: Int) = AuPrefix(status, preferredTransfer, parameterSets)
+        if (nalUnitLengthFieldLength !in 1..4) return result(PREFIX_MALFORMED)
         val limit = minOf(available, auLength)
         var pos = 0
         while (pos < auLength) {
-            if (pos + nalUnitLengthFieldLength > auLength) return PREFIX_MALFORMED
             // A NAL needs its length field and its 2-byte header.
-            if (pos + nalUnitLengthFieldLength + 2 > auLength) return PREFIX_MALFORMED
-            if (pos + nalUnitLengthFieldLength + 2 > limit) return PREFIX_TRUNCATED
+            if (pos + nalUnitLengthFieldLength + 2 > auLength) return result(PREFIX_MALFORMED)
+            if (pos + nalUnitLengthFieldLength + 2 > limit) return result(PREFIX_TRUNCATED)
             var nalLength = 0L
             repeat(nalUnitLengthFieldLength) { nalLength = (nalLength shl 8) or (buffer[pos++].toLong() and 0xFF) }
-            if (nalLength < 2 || nalLength > auLength - pos) return PREFIX_MALFORMED
+            if (nalLength < 2 || nalLength > auLength - pos) return result(PREFIX_MALFORMED)
             val type = (buffer[pos].toInt() ushr 1) and 0x3F
-            if (type < NAL_TYPE_FIRST_NON_VCL) return PREFIX_NO_SEI
+            if (type < NAL_TYPE_FIRST_NON_VCL) return result(PREFIX_COMPLETE)
             val end = pos + nalLength.toInt()
-            if (end > limit) return PREFIX_TRUNCATED
-            if (type == NAL_TYPE_PREFIX_SEI) {
-                preferredTransferInSei(buffer.copyOfRange(pos, end))?.let { return it }
+            if (end > limit) return result(PREFIX_TRUNCATED)
+            if (type in NAL_TYPE_VPS..NAL_TYPE_PPS) parameterSets += buffer.copyOfRange(pos, end)
+            if (type == NAL_TYPE_PREFIX_SEI && preferredTransfer == null) {
+                preferredTransfer = preferredTransferInSei(buffer.copyOfRange(pos, end))
             }
             pos = end
         }
-        return PREFIX_NO_SEI
+        return result(PREFIX_COMPLETE)
     }
 
     /** DV3.2 diagnostics: the NAL types of [initializationData] and the first SPS as hex. */
