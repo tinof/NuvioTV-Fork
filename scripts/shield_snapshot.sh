@@ -403,6 +403,11 @@ main() {
   for f in settings-global.txt settings-secure.txt settings-system.txt packages.txt; do
     [ -s "$before/$f" ] || shield_die "$EXIT_REFUSED" "$f came back empty; the snapshot is not complete"
   done
+  # A multi-line value is cut at its first line, and restore would write that cut value back.
+  for f in settings-global settings-secure settings-system; do
+    [ ! -f "$before/$f.unparsed" ] ||
+      shield_die "$EXIT_REFUSED" "$f has a multi-line value (before/$f.unparsed); the snapshot is not complete"
+  done
 
   if [ ! -f "$out/session-changes.txt" ]; then
     cat >"$out/session-changes.txt" <<EOF
