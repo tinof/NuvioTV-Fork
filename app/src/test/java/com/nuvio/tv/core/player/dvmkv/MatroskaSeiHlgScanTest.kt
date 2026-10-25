@@ -522,6 +522,96 @@ class MatroskaSeiHlgScanTest {
         assertEquals(emptyList<String>(), scanLines)
     }
 
+    // DV2.11: an hvcC with no parameter sets (VPS, SPS and PPS only in the access units), as the BBC
+    // broadcast HLG samples of the DV3.2 device session have it: container Colour 9/14/9, no Range.
+
+    private val bbcColour = element(0x55B0, uint(0x55B1, 9), uint(0x55BA, 14), uint(0x55BB, 9))
+
+    private fun inBandEntry(colour: ByteArray? = bbcColour) = element(
+        TRACK_ENTRY,
+        uint(0xD7, 1),
+        uint(0x83, 1),
+        element(0x86, "V_MPEGH/ISO/HEVC".toByteArray()),
+        element(0x63A2, HevcColourFixtures.hvcC()),
+        element(0xE0, *listOfNotNull(uint(0xB0, 1920), uint(0xBA, 1080), colour).toTypedArray()),
+        uint(0x23E383, 40_000_000L),
+    )
+
+    private fun parameterSets(case: String) =
+        listOf(HevcColourFixtures.vps(case), HevcColourFixtures.sps(case), HevcColourFixtures.pps(case))
+
+    private fun inBandFile(case: String, vararg firstAuExtra: ByteArray, colour: ByteArray? = bbcColour) = mkv(
+        listOf(inBandEntry(colour)),
+        listOf(
+            cluster(
+                0,
+                block(0, keyframe = true, *(parameterSets(case) + firstAuExtra.toList() + listOf(idr)).toTypedArray()),
+                block(40, keyframe = false, trail),
+            )
+        ),
+    )
+
+    @Test
+    fun `an hvcC without parameter sets takes the SPS and the HLG SEI from the first AU and converts`() {
+        val file = inBandFile("atc_sei", hlgSei)
+        val native = read(file, transformer = null)
+        val converted = read(file)
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, converted.format.sampleMimeType)
+        assertEquals(C.COLOR_TRANSFER_HLG, converted.format.colorInfo!!.colorTransfer)
+        // The Dolby Vision decoder gets the AU's parameter sets as its initialization data.
+        assertArrayEquals(annexB(*parameterSets("atc_sei").toTypedArray()), converted.format.initializationData.single())
+        assertTrue(native.format.initializationData.isEmpty())
+        val track = converted.track!!
+        assertTrue((track.hlgDecision as HlgDecision.Hlg84).transferFromSei)
+        assertEquals(DvSignallingDecision.Target.PROFILE_8_4, (track.dolbyVisionSignalling as DvSignallingDecision.Convert).target)
+        val events = converted.recorder.events
+        val dolbyVision = events.indexOf("format 1 ${MimeTypes.VIDEO_DOLBY_VISION}")
+        assertTrue(events.toString(), dolbyVision in 0 until events.indexOf("endTracks"))
+        assertTrue(events.toString(), dolbyVision < events.indexOf("sample 1"))
+        assertArrayEquals(native.samples[0] + annexB(refreshRpu), converted.samples[0])
+        assertArrayEquals(native.samples[1] + annexB(plainRpu), converted.samples[1])
+        assertTrue(
+            logs.toString(),
+            "HLG contract, track 1: HLG for 8.4 from the alternative transfer SEI (SPS from the first AU)" in logs
+        )
+    }
+
+    @Test
+    fun `an hvcC without parameter sets and an in-band SPS that states HLG converts without an SEI`() {
+        // No container Colour: a container 14 would contradict the SPS's 18.
+        val converted = read(inBandFile("hlg_tagged", colour = null))
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, converted.format.sampleMimeType)
+        assertFalse((converted.track!!.hlgDecision as HlgDecision.Hlg84).transferFromSei)
+    }
+
+    @Test
+    fun `an hvcC without parameter sets whose in-band SPS is not HLG and has no SEI stays native`() {
+        val out = read(inBandFile("atc_sei"))
+        assertEquals(MimeTypes.VIDEO_H265, out.format.sampleMimeType)
+        assertEquals(HlgDecision.NotHlg, out.track!!.hlgDecision)
+        assertFalse(out.track!!.waitingForHlgSeiScan)
+        assertTrue(out.format.initializationData.isEmpty())
+    }
+
+    @Test
+    fun `an hvcC without parameter sets and a first AU without them stays native`() {
+        val file = mkv(listOf(inBandEntry()), listOf(cluster(0, block(0, keyframe = true, idr), block(40, keyframe = false, trail))))
+        val out = read(file)
+        assertEquals(MimeTypes.VIDEO_H265, out.format.sampleMimeType)
+        assertEquals(
+            listOf("HLG SEI scan, track 1: no alternative transfer SEI before the first slice of the first AU; native"),
+            scanLines
+        )
+    }
+
+    @Test
+    fun `with conversion off an hvcC without parameter sets is not scanned`() {
+        val out = read(inBandFile("atc_sei", hlgSei), transformer(convert = false))
+        assertEquals(MimeTypes.VIDEO_H265, out.format.sampleMimeType)
+        assertTrue(out.format.initializationData.isEmpty())
+        assertEquals(emptyList<String>(), scanLines)
+    }
+
     /** [file] with [extra] appended inside its Segment (the Segment's size field grows with it). */
     private fun segmentWith(file: ByteArray, extra: ByteArray): ByteArray {
         val id = byteArrayOf(0x18, 0x53, 0x80.toByte(), 0x67)
