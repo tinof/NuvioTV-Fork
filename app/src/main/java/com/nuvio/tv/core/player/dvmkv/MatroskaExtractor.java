@@ -4338,8 +4338,15 @@ public class MatroskaExtractor implements Extractor {
               .setSampleMimeType(MimeTypes.VIDEO_DOLBY_VISION)
               .setCodecs(convert.getCodecs())
               .setColorInfo(convert.getColorInfo());
-      if (format.initializationData.isEmpty() && !prefix.getParameterSets().isEmpty()) {
-        converted.setInitializationData(ImmutableList.of(prefix.parameterSetsAnnexB()));
+      if (sps != null) {
+        // The hvcC had no SPS: the AU's parameter sets go first, then whatever the hvcC held (an SEI).
+        java.io.ByteArrayOutputStream initializationData = new java.io.ByteArrayOutputStream();
+        byte[] parameterSets = prefix.parameterSetsAnnexB();
+        initializationData.write(parameterSets, 0, parameterSets.length);
+        for (byte[] buffer : format.initializationData) {
+          initializationData.write(buffer, 0, buffer.length);
+        }
+        converted.setInitializationData(ImmutableList.of(initializationData.toByteArray()));
       }
       format = converted.build();
       // A converted track always takes the transform path, where its AUs get their RPUs.
