@@ -493,6 +493,13 @@ class ShieldSnapshotRestoreTest(unittest.TestCase):
         self.assertIn("settings-global.unparsed", result.stderr)
         self.assertFalse((self.home / "ml" / "before" / "complete").exists())
 
+    def test_listed_test_build_without_a_path_leaves_no_baseline(self):
+        self.change(lambda s: s["paths"].pop(SHIELD))
+        result = self.run_script("shield_snapshot.sh", "--out", str(self.home / "nopath"))
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn(SHIELD, result.stderr)
+        self.assertFalse((self.home / "nopath" / "before" / "complete").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
