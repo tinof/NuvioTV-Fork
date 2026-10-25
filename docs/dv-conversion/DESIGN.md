@@ -255,7 +255,36 @@ metadata and the SPS in the initialization data.
 | HEVC Main10, PQ from the container or SPS VUI, no contradicting tag | Dolby Vision 8.1 |
 | HEVC Main10, HLG from the container or SPS VUI, limited range, BT.2020 NCL matrix and BT.2020 primaries (untagged fields accepted with a log line) | Dolby Vision 8.4 |
 | HLG with a contradicting range, matrix or primaries tag | Native playback |
-| Transfer unknown at track init (for example HLG signalled only in an alternative-transfer SEI) | Native playback, unless a separately tested Format-change path is enabled |
+| HLG in an alternative-transfer SEI (preferred transfer 18) of the hvcC or the first AU, over stated transfers that are HLG-compatible (1, 6, 14, 15) or unspecified, the other fields as in the HLG row (BBC broadcast HLG) | Dolby Vision 8.4 (DV2.10) |
+| Transfer unknown at track init and no HLG SEI before the Format is published | Native playback, unless a separately tested Format-change path is enabled |
+
+**Implemented in DV2.10 (Matroska).** Broadcast HLG states an SDR transfer in the VUI (BBC broadcast
+HLG states 14, BT.2020 10-bit) and HLG only in an alternative-transfer SEI (H.265 D.2.38), so a decoder that
+ignores the SEI shows SDR; the Shield does. H.273 gives transfers 1, 6, 14 and 15 one curve, the SDR
+curve HLG is backward compatible with, so `HlgContract.resolve(container, vui, sei)` reads them, and an
+unspecified transfer, as HLG when the SEI says 18; every other field rule stays, and a stated transfer
+outside that set (PQ, linear) keeps the decision the SEI would not change. An SEI in the hvcC decides at
+track init. An SEI in the first AU is read by the extractor's early scan, the one that refines DTS
+mime types: right after the Tracks element, before the formats are published, it peeks the track's first
+block and walks its NALs up to the first slice (at most 64 KiB; `HevcInitNals.preferredTransferInAuPrefix`).
+Only a track that the SEI would make HLG is scanned: conversion on, no hvcC SEI, no encryption, no
+compression, and `resolve(..., 18)` an 8.4 decision; an encrypted or compressed track that the SEI could
+make HLG is logged as not scanned. Track init has already published a provisional HEVC Format (as for
+DTS); when the SEI says HLG, the decision table runs again and the Dolby Vision Format replaces it before
+`endTracks` and before any sample, so no sample is ever attached to the HEVC Format and there is no
+Format change during playback. The scan reads only the track's first block: a laced, empty or unsized
+first block, malformed NAL lengths, NALs before the first slice past the cap, an SEI only in a later AU,
+or a first block the scan does not reach (the end of the input or the 8 MB scan budget) leave the track
+native with a `HLG SEI scan` log line; an HLG SEI that the first written sample shows after that is
+logged as found after the Format was published. H.265 lets a prefix SEI follow a slice that is not the
+last of its AU; encoders put the alternative-transfer SEI before the first slice, and one between slices
+is not read. A read error during the scan (not the end of the input) is rethrown with the Tracks
+element still pending: the scan only peeks, so Media3's retry reuses the extractor at the same position
+and scans again (a retry of a stream of unknown length restarts at 0, where the re-read Tracks element
+starts the scan again). A Cluster or BlockGroup nested deeper than a BlockGroup in a Cluster is not
+descended into. The HLG contract log line says `HLG for 8.4 from the
+alternative transfer SEI` when the SEI decided. With conversion off nothing is scanned and nothing
+changes: the native Format keeps the transfer the container states.
 
 The Dolby Vision level comes from the stream's resolution and frame rate. If the decoder fails to
 configure, playback falls back to native. The first implementation covers Matroska; MP4 and TS each need
