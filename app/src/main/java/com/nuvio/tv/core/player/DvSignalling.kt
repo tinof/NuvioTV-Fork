@@ -81,7 +81,8 @@ internal object DvSignalling {
                 colorInfo = hlg.baseLayerColorInfo
             }
             is HlgDecision.Refused -> return DvSignallingDecision.Native("HLG refused: ${hlg.reason}")
-            // HLG signalled only in an alternative-transfer SEI lands here: native (DESIGN.md 2.5).
+            // No transfer stated and no HLG SEI seen before the Format (DV2.10 reads the hvcC and the
+            // first AU): native (DESIGN.md 2.5).
             HlgDecision.TransferUnknown -> return DvSignallingDecision.Native("transfer unknown at track init")
             HlgDecision.NotHlg -> when (val pq = HlgContract.resolvePq(container, vui)) {
                 is PqDecision.Pq81 -> {
