@@ -10,6 +10,56 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-25: DV2.10 HLG signalled in the alternative-transfer SEI (PR #19)
+
+- [DV2.10][desk] HLG signalled in the alternative-transfer SEI (BBC broadcast HLG, found in the DV3.2
+  device session on 2026-10-25: a BBC HLG sample states a non-HLG transfer in the SPS and carries
+  preferred transfer 18 in the SEI of its first AU, so it played native as SDR). When that SEI
+  says 18 and every transfer the container and the SPS state is one with the HLG-compatible curve (1,
+  6, 14 or 15, H.273) or unspecified, the HLG contract reads the track as HLG; the other field rules
+  stay. An SEI in the hvcC decides at track init; an SEI in the first AU is found by the extractor's
+  early scan (the DTS one) before the formats are published, and the Dolby Vision Format replaces the
+  provisional HEVC one before `endTracks` and any sample. An SEI found later, a laced, empty, compressed
+  or encrypted first block, or an SEI past the scan cap leaves the track native, with a `HLG SEI scan`
+  log line; a read error during the scan is rethrown so the loader's retry scans again. Gate: unit tests: the contract rows (14 and 1 lifted, a container 18 over
+  SPS 14 accepted, SPS 16 with SEI 18 not HLG, the unspecified case); through the vendored extractor, an
+  SEI in the hvcC and in the first block converts with one RPU per AU and the Dolby Vision Format
+  before `endTracks`, an audio block before the first video block, an SEI only in a later AU, a laced
+  first block, zlib and header-strip compression, conversion off (no scan) and a non-VCL prefix past
+  the cap stay native. Needs: DV2.4, DV2.7.
+
+**Evidence**
+
+- Gate `:app:testFullDebugUnitTest`: 6790 tests, 0 failures, 10 skipped, on the final head.
+- New tests: `MatroskaSeiHlgScanTest` (17, through the vendored extractor: an SEI in the first block
+  converts with the Dolby Vision Format before `endTracks` and one RPU per AU; an SEI in the hvcC converts
+  at track init with one RPU per AU and no scan; an audio block before the first video block; a mid-file
+  start; an SEI only in a later AU, a non-HLG SEI, laced, empty, header-strip and zlib first blocks, a
+  prefix past the cap and conversion off stay native, each asserting its logged reason; deep nesting
+  without a stack overflow; a read error with a resumed retry, three read errors in a row, and a retry
+  from the file start; a Cluster after an unknown-size Cluster). Contract rows in `HlgContractTest` (the
+  compatible transfers 1, 6, 14, 15 lifted, container HLG over SPS 14, PQ not lifted, the unspecified
+  case, the other field rules, a refusal credited to the SEI only when the SEI caused it, the log
+  wording) and `MatroskaHlgContractTest`; the prefix walker in `HevcInitNalsTest`. Two DV2.4 tests that
+  asserted the SEI never changes the decision follow the new rule.
+- Before `/ship`, three Claude reviewers (Opus) and a skeptic read the branch, then a second Opus pass
+  read the fixes; fixed on the branch before the cold review: an unbounded scan recursion, a transient read
+  error leaving the track native for the playback, an empty first block letting a later AU decide, a retry
+  of a stream of unknown length (Media3 restarts at 0), missing log lines for compressed blocks, negative
+  tests that passed for the wrong reason, and source-specific wording. Each fix was mutation-checked.
+- Review (Tier 1, codex gpt-6.1-sol/high): F1 FIXED (a resumed retry read past the first AU before the
+  pending scan; red on the reviewed head with three scan read errors) and F2 FIXED (a Cluster after an
+  unknown-size Cluster was read as nested and the depth guard skipped its BlockGroup). No P2 notes.
+- CI: the `Checks` workflow on PR #19.
+- Found in the DV3.2 device session on 2026-10-25: a BBC broadcast HLG sample logged
+  `HLG contract, track 1: not HLG; alternative transfer SEI 18 (not acted on)` and played as SDR. The
+  device check of the conversion is DV3.2.
+
+**Resolution:** when an alternative-transfer SEI says HLG over an HLG-compatible or unspecified stated
+transfer, the HLG contract reads the track as HLG; an SEI in the hvcC decides at track init and one in the
+first AU is read by the early scan before the formats are published, so the Dolby Vision Format replaces
+the provisional HEVC one before `endTracks` and any sample.
+
 ## 2026-10-24: DV2.7 Extractor injection for tracks that carry no Dolby Vision (PR #17)
 
 - [DV2.7][desk] Extractor injection for tracks that carry no Dolby Vision: when DV2.3 converts a
