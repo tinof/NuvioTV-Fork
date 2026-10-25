@@ -823,6 +823,18 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   starts a generation that dumps its first N AUs again; an HLS or a DASH Dolby Vision title is dumped; on
   an Amlogic box with native FEL, if one is at hand, a Profile 7 title is dumped. Gate: the captures and
   `scripts/rpu_dump_to_bin.py --list` output in the log. Needs: DV2.8.
+- [DV2.11][desk] HLG tracks whose hvcC carries no parameter sets (found in the DV3.2 device session on
+  2026-10-25 with the DV2.10 build: the BBC broadcast HLG samples have an hvcC with no arrays, so the
+  VPS, SPS and PPS travel only in the access units; with no SPS at track init the HLG contract refused
+  and the SEI was never acted on). A track whose hvcC has no SPS waits for the early scan, which reads
+  the parameter sets and the alternative-transfer SEI from the first AU before the formats are
+  published; the contract decides again with that SPS, and a converted track gets the AU's parameter
+  sets as its initialization data. The extractor logs the decision's inputs (container Colour, the
+  parsed SPS, and for an unreadable SPS the hvcC's NAL types and SPS bytes). Gate: unit tests through the
+  vendored extractor: an empty hvcC with the device's container Colour (9/14/9) and the SPS and HLG SEI
+  in the first AU converts before `endTracks` with one RPU per AU and the AU's parameter sets as
+  initialization data; an in-band SPS that states HLG converts without an SEI; an in-band SPS that is
+  not HLG, a first AU without parameter sets and conversion off stay native. Needs: DV2.10.
 - [DV5.1][desk] Renderer replacement (moved here from DV5, ID kept): RPUs written off the renderer
   thread, the swap at `onQueueInputBuffer` in the verified framings, shot commitment, AU identity,
   analysis generations and the completeness watermark. Gate: the tests of `DESIGN.md` 2.3 and 2.4 pass.
@@ -845,7 +857,7 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   tint; a BBC broadcast HLG sample (HLG only in the SEI, DV2.10) converts and its HLG contract log line names
   the SEI; the DV2.8 dump validates with `dovi_tool info`; a mid-file start and seeks played with both
   settings of the scene-refresh switch (`DESIGN.md` 2.2), the default kept or changed from what the TV
-  shows. Needs: DV2.4, DV2.7, DV2.8, DV2.10.
+  shows. Needs: DV2.4, DV2.7, DV2.8, DV2.10, DV2.11.
 - [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. The MaxCLL/MaxFALL heuristic is
   not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); where it lives is decided when this step
   starts. Gate: G-E A/B recorded; the default stays off unless the owner prefers it. Needs: DV2.7.
