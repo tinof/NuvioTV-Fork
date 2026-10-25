@@ -256,6 +256,7 @@ metadata and the SPS in the initialization data.
 | HEVC Main10, HLG from the container or SPS VUI, limited range, BT.2020 NCL matrix and BT.2020 primaries (untagged fields accepted with a log line) | Dolby Vision 8.4 |
 | HLG with a contradicting range, matrix or primaries tag | Native playback |
 | HLG in an alternative-transfer SEI (preferred transfer 18) of the hvcC or the first AU, over stated transfers that are HLG-compatible (1, 6, 14, 15) or unspecified, the other fields as in the HLG row (BBC broadcast HLG) | Dolby Vision 8.4 (DV2.10) |
+| An hvcC without an SPS (parameter sets only in the access units): the first AU's SPS and alternative-transfer SEI, read before the Format is published, decide as in the rows above | As those rows (DV2.11) |
 | Transfer unknown at track init and no HLG SEI before the Format is published | Native playback, unless a separately tested Format-change path is enabled |
 
 **Implemented in DV2.10 (Matroska).** Broadcast HLG states an SDR transfer in the VUI (BBC broadcast
@@ -286,6 +287,18 @@ the first AU. A Cluster after an unknown-size Cluster is read as its sibling, an
 nested deeper than a BlockGroup in a Cluster is not descended into. The HLG contract log line says `HLG for 8.4 from the
 alternative transfer SEI` when the SEI decided. With conversion off nothing is scanned and nothing
 changes: the native Format keeps the transfer the container states.
+
+**Implemented in DV2.11 (Matroska).** The BBC broadcast HLG samples of the DV3.2 device session have an
+hvcC with no parameter-set arrays: the VPS, SPS and PPS travel only in the access units, so track init
+had no SPS, the HLG contract refused ("no readable SPS") and the SEI could not act. A track whose hvcC
+has no SPS is a scan candidate too: the early scan collects the parameter sets with the SEI from the
+NALs before the first slice of the first AU (`HevcInitNals.readAuPrefix`), the contract decides again
+with that SPS (an in-band SPS that states HLG converts without an SEI), and a converted track gets the
+AU's parameter sets as its initialization data, one Annex B buffer as Media3's `HevcConfig` builds it,
+so the Dolby Vision decoder has them before the first sample. A native track keeps its empty
+initialization data. Track init logs the decision's inputs (`HLG inputs`: the container Colour, the
+parsed SPS, and for an unreadable SPS the hvcC's NAL types and SPS bytes), and an HEVC track an HLG SEI
+could not convert says why (`not scanned, an HLG SEI would give …`).
 
 The Dolby Vision level comes from the stream's resolution and frame rate. If the decoder fails to
 configure, playback falls back to native. The first implementation covers Matroska; MP4 and TS each need
