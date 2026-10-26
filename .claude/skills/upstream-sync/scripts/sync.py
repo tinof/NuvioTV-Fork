@@ -7,6 +7,8 @@ Commands:
   drops --decisions classify.json --range BASE..TIP
   verify --base-old R --old R --base-new R --new R --upstream R [--main-new R]
          [--decisions classify.json] [--expect-drop SHA,...] [--allow-same PATH ...] [--allow-changed PATH ...]
+         [--protected-drop SHA,...] [--creation-factor N]
+  protected-apk <apk>
   test-failures <junit-xml-dir>
 
 Exit codes: 0 ok, 1 a check failed or the sync is blocked, 2 usage or environment error, 3 nothing to do.
@@ -202,6 +204,31 @@ def decisions(classify):
     return (list(summary) if summary is not None else drops), hints
 
 
+def feature_of(files, features, subject=""):
+    """The key of the first protected feature (sync.json protected_features) whose anchors match one of [files] or
+    whose subjects pattern matches [subject]; a feature commit that touches only shared files is found by subject."""
+    for f in features:
+        if any(re.search(p, path) for p in f["anchors"] for path in files):
+            return f["key"]
+        if subject and f.get("subjects") and re.search(f["subjects"], subject):
+            return f["key"]
+    return None
+
+
+def added_lines(diff_text):
+    """`git show -U0 --format= <sha>` output -> {path: [added line, stripped]}, skipping lines too short to tell
+    apart (braces, blank lines, comment fences), which a merge can legitimately move."""
+    out, path = {}, None
+    for line in diff_text.splitlines():
+        if line.startswith("+++ "):
+            path = line[6:] if line.startswith("+++ b/") else None
+        elif line.startswith("+") and path:
+            text = line[1:].strip()
+            if len(text) > 3 and text not in ("});", "/**", "*/", "})", "),"):
+                out.setdefault(path, []).append(text)
+    return out
+
+
 def in_range(drops, shas):
     """The drops that name one of [shas] (full SHAs of a layer's commits), and the rest."""
     hit = [d for d in drops if any(sha_matches(s, d) for s in shas)]
@@ -367,12 +394,14 @@ def cmd_map_overlap(a, cfg):
     conflicts = parse_merge_tree(r.stdout, r.returncode)
     themes, scale = cfg["themes"], cfg["scale"]
     by_theme, auto_clean = collections.OrderedDict((t["key"], []) for t in themes), []
+    features = cfg.get("protected_features", [])
     for c in fork_commits:
+        c["protected"] = feature_of(c["files"], features, c["subject"])
         c["overlapFiles"] = [f for f in c["files"] if f in overlap]
         if c["overlapFiles"]:
             by_theme[commit_theme(c["overlapFiles"], themes, c["subject"])].append(c)
         else:
-            auto_clean.append({k: c[k] for k in ("sha", "subject", "layer", "files")})
+            auto_clean.append({k: c[k] for k in ("sha", "subject", "layer", "files", "protected")})
     overlap_commits = sum(len(v) for v in by_theme.values())
     tier = scale_tier(overlap_commits, len(conflicts), scale)
     focus = {t["key"]: t["focus"] for t in themes}
@@ -454,7 +483,11 @@ def cmd_verify(a, cfg):
         entries = [{"old": c["sha"][:9], "new": None, "mark": "<", "subject": c["subject"], "changed": []}
                    for c in commits_with_files(f"{a.base_old}..{a.old}")]
     else:
-        entries = parse_range_diff(out("range-diff", "--no-color", f"{a.base_old}..{a.old}", f"{a.base_new}..{a.new}"))
+        # A commit whose diff changed a lot (a binary next to a rewritten README) needs a higher creation factor to
+        # pair with its rebased self; at git's default of 60 it shows as one dropped and one new commit.
+        cf = getattr(a, "creation_factor", None)
+        entries = parse_range_diff(out("range-diff", "--no-color", *([f"--creation-factor={cf}"] if cf else []),
+                                       f"{a.base_old}..{a.old}", f"{a.base_new}..{a.new}"))
     marks = collections.Counter(e["mark"] for e in entries)
     report = [f"## Verify {a.old} -> {a.new}", "",
               f"range-diff: {marks.get('=', 0)} identical, {marks.get('!', 0)} changed, "
@@ -521,7 +554,48 @@ def cmd_verify(a, cfg):
     if r.returncode == 0:
         fails += [f"conflict marker: {l}" for l in r.stdout.splitlines()[:20]]
 
-    # 7. Up to date and layered.
+    # 7. Protected features: every line their kept commits added that the old tip still has must be on the new tip,
+    # in any file (shared player files included), and none of their commits may be dropped without the owner.
+    approved = [d for d in (getattr(a, "protected_drop", None) or "").split(",") if d]
+    protected_report = []
+    contents = {}
+
+    def text_lines(ref, path):
+        if (ref, path) not in contents:
+            r = git("show", f"{ref}:{path}", check=False)
+            contents[(ref, path)] = {l.strip() for l in r.stdout.splitlines()} if r.returncode == 0 else set()
+        return contents[(ref, path)]
+
+    for feature in cfg.get("protected_features", []):
+        mine = [c for c in old_commits if feature_of(c["files"], [feature], c["subject"])]
+        checked = lost_total = 0
+        for c in mine:
+            if c in dropped:
+                if any(sha_matches(c["sha"], d) for d in approved):
+                    notes.append(f"protected drop approved by the owner: {c['sha'][:9]} ({feature['key']})")
+                else:
+                    fails.append(f"protected feature {feature['key']}: commit {c['sha'][:9]} '{c['subject']}' was "
+                                 f"dropped; ask the owner, then pass --protected-drop {c['sha'][:9]}")
+                continue
+            for path, added in added_lines(out("show", "-U0", "--no-renames", "--format=", c["sha"])).items():
+                if path in allow_changed or path in allow_same:
+                    continue
+                still = [l for l in added if l in text_lines(a.old, path)]
+                target = renames.get(path, path)
+                lost = [l for l in still if l not in text_lines(a.new, target)]
+                checked += len(still)
+                lost_total += len(lost)
+                if lost:
+                    fails.append(f"protected feature {feature['key']}: {target} lost {len(lost)} line(s) that "
+                                 f"{c['sha'][:9]} added, e.g. `{lost[0][:100]}`")
+        for path in feature.get("binaries", []):
+            if path not in allow_changed and blob(a.old, path) != blob(a.new, path):
+                fails.append(f"protected feature {feature['key']}: binary {path} differs from {a.old}")
+        protected_report.append(f"- {feature['key']}: {len(mine)} commits, {checked} lines checked, {lost_total} lost")
+    if protected_report:
+        report += ["### Protected features", "", *protected_report, ""]
+
+    # 8. Up to date and layered.
     behind = int(out("rev-list", "--count", f"{a.new}..{a.upstream}"))
     if behind:
         fails.append(f"{a.new} is {behind} commits behind {a.upstream}")
@@ -531,6 +605,30 @@ def cmd_verify(a, cfg):
     report += ["### Notes", "", *[f"- {n}" for n in notes or ["none"]], "", "### Result", ""]
     report += [f"- FAIL: {f}" for f in fails] or ["- all checks pass"]
     print("\n".join(report))
+    return FAIL if fails else OK
+
+
+def cmd_protected_apk(a, cfg):
+    """Each protected feature's native library is in the APK and carries its marker strings."""
+    import zipfile
+    fails = []
+    with zipfile.ZipFile(a.apk) as z:
+        names = set(z.namelist())
+        for feature in cfg.get("protected_features", []):
+            spec = feature.get("apk")
+            if not spec:
+                continue
+            if spec["lib"] not in names:
+                fails.append(f"{feature['key']}: {spec['lib']} is not in the APK")
+                continue
+            data = z.read(spec["lib"])
+            missing = [m for m in spec.get("strings", []) if m.encode() not in data]
+            if missing:
+                fails.append(f"{feature['key']}: {spec['lib']} has no {', '.join(missing)}")
+            else:
+                print(f"{feature['key']}: {spec['lib']} ({len(data)} bytes) ok")
+    for f in fails:
+        print(f"FAIL: {f}")
     return FAIL if fails else OK
 
 
@@ -569,13 +667,18 @@ def main(argv):
     s.add_argument("--expect-drop")
     s.add_argument("--allow-same", action="append")
     s.add_argument("--allow-changed", action="append")
+    s.add_argument("--protected-drop", help="owner-approved drops of protected-feature commits, SHA[,SHA...]")
+    s.add_argument("--creation-factor", type=int, default=100, help="git range-diff --creation-factor (default 100)")
+    s = sub.add_parser("protected-apk")
+    s.add_argument("apk")
     s = sub.add_parser("test-failures")
     s.add_argument("dir")
     a = p.parse_args(argv)
     cfg = load_config()
     try:
         return {"preflight": cmd_preflight, "map-overlap": cmd_map_overlap, "todo-edit": cmd_todo_edit, "drops": cmd_drops,
-                "verify": cmd_verify, "test-failures": cmd_test_failures}[a.cmd](a, cfg)
+                "verify": cmd_verify, "protected-apk": cmd_protected_apk,
+                "test-failures": cmd_test_failures}[a.cmd](a, cfg)
     except RuntimeError as e:
         print(f"sync.py {a.cmd}: {e}", file=sys.stderr)
         return USAGE

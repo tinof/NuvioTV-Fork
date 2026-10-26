@@ -28,6 +28,12 @@ behind the fork is.
 - **Owner rule (`owner_rule` in `sync.json`):**
   - If upstream changes a setting the Shield plan also sets, keep the fork's value. Gate it on Nvidia, give it a `debug.nuvio.*` revert switch, and add a row to `docs/shield-todo.md`.
   - If the plan has no such setting, take upstream's value and list it under "Upstream defaults taken with the sync of <date>".
+- **Protected features (`protected_features` in `sync.json`):** the AAC-to-DTS / DTS-HD MA transcode and the
+  HLG-to-Dolby-Vision conversion are what the owner keeps the fork for. A commit of either is never dropped or
+  partly superseded without the owner, even where the owner rule would settle it, and every line it adds must
+  survive the rebase (`verify` checks both).
+- **Gradle runs on JDK 17:** prefix every `./gradlew` with `JAVA_HOME=$(/usr/libexec/java_home -v 17)`; the system
+  Java is newer than upstream's Gradle can run on.
 - **Stop and ask the owner** before:
   - dropping a commit;
   - any setting decision the owner rule does not settle;
@@ -51,7 +57,7 @@ On a block, report it and stop. The owner merges, rebases or deletes such branch
 
 1. Fetch both remotes. Then `git config rerere.enabled true` and `git config rerere.autoupdate true`.
 2. Create backup branches `backup/main-pre-sync-<date>` and `backup/perf-pre-sync-<date>` from the origin tips. Record the full old SHAs `OLD_MAIN` and `OLD_PERF`. Add local tags `sync/<date>/old-main` and `sync/<date>/old-perf`.
-3. Create the worktree: `git worktree add -b sync/<date>-perf ../NuvioTV-Fork-wt/upstream-sync OLD_PERF`, and copy `local.properties` into it (it is gitignored).
+3. Create the worktree: `git worktree add -b sync/<date>-perf ../NuvioTV-Fork-wt/upstream-sync OLD_PERF`, and copy `local.properties` and `app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so` into it (both are gitignored; without the library an APK built there has Dolby Vision conversion off).
 4. Run the baseline gate on plain `upstream/main` in a second worktree. Use the contract's `gate` command (JDK 17 and `ANDROID_HOME` per `.claude/workflow.md`; the first run takes about 6 minutes). Save the failures to `<scratch>/baseline-failures.txt`: from the repository root, run `python3 -I $S/sync.py test-failures <baseline worktree>/app/build/test-results/testFullDebugUnitTest`. Use the absolute path; the baseline worktree has no skill, and a relative path would read this checkout's results. Upstream's own failures are not the sync's fault; `sync.json` lists the known ones.
 
 ## 3. Map
@@ -73,6 +79,7 @@ Scale tiers:
 3. If `summary.complete` is false, rerun the failed groups (`summary.failedGroups`) until every commit has a verdict: `summary.unclassified` lists the commits without one.
 4. Check the `file:line` claims behind every drop, adapt and partial verdict yourself before you use them.
 5. Show the owner the drop list (with the reason, e.g. "net-zero pair" or "upstream does it in <sha>"), the adapt list and every setting decision. Wait for answers where the owner rule does not settle a decision.
+6. `summary.protectedAsk` lists drop and partial verdicts on protected-feature commits. Each one is the owner's decision; an approved drop is passed to `verify` as `--protected-drop <sha>`.
 
 ## 5. Rebase the base layer
 
@@ -118,21 +125,40 @@ to `todo-edit` as in step 6. Resolve conflicts as in step 6.
    `--decisions` turns this layer's decided drops into expected drops (a drop that belongs to the other layer is
    only a note) and prints hints for adapt verdicts; it never waives a path itself.
 
-   **What verify cannot see:** a file upstream also changed passes as long as it still differs from upstream, so
-   losing one of two fork hunks in it is invisible to the script. The `!` hunks in the report and the review in
-   step 7.5 are the only check for that; read every `!` hunk of a commit with more than one hunk in such a file.
+   Two more flags: `--protected-drop <sha,...>` accepts owner-approved drops of protected-feature commits, and
+   `--creation-factor N` (default 100) is passed to `git range-diff`; at git's own 60 a commit whose diff changed a
+   lot (a binary next to a rewritten README) shows as one dropped and one new commit.
+
+   **Protected features** (report section of that name): for each feature, the commits it owns (by path anchor or
+   subject) and every line they added that the old tip still has. A line missing from the new tip, in any file,
+   fails, and so does a changed protected binary. This is the check the line-blind path checks lack.
+
+   **What verify cannot see:** outside the protected features, a file upstream also changed passes as long as it
+   still differs from upstream, so losing one of two fork hunks in it is invisible to the script. The `!` hunks in
+   the report and the review in step 7.6 are the only check for that; read every `!` hunk of a commit with more
+   than one hunk in such a file.
 4. Run the full gate in the worktree. Compare `sync.py test-failures` with the baseline: any new failure blocks.
-5. Have one independent Opus `medium` reviewer read the `!` hunks from the verify report together with `resolutions.md`. Check its claims before acting on them.
+   Run the gate on `NEW_MAIN` as well (in the baseline worktree): `main` has no CI workflow of its own.
+5. Build the APK in the worktree (`./gradlew :app:assembleFullDebug`, JDK 17): it is the only check that runs aapt
+   (the locale trap) and the native builds. Then `python3 -I $S/sync.py protected-apk
+   app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk` must pass: the DTS-HD MA writer in
+   `libffmpegJNI.so` and `libnuvio_rpu.so` for the Dolby Vision conversion.
+6. Have one independent Opus `medium` reviewer read the `!` hunks from the verify report together with `resolutions.md`. Check its claims before acting on them.
 
 ## 8. CI on pushed candidates
 
-`PR Full Debug Build` builds the dispatched remote ref, so publish the candidates first:
+`Checks` (unit tests; the binary workflows are disabled since 2026-10-22) runs on the dispatched remote ref, so
+publish the candidates first:
 1. `git push origin NEW_MAIN:refs/heads/sync/<date>-main NEW_PERF:refs/heads/sync/<date>-perf`
-2. Dispatch `gh workflow run "PR Full Debug Build" --ref <branch>` on both branches.
-3. Find each run with `gh run list --workflow "PR Full Debug Build" --json databaseId,headSha`, and wait for green on the exact SHAs.
+2. Dispatch `gh workflow run Checks --ref sync/<date>-perf`. `main` has no `Checks` workflow: its evidence is the
+   local gate from step 7.4.
+3. Find the run with `gh run list --workflow Checks --json databaseId,headSha`, and wait for green on the exact SHA.
 
 ## 9. Publish (ask the owner first)
 
+0. `git fetch upstream` and check `git merge-base --is-ancestor <the upstream tip you synced to> upstream/main`.
+   Upstream has rewritten already-synced history (2026-10-26: same trees, new SHAs). If only the SHAs changed,
+   rebase both layers onto the new tip with `--onto`, check that both trees are identical, and run step 8 again.
 1. Push both layers in one atomic, leased push:
    ```
    git push --atomic origin --force-with-lease=refs/heads/main:<OLD_MAIN> \
