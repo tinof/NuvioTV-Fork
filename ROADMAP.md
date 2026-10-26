@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-26 | U1.5: rebased onto upstream 1.1.0-nt.8.1 (official 1.1.0-beta.8); three fork commits dropped as upstream does the same; the AAC-to-DTS and HLG-to-Dolby-Vision work is now a protected feature that `/upstream-sync` checks line by line. | U1 | [log](docs/ROADMAP_LOG.md), PR #22 |
 | 2026-10-26 | M2.1 shipped: `shield_snapshot.sh` and `shield_restore.sh` save the Shield's state before a device session and put it back after, writing a setting back only when the session named it; one round trip on the Shield ended clean with an empty diff. | M2 | [log](docs/ROADMAP_LOG.md), PR #21 |
 | 2026-10-25 | DV2.11 shipped: a Matroska HEVC track whose hvcC carries no parameter sets (BBC broadcast HLG) takes its SPS and alternative-transfer SEI from the first AU before the formats are published, and a converted track gets the AU's parameter sets as its initialization data. | DV2 | [log](docs/ROADMAP_LOG.md), PR #20 |
 | 2026-10-25 | DV2.10 shipped: HLG signalled only in the alternative-transfer SEI (BBC broadcast HLG) converts to Dolby Vision 8.4; the SEI is read from the hvcC at track init or from the first AU by the extractor's early scan before the formats are published, and every case the scan cannot read stays native with a log line. | DV2 | [log](docs/ROADMAP_LOG.md), PR #19 |
@@ -234,8 +235,8 @@ because a wrong passthrough path is invisible until measured.
 ### R3: small correctness fixes
 
 - **Status:** Open. Findings A-M3, A-M7.
-- [R3.1][desk] Make the four `PlayerSettings` data-class defaults Nvidia-aware, as `libassRenderType` already
-  is (`PlayerSettingsDataStore.kt:263, 307, 309, 311`); the corrupt-store fallback at `:1418` uses them. Gate:
+- [R3.1][desk] Make the four `PlayerSettings` data-class defaults Nvidia-aware, the way `libassRenderType` was
+  until the sync of 2026-10-26 made it inert (a `default…()` function with a `debug.nuvio.*` switch) (`PlayerSettingsDataStore.kt:263, 307, 309, 311`); the corrupt-store fallback at `:1418` uses them. Gate:
   unit test on a Nvidia profile.
 - [R3.2][desk] Save watch progress on the mpv lifecycle pause (`PlayerRuntimeControllerMpv.kt:247-254`), so a
   CEC sleep keeps the resume point. Gate: unit or integration test.
@@ -353,7 +354,8 @@ because a wrong passthrough path is invisible until measured.
   - Add a `debug.nuvio.*` switch for the margin.
   - Gate: unit tests, including a pressure burst shorter than 10 s.
 - [Q5.4][desk] Nvidia default: an automatic budget of about 300 MB on 3 GB `mdarcy` (`BufferSizing.kt:17`).
-  - Count the parallel chunk window inside the budget (`BufferSizing.kt:79`).
+  - Count the parallel chunk window inside the budget (`BufferSizing.kt:81`). Since the sync of 2026-10-26,
+    `spareMb` keeps a 28 MB margin (47d1c5834) instead of 100 + 40 MB, so measure the baseline again first.
   - Gate it by `DeviceProfile`, with a revert switch and a row in `docs/shield-todo.md`.
   - Gate: unit test.
 - [Q5.5][desk] Hysteresis.
@@ -605,8 +607,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### U1: upstream pull requests
 
-- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-20 (onto
-  1.1.0-nt.7.3, official NuvioTV 1.1.0-beta.7). The open "Upstream drift" issue (label `upstream-drift`)
+- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-26 (onto
+  1.1.0-nt.8.1, official NuvioTV 1.1.0-beta.8). The open "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on `main` keeps it current.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
@@ -633,9 +635,8 @@ because a wrong passthrough path is invisible until measured.
 - **Status:** Partial. The corrections to [`docs/shield-todo.md`](docs/shield-todo.md) listed in the log
   (2026-10-15) were applied with this roadmap. Findings A-M1, A-M4 to A-M6, B6, C12, W5, H6, H7, P-09, P-10.
 - [D1.1][desk] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Gate: string present in every locale.
-- Deferred with R1.3 (2026-10-18): D1.2, the settings label for libass. Overlay OpenGL is still marked
-  "recommended" although Nvidia starts on canvas; change it after the R1.3 subtitle check. Gate: label
-  matches the default.
+- Closed by the sync of 2026-10-26: D1.2, the settings label for libass. Upstream's atlas pipeline (4f2fd58e2)
+  always renders the same way and the settings no longer offer a render type, so there is no label to fix.
 - Closed: the Shield thermal threshold is not readable without root on SE 9.2.4; it stays unset.
 
 ## Appendix A: on-device Dolby Vision conversion

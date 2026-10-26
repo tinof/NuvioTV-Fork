@@ -10,6 +10,84 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-26: U1.5 sync onto upstream 1.1.0-nt.8.1 (PR #22)
+
+- [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits behind
+  at each pull request.
+
+**Counts**
+
+- Upstream: 219 commits since the merge base `d857068ee` (53 first-parent), 300 files, up to 1.1.0-nt.8.1
+  (official NuvioTV 1.1.0-beta.8). Fork: 15 base-layer and 218 Shield commits.
+- Map: tier `fanout`, 97 fork commits touch files upstream changed, 25 files conflicted in a trial merge,
+  136 fork commits replayed with no overlap. Classify: 9 Opus analysts and a critic; 78 keep-clean,
+  14 keep-resolve, 2 adapt, 1 partial, 2 drops proposed.
+- Result: `main` = upstream + 15 commits (all identical), `perf/shield-pass` = `main` + 215 commits
+  (194 identical, 21 changed in the rebase, 3 dropped).
+
+**Drops (owner-approved)**
+
+- 605e1512d native libraries load from the APK: upstream does it (`useLegacyPackaging = false`, 1929fe0d7,
+  aa9ef82d1).
+- 8ead59db2 seek thumbnails start on on the Shield TV Pro 2019: upstream's 2,600 MB floor (25ac9a184)
+  already covers its 2946 MB, and the revert switch could no longer turn them off.
+- a6abe6ddf libass starts with the canvas overlay on Nvidia: upstream's atlas pipeline (4f2fd58e2) makes the
+  render type inert.
+
+**Setting decisions**
+
+- Image disk cache: upstream's rule in the rebase (the Shield would get 200 MB); the owner chose an
+  Nvidia-gated 300 MB tier on top, `debug.nuvio.image_cache_tier` (this PR).
+- FFmpeg decoder AAR: the fork's binary stays (DTS target). Its Java API is a superset of upstream's
+  (javap). Upstream's LFE stereo-downmix change is in the module source only.
+- Every other upstream default is taken; the list is in `docs/shield-todo.md`, "Upstream defaults taken
+  with the sync of 2026-10-26".
+
+**Resolutions**
+
+- 14 conflict stops, each recorded with the file, what was kept and why: Silo start body, AudioCapabilityReport
+  probes, DecodeOrderPtsVideoRenderer, PlayerScreen aspect mode, eight locales and the renamed Hungarian file,
+  README and app/libs README, FfmpegForkRoutingTest, AudioRoutingSnapshot, the Audio path row, the DV failure
+  helper, and the libass build path for the RPU dump.
+- One resolution error found in review of the range-diff and fixed before the push: the
+  "Previous FFmpeg AAR (0.9.3-beta-nt1)" section had taken upstream's hash.
+
+**Evidence**
+
+- `sync.py verify` layer 1: 15 identical, all checks pass. Layer 2 (with `--allow-same` for the image cache
+  files and the renamed Hungarian file): all checks pass at range-diff creation factor 100; at git's default
+  of 60, 00293d374 showed as dropped and new although its subject, files and AAR blob match.
+- Protected features (verify of this PR on the same sync): aac-to-dts 43 commits, 5687 lines checked, 0 lost;
+  hlg-to-dv 82 commits, 11075 lines checked, 0 lost.
+- Gate `:app:testFullDebugUnitTest` on the perf candidate: 7315 tests, 0 failures (baseline on plain upstream:
+  only `LocalhostZeroCopyDataSourceTest.testHttpError404`, which the fork's datasource AAR fixes). Gate on the
+  main candidate: 0 failures. `assembleFullDebug` built the arm64 and armv7 APKs.
+- Review: one independent Opus reviewer read the 21 changed commits and the tip-to-tip diff of all 368 fork
+  files; no blockers, three doc findings fixed in this PR.
+- CI: `Checks` green on the published perf SHA (run 40288021616).
+- Upstream rewrote its last 20 commits after the first push (same trees, AI trailers removed). Both layers
+  were rebased onto the new tip `3b1643198`, the trees checked identical, CI run again, and pushed a second
+  time with a lease. Drift issue #10 closed.
+
+**This PR**
+
+- feat(images): the Nvidia 300 MB image disk cache tier.
+- Docs: shield-todo rows for the dropped commits removed, the upstream defaults listed, README and
+  app/libs README updated, R3.1, D1.2 and Q5.4 updated.
+- `/upstream-sync`: the AAC-to-DTS transcode and the HLG-to-Dolby-Vision conversion are protected features
+  (owner, 2026-10-26); verify checks their lines, binaries and drops; `protected-apk` checks the APK;
+  creation factor 100; step 8 uses `Checks`; `main` is gated locally; JDK 17; the publish checks for an
+  upstream history rewrite.
+
+**Open**
+
+- The committed decoder AAR lacks upstream's LFE downmix change; a rebuild without the dcaxll writer is the
+  owner's call.
+- `main` has no CI workflow; whether `checks.yml` moves to the base layer is the owner's call.
+- README's section on GitHub Actions APK builds predates PR #11 and needs a rewrite.
+- Device check on the Shield from a build of the new tip: one AAC title (DTS-HD MA on the HT-A9) and one HLG
+  title (Dolby Vision on the TV).
+
 ## 2026-10-26: M2.1 Snapshot and restore scripts (PR #21)
 
 - [M2.1][desk][device] Scripts `scripts/shield_snapshot.sh` and `scripts/shield_restore.sh` (serial and
