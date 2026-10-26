@@ -27,9 +27,12 @@ class ImdbStreamSelector @Inject constructor() {
         video: ImdbTrailerData.Video,
         loadManifest: suspend (String) -> String? = { fetch(it) }
     ): Selection = withContext(Dispatchers.IO) {
-        val mp4 = ImdbTrailerData.bestMp4(video)
-        // 4K progressive needs no extra request. Prefer progressive at equal resolution for startup.
-        if (mp4 != null && mp4.height >= 2160) return@withContext Selection(TrailerPlaybackSource(mp4.url), true)
+        // Trailers are capped at 1080p (TrailerPlayerPool's track selector), so a 1080p progressive file
+        // needs no extra request. Prefer progressive at equal resolution for startup.
+        val mp4 = bestCappedMp4(video)
+        if (mp4 != null && mp4.height >= TRAILER_MAX_VIDEO_HEIGHT) {
+            return@withContext Selection(TrailerPlaybackSource(mp4.url), true)
+        }
         var best = mp4?.let { TrailerPlaybackSource(it.url) }
         var height = mp4?.height ?: 0
         var complete = true
@@ -40,15 +43,19 @@ class ImdbStreamSelector @Inject constructor() {
                 if (manifest == null) { complete = false; continue }
                 val manifestHeight = highestManifestResolution(manifest)
                 if (manifestHeight == 0) complete = false
-                if (manifestHeight >= 720 && manifestHeight > height) {
+                // A 4K rendition plays at 1080p anyway, so it does not beat a 1080p progressive file.
+                val playableHeight = minOf(manifestHeight, TRAILER_MAX_VIDEO_HEIGHT)
+                if (playableHeight >= 720 && playableHeight > height) {
                     // Return the master to retain external audio groups; the shared track selector
-                    // already requests the highest supported video bitrate without a size cap.
+                    // picks the highest bitrate up to 1080p.
                     best = TrailerPlaybackSource(encoding.url)
-                    height = manifestHeight
+                    height = playableHeight
                 }
             }
             true
         }
+        // Only a file above 1080p left: a trailer beats none, though it decodes at full size.
+        if (best == null) best = ImdbTrailerData.bestMp4(video)?.let { TrailerPlaybackSource(it.url) }
         Selection(best, complete && finished == true)
     }
 
@@ -82,6 +89,9 @@ class ImdbStreamSelector @Inject constructor() {
     }
 
     internal companion object {
+        fun bestCappedMp4(video: ImdbTrailerData.Video): ImdbTrailerData.Encoding? = video.encodings
+            .filter { it.mp4 && it.height in 720..TRAILER_MAX_VIDEO_HEIGHT }.maxByOrNull { it.height }
+
         fun highestManifestResolution(manifest: String): Int {
             if (!manifest.trimStart().startsWith("#EXTM3U")) return 0
             val lines = manifest.lineSequence().map { it.trim() }.toList()
