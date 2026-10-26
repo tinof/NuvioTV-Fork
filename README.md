@@ -33,14 +33,14 @@ revert values and what to look at on the device, is in [docs/shield-todo.md](doc
 | HDR and Dolby Vision display | Dolby Vision plays untunnelled. Hardware DV decoders are tried first on DV displays. HDR10 metadata injection on DV strip is on. HDR video plays at Fit instead of a view-scaled aspect mode, so it can stay on an overlay plane. Dolby Vision Profile 7 is handled separately and is still in progress. |
 | mpv | Decodes with direct MediaCodec (`mediacodec,mediacodec-copy`) and tone maps with `bt.2446a`, no peak detection. |
 | Seek thumbnails and memory | Thumbnails start on for `mdarcy` when no mode was chosen. The low-RAM tier comes from device RAM when the buffers are off-heap. |
-| UI | Opaque black window background outside playback. libass starts with the canvas overlay. The device assessment has Shield notes (the system "Match frame rate", resolution matching and AI upscaling, Dolby audio processing). |
+| UI | Opaque black window background outside playback. The device assessment has Shield notes (the system "Match frame rate", resolution matching and AI upscaling, Dolby audio processing). |
 | Logs and diagnostics | The `NuvioCodecs` decoder inventory (secure decoders included), an optional render trace, and quieter network and thumbnail logs. |
 
 Changes for every device in this branch include:
 - Controller buttons in the player get default jobs: L1/R1 seek, X play/pause, Y subtitles. You can rebind them
   on the remote-buttons page.
-- Native libraries load straight from the APK (`extractNativeLibs=false`). This saves eMMC space; the APK
-  download is larger.
+- Native libraries load straight from the APK. This saves eMMC space; the APK download is larger. Upstream does
+  this itself since the sync of 2026-10-26.
 - `libnuviothumb` is tuned for Cortex-A57 on arm64.
 - Pre-blurred Cinematic glass on boxes without live blur (Android 11).
 - Localhost streams report the real HTTP status, so expired links (404/410) and 416 retries are handled

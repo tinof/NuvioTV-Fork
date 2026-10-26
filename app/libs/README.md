@@ -7,6 +7,12 @@ by reflection (`FfmpegRendererDtsHd`), so with this AAR it builds, runs and tran
 before. Since 2026-10-22 AARs are built locally only and no AAR with the DTS-HD MA writer is committed
 here; builds with DTS-HD MA use the local module (`docs/aac-to-dts/DESIGN.md` §8).
 
+Upstream a1359b2e6 (sync of 2026-10-26) ships its own AAR (SHA-256
+`472ad29e08fc0c5e12c0c89e96d1130ff0529eefba31e85d31b14dccaec7baa4`), built from its module with the LFE mixed
+into stereo downmixes at -6 dB (`lfe_mix_level` in `configureResampler`). This fork keeps its own AAR because
+upstream's has no DTS transcode target. The LFE change is in the module source here but not in the AAR below, so
+only local module builds have it. The AC-3 encoder flush that upstream's AAR adds is in this fork's AAR already.
+
 ## Current FFmpeg AAR (module build with the DTS target, 2026-10-21)
 
 `lib-decoder-ffmpeg-release.aar` SHA-256:
