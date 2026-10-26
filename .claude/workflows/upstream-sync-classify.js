@@ -16,7 +16,7 @@ for (const k of ['repo', 'scratch', 'upstreamRef', 'forkRef', 'mainRef', 'mb', '
 }
 if (a.scale.tier === 'skip' || a.groups.length === 0) {
   log('Scale tier skip: no fork commit touches a file upstream changed and the trial merge is clean. Nothing to classify.')
-  return { groups: [], critic: null, summary: { drop: [], resolve: [], adapt: [], keepClean: [], defaults: [] } }
+  return { groups: [], critic: null, summary: { drop: [], resolve: [], adapt: [], keepClean: [], protectedAsk: [], defaults: [] } }
 }
 for (const t of a.truncated || []) log(`Truncated: ${t}`)
 log(`Tier ${a.scale.tier}: ${a.groups.length} group(s); ${a.scale.reasons.join('; ')}`)
@@ -36,6 +36,8 @@ For EVERY fork commit listed, decide a verdict:
 - drop-superseded: upstream already does the same thing (cite the upstream commit and file:line at ${a.upstreamRef}); also use it for a fork commit and its own revert (a net-zero pair: both, never one)
 - partial-superseded: part of it is now upstream; say which part to drop
 List upstream changes that interact with the fork's Nvidia defaults (a changed default, a renamed setting key, moved code the fork patches, a new path the fork's gating should cover), and for each apply the owner rule: owner_rule = keep-fork-gated when the Shield plan (docs/shield-todo.md, ROADMAP.md) already sets that value, take-upstream when it does not, n/a when it is not a setting. Cite ${a.upstreamRef} file:line or an upstream sha for every claim; the rebase is done by hand from your guidance. During the rebase "ours" = the new base (upstream), "theirs" = the fork commit.
+
+Commits marked [PROTECTED: <feature>] belong to a feature the owner protects (the AAC-to-DTS transcode, the HLG-to-Dolby-Vision conversion). Never give one drop-superseded or partial-superseded on your own judgement: if upstream really does the same, give keep-adapt and say so in open_questions, so the owner decides. Their resolution guidance must keep every line those commits add.
 
 Files that conflict in a trial 3-way merge of the two tips: ${a.mergeConflicts.join(', ') || 'none'}. Files changed on both sides that merged cleanly can still interact.`
 
@@ -72,7 +74,7 @@ const groupPrompt = g => `${PRE}
 Group: ${g.key}. Focus: ${g.focus}
 
 Fork commits in this group (classify every one):
-${g.commits.map(c => `- ${c.sha} [${c.layer}] ${c.subject}\n  files upstream also changed: ${c.overlapFiles.join(', ')}`).join('\n')}
+${g.commits.map(c => `- ${c.sha} [${c.layer}]${c.protected ? ` [PROTECTED: ${c.protected}]` : ''} ${c.subject}\n  files upstream also changed: ${c.overlapFiles.join(', ')}`).join('\n')}
 
 Upstream commits that touch these files (read them; ${g.upstreamCommits.length} listed):
 ${g.upstreamCommits.map(u => `- ${u.sha} ${u.subject} (${u.files.join(', ')})`).join('\n') || '- none'}
@@ -100,7 +102,7 @@ if (a.groups.length >= 2) {
 
 You are the critic for this classification. Tasks:
 1. Coverage: every fork commit in ${a.mb}..${a.forkRef} must have a verdict. The commits below touched no file upstream changed and were not sent to an analyst ("autoClean"); flag any that upstream still affects semantically (a renamed API, a moved call site, a changed default), with evidence.
-${a.autoClean.map(c => `- ${c.sha.slice(0, 12)} [${c.layer}] ${c.subject}`).join('\n')}
+${a.autoClean.map(c => `- ${c.sha.slice(0, 12)} [${c.layer}]${c.protected ? ` [PROTECTED: ${c.protected}]` : ''} ${c.subject}`).join('\n')}
 2. Contradictions: the same commit with different verdicts, or two groups whose guidance disagrees for the same file.
 3. Spot-check the 3 riskiest drop-superseded, partial-superseded or keep-adapt verdicts by reading the cited evidence yourself; say whether each holds.
 4. Upstream changes no group read that touch code the fork patches.
@@ -127,6 +129,7 @@ for (const r of results) for (const c of r.commits || []) {
   if (!verdicts[key] || rank[c.verdict] > rank[verdicts[key]]) verdicts[key] = c.verdict
 }
 const pick = v => Object.keys(verdicts).filter(k => verdicts[k] === v)
+const protectedShas = new Set(a.groups.flatMap(g => g.commits).filter(c => c.protected).map(c => c.sha.slice(0, 9)))
 const summary = {
   complete: failedGroups.length === 0 && unclassified.length === 0,
   failedGroups,
@@ -135,8 +138,10 @@ const summary = {
   resolve: pick('keep-resolve'),
   adapt: [...pick('keep-adapt'), ...pick('partial-superseded')],
   keepClean: pick('keep-clean'),
+  // Owner decisions: a drop or partial verdict on a protected-feature commit, whatever the analyst said.
+  protectedAsk: [...pick('drop-superseded'), ...pick('partial-superseded')].filter(k => protectedShas.has(k)),
   defaults: results.flatMap(r => (r.upstream_interactions || []).filter(u => u.owner_rule && u.owner_rule !== 'n/a')
     .map(u => ({ upstream: u.upstream_sha, rule: u.owner_rule, what: u.description, note: u.shield_todo_note || '' }))),
 }
-log(`complete ${summary.complete}; drop ${summary.drop.length}, resolve ${summary.resolve.length}, adapt ${summary.adapt.length}, clean ${summary.keepClean.length}, setting decisions ${summary.defaults.length}`)
+log(`complete ${summary.complete}; drop ${summary.drop.length}, resolve ${summary.resolve.length}, adapt ${summary.adapt.length}, clean ${summary.keepClean.length}, setting decisions ${summary.defaults.length}, protected asks ${summary.protectedAsk.length}`)
 return { groups: results, critic, summary }
