@@ -51,12 +51,10 @@ lists). Restart playback, or the app for the rows marked *app*.
 | HDR video ignores the view-scaling aspect modes and plays at Fit (ExoPlayer) | `hdr_zoom` (`1` = allow) | `dumpsys SurfaceFlinger` keeps the video on an overlay plane |
 | mpv decodes with direct MediaCodec (`mediacodec,mediacodec-copy`; a saved mode wins) | Setting "Hardware decoding (MPV-only)" | HUD `hwdec` row shows `mediacodec` |
 | mpv tone mapping `bt.2446a` with no peak detection | `mpv_tonemap` (`0`) | HDR on an SDR TV through mpv |
-| Seek thumbnails start on (`mdarcy` only, when no mode was chosen) | `thumb_default_on` (`0`) | Logcat `ThumbMem … strongBox=`, the HUD dropped-frame row with thumbnails on vs off |
 | Full swap refuses a single thumbnail decode even with MemAvailable 200 MB above the decode floor (`mdarcy` only). NuvioTV 1.1.0-nt.7.1 (4f7c16200) allows that on 3 GB boxes; the fork's device data from round 3 says no on this box. | `thumb_swap_room` (`1` = allow; `0` turns it off on every box) *app* | Logcat `ThumbMem init … swapRoom=false`, refusals `SwapFree … MB < 64` |
 | AV1 trailers need a hardware decoder, so the Shield takes H.264 or VP9, or the HLS or progressive source when YouTube offers only AV1. NuvioTV 1.1.0-beta.7 accepts any decoder that claims the format, Android's software AV1 one included. | `trailer_av1_hw` (`0`) *app* | Logcat `Trailer adaptive: …/<height>p/<codec>` never shows AV1 |
 | The image disk cache keeps 300 MB with 4 GB or more free, where upstream's rule (126b4b389, sync of 2026-10-26) gives a box under 3.3 GB of RAM 200 MB. The Shield TV Pro 2019 reports 2946 MB. | `image_cache_tier` (`0` = upstream's rule; `1` gives the tier to any box) *app* | `du -sh /data/data/<package>/cache/image_cache` stays under 300 MB; posters reload less after a reboot |
 | Low-RAM tier comes from device RAM when buffers are off-heap | `lowram_from_ram` (`0`) *app* | Logcat `BACK_BUFFER_RESOLVED: … lowRam=` |
-| libass renders with the canvas overlay (when no type is saved). The settings page still labels Overlay OpenGL "recommended". | `libass_overlay_canvas` (`0`) | `dumpsys SurfaceFlinger` with subtitles and the HUD: no CLIENT composition, no UI stutter |
 | Video codec queueing is async (from the first pass) | `async_codec` (`0`) | HUD dropped-frame row on 4K60 HEVC and an 80+ Mbit/s DV remux |
 | Auto frame-rate matching starts in Start/Stop mode (from the first pass) | Setting "Frame Rate Matching" | Turn off the Shield's own "Match frame rate" while Nuvio AFR is on |
 | The switch back after Stop waits 750 ms, until the player surface is gone (round 3) | `afr_restore_delay_ms` (`0` = at once; up to 5000); `afr_restore_skip` (`1` = stay on the content rate) | Logcat `Restoring display mode after 750ms`; no black screen or ANR after Stop |
@@ -77,8 +75,9 @@ These are not Nvidia defaults. They are test and repair switches that work the s
 Changes for every device in this round:
 - Controller buttons in the player get default jobs: L1/R1 seek, X play/pause, Y subtitles. They can be
   rebound on the remote-buttons page.
-- Native libraries load straight from the APK (`extractNativeLibs=false`). This saves eMMC space; the APK
-  download is larger. Device check: mpv playback and seek thumbnails still work.
+- Native libraries load straight from the APK (`useLegacyPackaging = false`). This saves eMMC space; the APK
+  download is larger. Upstream ships this itself since the sync of 2026-10-26 (1929fe0d7, aa9ef82d1), so the
+  fork's commit for it was dropped. Device check: mpv playback and seek thumbnails still work.
 - `libnuviothumb` is tuned for Cortex-A57 on arm64.
 - Localhost streams report the real HTTP status, so expired links (404/410) and 416 retries are handled (fix on fork
   main). NuvioTV 1.1.0-beta.7 ships its own rebuild of the class that still reports 404/410 as 400; the fork's
@@ -108,6 +107,31 @@ pass has no setting, upstream's new default applies on the Shield too, with no f
   never on the Shield. The fork's "DV decoder" row still shows on every DV stream.
 
 Measurements taken before 2026-10-20 predate these defaults.
+
+### Upstream defaults taken with the sync of 2026-10-26
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.1.0-nt.8.1 (official NuvioTV 1.1.0-beta.8). Where this pass
+has no setting, upstream's new default applies on the Shield too, with no fork switch:
+- Seek thumbnails start on from 2,600 MB of reported RAM (25ac9a184), so the Shield TV Pro 2019 (2946 MB) starts
+  them on. The fork's `thumb_default_on` gate and switch are gone; the switch could no longer turn them off.
+- libass always renders through upstream's GL atlas pipeline (4f2fd58e2). The render type is kept only so saved
+  values parse, so the fork's canvas-overlay default and its `libass_overlay_canvas` switch are gone. A new render
+  scale setting defaults to Full; libass itself stays off by default.
+- Frame-rate matching picks the exact refresh rate before the doubled one (bbdac4577). On a chain without QMS, PAL
+  25p now switches to 25 Hz instead of 50 Hz.
+- Buffer sizing keeps a 28 MB margin instead of 100 + 40 MB (47d1c5834), so about 112 MB more buffer can be sized
+  at start. Chunk sizes gain a 12 MB step (5ff59fca0). Seek thumbnails fetch with up to 4 lanes while playing
+  instead of 3 (5ea64a68c).
+- The image disk cache follows upstream's rule (126b4b389), except the Nvidia `image_cache_tier` row above.
+  Pictures are decoded at most at screen size.
+- Addons get 60 s to answer, with an "Addon response timeout" setting (9f27af2b0, 0f6a84041).
+- Night mode, dialogue boost and a limiter are new audio settings, off by default and PCM only (a1359b2e6).
+- The FFmpeg module mixes the LFE into stereo downmixes at -6 dB (a1359b2e6). The committed decoder AAR is still
+  the fork's, built before that change, so only local module builds have it (`app/libs/README.md`).
+- Updates can install in the background on Android 12 and newer, off by default. The Shield (Android 11) still
+  asks before installing.
+
+Measurements taken before 2026-10-26 predate these defaults.
 
 ## History
 
