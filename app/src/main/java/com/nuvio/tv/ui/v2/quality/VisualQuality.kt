@@ -23,11 +23,15 @@ data class UiRenderCapabilities(
 @Immutable
 data class VisualQualityDecision(val tier: VisualQualityTier, val reason: String, val supportsLiveBlur: Boolean)
 
-/** Conservative starting policy, not a performance score or an adaptive governor. */
+/**
+ * Conservative starting policy, not a performance score or an adaptive governor. Live blur is not
+ * required: without it the tier keeps its static or pre-blurred materials, and the tier still sets
+ * other budgets (calendar concurrency), so a capable Android 11 box is not treated as a weak one.
+ */
 object VisualQualityResolver {
     fun automatic(capabilities: UiRenderCapabilities): VisualQualityDecision {
         val reason = when {
-            !capabilities.supportsLiveBlur -> "Static material: graphics capability"
+            !capabilities.hardwareAccelerated -> "Static material: software rendering"
             capabilities.lowRam -> "Static material: low-RAM device"
             capabilities.totalRamBytes <= 0 || capabilities.heapMb <= 0 -> "Static material: unknown memory budget"
             capabilities.totalRamBytes < 2_500_000_000L || capabilities.heapMb < 256 -> "Static material: constrained memory budget"

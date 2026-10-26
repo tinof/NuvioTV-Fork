@@ -186,13 +186,18 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 
-private const val MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS = 250L
+private const val MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS = 110L
+private const val MODERN_HORIZONTAL_FOCUS_HELD_DEBOUNCE_MS = 250L
 private const val POSTER_PREFETCH_DISTANCE = 5
 private const val NESTED_PREFETCH_COUNT = 2
 private const val POSTER_TRAVEL_PREFETCH = 3
 private const val ROW_FOCUS_TAG = "HomeRowFocus"
 
 /** A focused poster only grows when its trailer plays inside it, or when no trailer plays at all. */
+/** A held D-pad passes many posters; only a single press settles sooner. */
+internal fun modernFocusDebounceMs(keyHeld: Boolean): Long =
+    if (keyHeld) MODERN_HORIZONTAL_FOCUS_HELD_DEBOUNCE_MS else MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS
+
 internal fun focusedPosterGrows(
     expandEnabled: Boolean,
     autoplayEnabled: Boolean,
@@ -585,7 +590,7 @@ private fun ModernCatalogRowItem(
         // knows this item is now the one in charge.
         latestOnFocused()
 
-        delay(MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS)
+        delay(modernFocusDebounceMs(com.nuvio.tv.ui.util.KeyHoldState.held))
 
         // Heavy "settled" work (trailers, enrichment) remains debounced.
         item.metaPreview?.let { latestOnItemFocus(it) }
@@ -982,7 +987,7 @@ internal fun ModernRowSection(
                 .distinctUntilChanged()
                 .collectLatest { ready ->
                     if (!ready) return@collectLatest
-                    delay(150) // Wait before spamming image requests to survive rapid vertical D-pad scrolls!
+                    delay(80) // Wait before spamming image requests to survive rapid vertical D-pad scrolls!
                     val cwWidthPx = with(density) {
                         continueWatchingArtworkWidth(
                             continueWatchingCardStyle, continueWatchingCardWidth, continueWatchingCardHeight
