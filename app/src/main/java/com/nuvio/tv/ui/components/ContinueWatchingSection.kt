@@ -99,7 +99,6 @@ import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.TextStyle
 import com.nuvio.tv.domain.model.CardDepthStyle
@@ -703,7 +702,6 @@ fun ContinueWatchingCard(
             WideCardContent(
                 imageRequest = imageRequest,
                 effectiveImageModel = effectiveImageModel,
-                shouldBlur = shouldBlur,
                 backgroundPainter = backgroundPainter,
                 stripWidth = artworkWidth,
                 stripHeight = imageHeight,
@@ -948,7 +946,6 @@ fun ContinueWatchingCard(
 private fun WideCardContent(
     imageRequest: ImageRequest,
     effectiveImageModel: String?,
-    shouldBlur: Boolean,
     backgroundPainter: Painter,
     stripWidth: Dp,
     stripHeight: Dp,
@@ -994,8 +991,7 @@ private fun WideCardContent(
                     model = imageRequest,
                     contentDescription = null,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .then(if (shouldBlur) Modifier.blur(12.dp) else Modifier),
+                        .fillMaxSize(),
                     placeholder = backgroundPainter,
                     error = backgroundPainter,
                     fallback = backgroundPainter,

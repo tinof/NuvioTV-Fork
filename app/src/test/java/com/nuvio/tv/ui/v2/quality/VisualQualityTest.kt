@@ -12,11 +12,18 @@ class VisualQualityTest {
     @Test fun `initial assessment uses graphics memory and root cost rather than RAM alone`() {
         assertEquals(VisualQualityTier.ENHANCED, VisualQualityResolver.automatic(box).tier)
         listOf(
-            box.copy(api = 30), box.copy(lowRam = true), box.copy(heapMb = 192),
+            box.copy(lowRam = true), box.copy(heapMb = 192),
             box.copy(totalRamBytes = 1_750_000_000L), box.copy(hardwareAccelerated = false),
-            box.copy(rootWidthPx = 3840, rootHeightPx = 2160), box.copy(glEsVersion = 0x20000),
+            box.copy(rootWidthPx = 3840, rootHeightPx = 2160),
             box.copy(rootWidthPx = 0), box.copy(totalRamBytes = 0)
         ).forEach { assertEquals(VisualQualityTier.PERFORMANCE, VisualQualityResolver.automatic(it).tier) }
+        // Without live blur (Android 11, GLES 2) a capable box keeps its tier and only the material is static.
+        listOf(box.copy(api = 30), box.copy(glEsVersion = 0x20000)).forEach {
+            val decision = VisualQualityResolver.automatic(it)
+            assertEquals(VisualQualityTier.ENHANCED, decision.tier)
+            assertFalse(decision.supportsLiveBlur)
+            assertFalse(GlassQualityTokens.resolve(decision, playback = false).liveBlur)
+        }
         // Extra memory alone is not measured evidence for Automatic Maximum.
         assertEquals(VisualQualityTier.ENHANCED, VisualQualityResolver.automatic(box.copy(totalRamBytes = 16_000_000_000L)).tier)
     }
@@ -50,7 +57,8 @@ class VisualQualityTest {
         assertEquals(VisualQualityTier.PERFORMANCE, VisualQualityResolver.resolve(VisualQualityMode.AUTOMATIC, box, "PERFORMANCE").tier)
         assertEquals(VisualQualityTier.ENHANCED, VisualQualityResolver.resolve(VisualQualityMode.AUTOMATIC, box, "MAXIMUM").tier)
         assertEquals(VisualQualityTier.ENHANCED, VisualQualityResolver.resolve(VisualQualityMode.AUTOMATIC, box, "invalid").tier)
-        assertEquals(VisualQualityTier.PERFORMANCE, VisualQualityResolver.resolve(VisualQualityMode.AUTOMATIC, box.copy(api = 30), "ENHANCED").tier)
+        assertEquals(VisualQualityTier.ENHANCED, VisualQualityResolver.resolve(VisualQualityMode.AUTOMATIC, box.copy(api = 30), "ENHANCED").tier)
+        assertEquals(VisualQualityTier.PERFORMANCE, VisualQualityResolver.resolve(VisualQualityMode.AUTOMATIC, box.copy(lowRam = true), "ENHANCED").tier)
         assertEquals(VisualQualityTier.MAXIMUM, VisualQualityResolver.resolve(VisualQualityMode.MAXIMUM, box, "PERFORMANCE").tier)
     }
 }
