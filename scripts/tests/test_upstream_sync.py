@@ -168,6 +168,51 @@ def run(*args, cwd):
     subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True)
 
 
+class ProtectedHelperTest(unittest.TestCase):
+    def test_added_lines_per_file_skips_short_lines(self):
+        diff = ("diff --git a/x.kt b/x.kt\n--- a/x.kt\n+++ b/x.kt\n@@ -1,0 +2,3 @@\n+val keep = 1\n+}\n+  \n"
+                "diff --git a/gone.kt b/gone.kt\n--- a/gone.kt\n+++ /dev/null\n@@ -1 +0,0 @@\n-val old = 1\n")
+        self.assertEqual({"x.kt": ["val keep = 1"]}, sync.added_lines(diff))
+
+    def test_feature_of_reads_the_anchors(self):
+        self.assertEqual("aac-to-dts", sync.feature_of(
+            ["ffmpeg-decoder-downmix/src/main/jni/dcaxll/dcaxll_enc.c"], CONFIG["protected_features"]))
+        self.assertEqual("hlg-to-dv", sync.feature_of(
+            ["app/src/main/java/com/nuvio/tv/core/player/HlgContract.kt"], CONFIG["protected_features"]))
+        self.assertIsNone(sync.feature_of(["README.md"], CONFIG["protected_features"]))
+        self.assertEqual("aac-to-dts", sync.feature_of(
+            ["app/src/main/java/com/nuvio/tv/data/local/PlayerSettingsDataStore.kt"], CONFIG["protected_features"],
+            'feat(audio): store a per-profile "Transcode AAC to DTS" setting'))
+        self.assertIsNone(sync.feature_of(["app/src/main/java/com/nuvio/tv/data/local/PlayerSettingsDataStore.kt"],
+                                          CONFIG["protected_features"],
+                                          "feat(audio): native TrueHD/DTS-HD passthrough by default on Nvidia"))
+
+
+class ProtectedApkTest(unittest.TestCase):
+    def check(self, members):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            apk = Path(tmp) / "app.apk"
+            with zipfile.ZipFile(apk, "w") as z:
+                for name, data in members.items():
+                    z.writestr(name, data)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = sync.cmd_protected_apk(argparse.Namespace(apk=str(apk)), CONFIG)
+            return code, buf.getvalue()
+
+    def test_both_libraries_with_their_markers_pass(self):
+        code, report = self.check({"lib/arm64-v8a/libffmpegJNI.so": b"..dcaxll_encode..",
+                                   "lib/arm64-v8a/libnuvio_rpu.so": b"..Java_com_nuvio..."})
+        self.assertEqual(0, code, report)
+
+    def test_a_missing_library_or_marker_fails(self):
+        code, report = self.check({"lib/arm64-v8a/libffmpegJNI.so": b"no writer here"})
+        self.assertEqual(1, code)
+        self.assertIn("aac-to-dts: lib/arm64-v8a/libffmpegJNI.so has no dcaxll", report)
+        self.assertIn("hlg-to-dv: lib/arm64-v8a/libnuvio_rpu.so is not in the APK", report)
+
+
 class VerifyRepoTest(unittest.TestCase):
     """verify against a small repository: base B, upstream U on top of B, an old fork on B and a new one on U."""
 
@@ -320,6 +365,45 @@ class VerifyRepoTest(unittest.TestCase):
         code, report = self.verify(old="old2", expect_drop=self.sha("old2~1")[:9])
         self.assertEqual(1, code)
         self.assertIn("also touched it", report)
+
+    PROTECTED = [{"key": "feat", "name": "a feature", "anchors": ["^fork-only"], "binaries": []}]
+
+    def test_a_protected_feature_keeps_its_lines_in_a_shared_file(self):
+        self.cfg["protected_features"] = self.PROTECTED
+        self.new_branch(self.FAITHFUL)
+        code, report = self.verify()
+        self.assertEqual(0, code, report)
+        self.assertIn("- feat: 1 commits, 2 lines checked, 0 lost", report)
+
+    def test_a_protected_line_lost_in_a_shared_file_fails(self):
+        # shared.txt still differs from upstream (TOP survives), so only the protected check sees BOTTOM go.
+        self.cfg["protected_features"] = self.PROTECTED
+        self.new_branch([self.FAITHFUL[0], ("fix: retained bottom", {"fork-only.txt": {10: "line 10 fork"}})])
+        code, report = self.verify()
+        self.assertEqual(1, code)
+        self.assertIn("protected feature feat: shared.txt lost 1 line(s)", report)
+        self.assertIn("`BOTTOM`", report)
+
+    def test_a_dropped_protected_commit_needs_the_owner(self):
+        self.cfg["protected_features"] = self.PROTECTED
+        self.new_branch(self.FAITHFUL[:1])
+        drop = self.sha("old")[:9]
+        code, report = self.verify(expect_drop=drop, allow_same=["shared.txt"])
+        self.assertEqual(1, code)
+        self.assertIn(f"pass --protected-drop {drop}", report)
+        code, report = self.verify(expect_drop=drop, allow_same=["shared.txt"], protected_drop=drop)
+        self.assertEqual(0, code, report)
+        self.assertIn("protected drop approved by the owner", report)
+
+    def test_a_protected_binary_must_stay(self):
+        self.cfg["protected_features"] = [dict(self.PROTECTED[0], binaries=["fork-only.txt"])]
+        self.new_branch([self.FAITHFUL[0], ("fix: retained bottom", {
+            "shared.txt": {20: "BOTTOM"}, "fork-only.txt": {10: "line 10 fork", 11: "extra"}})])
+        code, report = self.verify(allow_changed=["fork-only.txt"])
+        self.assertEqual(0, code, report)
+        code, report = self.verify()
+        self.assertEqual(1, code)
+        self.assertIn("binary fork-only.txt differs", report)
 
 
 class RenameRepoTest(unittest.TestCase):
