@@ -293,7 +293,15 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                 val freeStorage = runCatching { cacheDir.usableSpace }.getOrDefault(0L)
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache").toOkioPath())
-                    .maxSizeBytes(com.nuvio.tv.core.image.imageDiskCacheBytes(memoryInfo.totalMem, freeStorage))
+                    .maxSizeBytes(
+                        com.nuvio.tv.core.image.imageDiskCacheBytes(
+                            memoryInfo.totalMem,
+                            freeStorage,
+                            nvidiaTier = com.nuvio.tv.core.image.nvidiaImageDiskTier(
+                                com.nuvio.tv.core.util.DebugSwitches.flag("debug.nuvio.image_cache_tier")
+                            )
+                        )
+                    )
                     .build()
             }
             .crossfade(false)
