@@ -17,16 +17,30 @@ class ImdbStreamSelectorTest {
         |video.m3u8
     """.trimMargin()
 
-    @Test fun `4K progressive returns immediately without manifest requests`() = runTest {
-        val result = selector.select(video(2160)) { fail("4K MP4 must not wait for HLS"); null }
+    @Test fun `1080p progressive returns immediately without manifest requests`() = runTest {
+        val result = selector.select(video(1080)) { fail("1080p MP4 must not wait for HLS"); null }
         assertTrue(result.source!!.videoUrl.endsWith(".mp4"))
     }
     @Test fun `higher resolution HLS wins and retains master audio groups`() = runTest {
-        val result = selector.select(video(1080)) { master(2160) }
+        val result = selector.select(video(720)) { master(1080) }
         assertEquals(masterUrl, result.source?.videoUrl)
     }
+    @Test fun `progressive at 1080p is preferred over a larger progressive file`() = runTest {
+        val video = ImdbTrailerData.Video("vi123456789", listOf(
+            ImdbTrailerData.Encoding("https://imdb-video.media-imdb.com/uhd.mp4", 2160, true),
+            ImdbTrailerData.Encoding("https://imdb-video.media-imdb.com/fhd.mp4", 1080, true)))
+        assertTrue(selector.select(video) { fail("no HLS here"); null }.source!!.videoUrl.endsWith("fhd.mp4"))
+    }
+    @Test fun `4K HLS still beats 720p progressive`() = runTest {
+        assertEquals(masterUrl, selector.select(video(720)) { master(2160) }.source?.videoUrl)
+    }
+    @Test fun `a 4K-only progressive file still plays when no HLS answers`() = runTest {
+        val result = selector.select(video(2160)) { null }
+        assertTrue(result.source!!.videoUrl.endsWith(".mp4"))
+        assertFalse(result.complete)
+    }
     @Test fun `equal resolution prefers fast progressive startup`() = runTest {
-        val result = selector.select(video(1080)) { master(1080) }
+        val result = selector.select(video(720)) { master(720) }
         assertTrue(result.source!!.videoUrl.endsWith(".mp4"))
     }
     @Test fun `SD across all renditions is a definitive miss`() = runTest {
@@ -41,7 +55,7 @@ class ImdbStreamSelectorTest {
     }
     @Test fun `parent cancellation propagates through manifest selection`() = runTest {
         assertTrue(runCatching {
-            selector.select(video(1080)) { throw CancellationException("focus moved") }
+            selector.select(video(720)) { throw CancellationException("focus moved") }
         }.exceptionOrNull() is CancellationException)
     }
     @Test fun `invalid documents and media playlists have no verified resolution`() {
