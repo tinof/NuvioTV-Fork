@@ -213,8 +213,8 @@ class ProtectedApkTest(unittest.TestCase):
         self.assertIn("hlg-to-dv: lib/arm64-v8a/libnuvio_rpu.so is not in the APK", report)
 
 
-class VerifyRepoTest(unittest.TestCase):
-    """verify against a small repository: base B, upstream U on top of B, an old fork on B and a new one on U."""
+class RepoFixture:
+    """A small repository: base B, upstream U on top of B, an old fork on B and a new one on U."""
 
     LINES = [f"line {n}" for n in range(1, 21)]
 
@@ -268,8 +268,13 @@ class VerifyRepoTest(unittest.TestCase):
     def sha(self, rev):
         return subprocess.run(["git", "rev-parse", rev], cwd=self.dir, capture_output=True, text=True).stdout.strip()
 
+
+
+class VerifyRepoTest(RepoFixture, unittest.TestCase):
+    """verify against the RepoFixture repository."""
+
     def verify(self, **extra):
-        a = argparse.Namespace(base_old="B", old="old", base_new="U", new="new", upstream="U", main_new=None,
+        a = argparse.Namespace(base_old="B", old="old", base_new="U", new="new", upstream="U",
                                decisions=None, expect_drop=None, allow_same=None, allow_changed=None)
         for k, v in extra.items():
             setattr(a, k, v)
@@ -351,15 +356,15 @@ class VerifyRepoTest(unittest.TestCase):
         self.assertIn("fork-only.txt: sha256", report)
 
 
-    def test_a_decided_drop_from_the_other_layer_is_only_a_note(self):
+    def test_a_decided_drop_outside_the_range_is_only_a_note(self):
         self.new_branch(self.FAITHFUL)
         path = self.dir / "classify.json"
         path.write_text(json.dumps({"summary": {"drop": ["abcdef0123"]}, "groups": []}))
         code, report = self.verify(decisions=str(path))
         self.assertEqual(0, code, report)
-        self.assertIn("decided drop abcdef0123 belongs to the other layer", report)
+        self.assertIn("decided drop abcdef0123 is not in B..old", report)
 
-    def test_drops_prints_only_the_layer_s_drops(self):
+    def test_drops_prints_only_the_drops_in_the_range(self):
         path = self.dir / "classify.json"
         path.write_text(json.dumps({"summary": {"drop": [self.sha("old~1")[:9], "abcdef0123"]}, "groups": []}))
         buf = io.StringIO()
@@ -418,6 +423,67 @@ class VerifyRepoTest(unittest.TestCase):
         self.assertIn("binary fork-only.txt differs", report)
 
 
+class PreflightRepoTest(RepoFixture, unittest.TestCase):
+    """preflight on one layer: origin/main mirrors upstream at the base, origin/perf/shield-pass is the fork."""
+
+    def setUp(self):
+        super().setUp()
+        self.new_branch(self.FAITHFUL)
+        self.calls = []
+        self.pulls = []
+        self.gh = sync.gh_json
+        sync.gh_json = self.fake_gh
+        self.cfg = dict(self.cfg, issue_workflows=[])
+
+    def tearDown(self):
+        sync.gh_json = self.gh
+        super().tearDown()
+
+    def fake_gh(self, *args):
+        self.calls.append(args)
+        if args[0] == "api" and "/pulls?" in args[1]:
+            return self.pulls if args[1].endswith("base=perf/shield-pass") else []
+        return []
+
+    def refs(self, main, perf, upstream="U"):
+        for name, rev in (("refs/remotes/origin/main", main), ("refs/remotes/origin/perf/shield-pass", perf),
+                          ("refs/remotes/upstream/main", upstream), ("refs/heads/main", main)):
+            run("git", "update-ref", name, self.sha(rev), cwd=self.dir)
+
+    def preflight(self):
+        a = argparse.Namespace(no_fetch=True, json=False, allow_branch=["old", "new"])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = sync.cmd_preflight(a, self.cfg)
+        return code, buf.getvalue()
+
+    def test_a_level_fork_has_nothing_to_do_and_asks_rest_for_pull_requests(self):
+        self.refs(main="U", perf="new")
+        code, report = self.preflight()
+        self.assertEqual(sync.NOTHING, code, report)
+        self.assertIn(("api", f"repos/{self.cfg['repo']}/pulls?state=open&base=perf/shield-pass"), self.calls)
+        self.assertFalse(any(c[0] == "pr" for c in self.calls), "gh pr uses GraphQL, which cloud sessions block")
+
+    def test_main_outside_upstream_blocks(self):
+        self.refs(main="old", perf="new")
+        code, report = self.preflight()
+        self.assertEqual(sync.FAIL, code)
+        self.assertIn("origin/main is not in upstream/main", report)
+
+    def test_an_open_pull_request_into_perf_blocks(self):
+        self.refs(main="U", perf="new")
+        self.pulls = [{"number": 7, "head": {"ref": "fork/x"}}]
+        code, report = self.preflight()
+        self.assertEqual(sync.FAIL, code)
+        self.assertIn("PR #7 (fork/x) is open into perf/shield-pass", report)
+
+    def test_a_fork_behind_upstream_is_go(self):
+        self.refs(main="B", perf="old")
+        code, report = self.preflight()
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("perf/shield-pass: 1 behind upstream/main", report)
+
+
 class RenameRepoTest(unittest.TestCase):
     """Upstream renames or deletes a file the fork changed."""
 
@@ -468,7 +534,7 @@ class RenameRepoTest(unittest.TestCase):
         run("git", "tag", "U", cwd=self.dir)
 
     def verify(self):
-        a = argparse.Namespace(base_old="B", old="old", base_new="U", new="new", upstream="U", main_new=None,
+        a = argparse.Namespace(base_old="B", old="old", base_new="U", new="new", upstream="U",
                                decisions=None, expect_drop=None, allow_same=None, allow_changed=None)
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
