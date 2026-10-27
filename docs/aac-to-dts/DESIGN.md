@@ -202,7 +202,9 @@ reference used Homebrew FFmpeg 9.0.2. The tools are in `swrtune/` (§8).
     15.5 kHz images at −33 dB.
 - **Delay.** swresample compensates the filter delay (impulse peak at 0 samples). About 82 output samples
   stay in the filter at end of stream.
-- **CPU on the Shield:** not measured yet (Q6.5).
+- **CPU on the Shield:** a first number from 2026-10-26: the `ExoPlayer:SimpleDecoder` thread used
+  19.5 % of one A57 core over 5 min of a DTS-HD MA transcode during 4K playback. The input rate was not
+  logged, so Q6.5 (44.1 kHz) stays open. See the 2026-10-26 entry in `docs/ROADMAP_LOG.md`.
 
 ## 6. Reviews
 
