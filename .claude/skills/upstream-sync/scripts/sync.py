@@ -6,7 +6,8 @@ Commands:
   todo-edit --drop SHA[,SHA...] <git-rebase-todo>
   drops --decisions classify.json --range BASE..TIP
   verify --base-old R --old R --base-new R --new R --upstream R [--main-new R]
-         [--decisions classify.json] [--expect-drop SHA,...] [--allow-same PATH ...] [--allow-changed PATH ...]
+         [--decisions classify.json] [--expect-drop SHA,...] [--allow-new SHA,...] [--allow-same PATH ...]
+         [--allow-changed PATH ...]
          [--protected-drop SHA,...] [--creation-factor N]
   protected-apk <apk>
   test-failures <junit-xml-dir>
@@ -463,6 +464,8 @@ def cmd_drops(a, cfg):
 def cmd_verify(a, cfg):
     fails, notes = [], []
     drops = [d for d in (a.expect_drop or "").split(",") if d]
+    # A commit the sync adds on purpose (a base-layer fix for a test that fails on CI) is new in the range-diff.
+    added = [n for n in (getattr(a, "allow_new", None) or "").split(",") if n]
     if a.decisions:
         auto_drops, hints = decisions(json.loads(Path(a.decisions).read_text()))
         # The classify result covers both layers; only drops of commits in this layer's old range apply here.
@@ -496,13 +499,19 @@ def cmd_verify(a, cfg):
         if e["mark"] == "<" and not any(sha_matches(e["old"], d) for d in drops):
             fails.append(f"commit {e['old']} '{e['subject']}' was dropped without --expect-drop")
         if e["mark"] == ">":
-            fails.append(f"commit {e['new']} '{e['subject']}' is new in {a.new}")
+            if any(sha_matches(e["new"], n) for n in added):
+                notes.append(f"new commit added on purpose (--allow-new): {e['new']} '{e['subject']}'")
+            else:
+                fails.append(f"commit {e['new']} '{e['subject']}' is new in {a.new} without --allow-new")
         if e["mark"] == "!":
             report.append(f"### {e['old']} -> {e['new']} {e['subject']}")
             report += ["```diff", *(e["changed"] or ["(context or line numbers only)"]), "```", ""]
     for d in drops:
         if not any(e["mark"] == "<" and sha_matches(e["old"], d) for e in entries):
             fails.append(f"expected drop {d} is still in {a.new} or not in {a.old}")
+    for n in added:
+        if not any(e["mark"] == ">" and sha_matches(e["new"], n) for e in entries):
+            fails.append(f"--allow-new {n} is not a new commit in {a.new}")
 
     # 2. Fork-only files are unchanged; 3. overlap files keep a fork change.
     old_commits = commits_with_files(f"{a.base_old}..{a.old}")
@@ -665,6 +674,7 @@ def main(argv):
     s.add_argument("--main-new")
     s.add_argument("--decisions")
     s.add_argument("--expect-drop")
+    s.add_argument("--allow-new", help="commits the sync added on purpose, SHA[,SHA...]")
     s.add_argument("--allow-same", action="append")
     s.add_argument("--allow-changed", action="append")
     s.add_argument("--protected-drop", help="owner-approved drops of protected-feature commits, SHA[,SHA...]")

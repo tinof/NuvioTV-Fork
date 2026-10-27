@@ -305,6 +305,18 @@ class VerifyRepoTest(unittest.TestCase):
         code, report = self.verify(expect_drop=self.sha("old~1")[:9])
         self.assertEqual(0, code, report)
 
+    def test_a_new_commit_must_be_allowed(self):
+        self.new_branch(self.FAITHFUL + [("test: fix a race upstream's test has on CI", {"upstream.txt": {2: "race fix"}})])
+        code, report = self.verify()
+        self.assertEqual(1, code)
+        self.assertIn("without --allow-new", report)
+        code, report = self.verify(allow_new=self.sha("new")[:9])
+        self.assertEqual(0, code, report)
+        self.assertIn("new commit added on purpose", report)
+        code, report = self.verify(allow_new=self.sha("new")[:9] + "," + self.sha("old")[:9])
+        self.assertEqual(1, code)
+        self.assertIn("is not a new commit", report)
+
     def test_decisions_supply_the_drop(self):
         self.new_branch(self.FAITHFUL[1:])
         path = self.dir / "classify.json"
