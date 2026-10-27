@@ -12,7 +12,7 @@ This is a personal branch of Nuvio Arc, tuned for the NVIDIA SHIELD TV Pro 2019.
 | | |
 |---|---|
 | Lineage | [NuvioTV](https://github.com/NuvioMedia/NuvioTV) -> [Nuvio Arc](https://github.com/ysosrs123/NuvioTV-Fork) by ysosrs123 -> this fork, [tinof/NuvioTV-Fork](https://github.com/tinof/NuvioTV-Fork), maintained by tinof |
-| Branch | `perf/shield-pass`, a performance pass on top of this fork's `main` (`git log --oneline main..perf/shield-pass`) |
+| Branch | `perf/shield-pass` (the default branch), a performance pass rebased on upstream; `main` mirrors upstream at its base (`git log --oneline main..perf/shield-pass`) |
 | Target device | SHIELD TV Pro 2019: Tegra X1+, codename `mdarcy`, Android 11 (API 30), SHIELD Experience 9.2.4 |
 | Other devices | Keep their behaviour. The risky changes apply only on Nvidia, gated by `DeviceProfile`. Some plain fixes apply everywhere. |
 
@@ -44,7 +44,7 @@ Changes for every device in this branch include:
 - `libnuviothumb` is tuned for Cortex-A57 on arm64.
 - Pre-blurred Cinematic glass on boxes without live blur (Android 11).
 - Localhost streams report the real HTTP status, so expired links (404/410) and 416 retries are handled
-  (on fork main).
+  (a base commit of the fork).
 - New and changed strings are translated in every locale.
 
 What the device report of 2026-10-14 (results in [docs/shield-todo.md](docs/shield-todo.md), Round 3) found the
