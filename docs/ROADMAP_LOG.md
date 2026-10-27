@@ -10,6 +10,68 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-27: U1.5 sync onto upstream 1.1.0-nt.8.2 (PR #24)
+
+- [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits behind
+  at each pull request.
+
+**Counts**
+
+- Upstream: 13 commits since the merge base `3b1643198` (13 first-parent), up to 1.1.0-nt.8.2. Fork: 15
+  base-layer and 219 Shield commits.
+- Map: tier `fanout`, 48 fork commits touch files upstream changed, 2 files conflicted in a trial merge
+  (`PlayerSettingsDataStore.kt`, `PlayerRuntimeControllerInitialization.kt`), 186 fork commits replayed with
+  no overlap. Classify: 7 Opus analysts and a critic; 45 keep-clean, 3 keep-resolve, no drop, adapt or
+  protected ask.
+- Result: `main` = upstream + 16 commits (15 identical, 1 new test fix), `perf/shield-pass` = `main` + 219
+  commits (213 identical, 6 changed only in context or line numbers, 0 dropped).
+
+**Drops**
+
+- None.
+
+**Setting decisions**
+
+- No upstream change touched a value the Shield plan sets, so there is no new Nvidia gate. Every upstream
+  default is taken; the list is in `docs/shield-todo.md`, "Upstream defaults taken with the sync of 2026-10-27".
+- The new DTS-HD TV passthrough setting (`dts_hd_tv_passthrough`) only acts on a TV panel on ARC/eARC
+  (`ro.hdmi.device_type` "0"; the Shield reports "4"), so the DTS-HD MA transcode on the Shield is unchanged.
+  On such a panel the transcode would go to Android's own path without the fork's burst split; not a Shield
+  case.
+
+**Resolutions**
+
+- Two conflict stops, both next to upstream's new `dtsHdTvPassthrough` lines: 4f5d7705a kept the fork's
+  `defaultUseSystemPassthrough()` read and upstream's new read after it; d2b07e187 (protected) kept upstream's
+  `dtsHdTvPassthroughActive` and then the fork's `isTranscodeAacToDtsActive`. 2a1101e41 (protected) merged
+  without a stop.
+
+**New base-layer commit**
+
+- `Checks` on the first perf candidate failed twice on upstream's `ParallelRangeProductionWorkloadTest`
+  ("pieces refused together wait as one", from 3baaf5c4d). The fork does not touch that code. 35 targeted
+  local runs passed, including 1 CPU under full load.
+- Cause: the test refused piece 1 before the test thread had scheduled pieces 2 and 3, so the rate gate held
+  them back unopened. A 300 ms delay after piece 1 failed it 3 of 3 on plain `upstream/main`.
+- 512bef15e makes each first request wait until all three are sent. With the delay it passed 5 of 5. Owner
+  approved it with the publish. Upstream PR candidate (U1).
+- `sync.py verify` failed any new commit; this PR adds `--allow-new` and a trap in `sync.json`.
+
+**Evidence**
+
+- `sync.py verify` layer 1: 15 identical; with `--allow-new 512bef15e`, all checks pass. Layer 2: all checks
+  pass, no `!` hunks.
+- Protected features: aac-to-dts 44 commits, 5971 lines checked, 0 lost; hlg-to-dv 83 commits, 11359 lines
+  checked, 0 lost. `protected-apk` on the APK built from 7146d36c9: `libffmpegJNI.so` (dcaxll) and
+  `libnuvio_rpu.so` present.
+- Gate `:app:testFullDebugUnitTest`: perf 7388 tests, 0 failures; main 0 failures; baseline on plain upstream
+  only `LocalhostZeroCopyDataSourceTest.testHttpError404`.
+- `Checks` run 40502334715 green on 7146d36c9.
+- Review: one independent Opus reviewer read the resolutions and the 6 changed commits; no findings. The
+  fork's delta over upstream has the same changed lines before and after (375 files, +32181 / -1082).
+- Published with one atomic leased push: `main` 17d04cac9 → 512bef15e, `perf/shield-pass` 317f4b803 →
+  7146d36c9. Drift issue #23 closed.
+
 ## 2026-10-26: resource headroom during 4K playback (DV5, Q6.5)
 
 The owner asked whether the Shield has room for a live HLG dynamic-metadata generator next to the two
