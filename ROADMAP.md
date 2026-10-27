@@ -609,8 +609,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### U1: upstream pull requests
 
-- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-26 (onto
-  1.1.0-nt.8.1, official NuvioTV 1.1.0-beta.8). The open "Upstream drift" issue (label `upstream-drift`)
+- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-27 (onto
+  1.1.0-nt.8.2). The open "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on `main` keeps it current.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
