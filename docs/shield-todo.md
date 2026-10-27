@@ -133,6 +133,24 @@ has no setting, upstream's new default applies on the Shield too, with no fork s
 
 Measurements taken before 2026-10-26 predate these defaults.
 
+### Upstream defaults taken with the sync of 2026-10-27
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.1.0-nt.8.2. No upstream change touched a value this pass sets,
+so there is no new Nvidia gate. Upstream's new defaults apply on the Shield too, with no fork switch:
+- A "DTS-HD and DTS:X passthrough" setting (`dts_hd_tv_passthrough`, default Standard; ee09d86fc, d55a0681d,
+  77eb738f3) sends DTS-HD and DTS:X through Android's own path on a TV panel that plays out of its ARC/eARC port.
+  The row shows only on such a panel (`ro.hdmi.device_type` "0"; the Shield reports "4") and is greyed out while
+  System passthrough is on, so it never appears or applies on the Shield.
+- The addon response timeout choices stop at 60 s (ee09d86fc). A saved 90 or 120 s reads as 60 s. The default
+  stays 60 s.
+- The Device Assessment suggests turning Custom network off ("Connections: Automatic") whenever Automatic
+  speed-up is on (65c13275e).
+- On a 429 from TorBox, pieces wait together behind one back-off, and Automatic speed-up remembers the start
+  piece size per server (3baaf5c4d).
+- 4K seek thumbnails try the lighter copies first (d2901bd5e).
+
+Measurements taken before 2026-10-27 predate these defaults.
+
 ## History
 
 Round 3 (2026-10-14) followed the first device report: the swap rule came back on `mdarcy`, stabilize detection
@@ -152,7 +170,7 @@ published to a wider audience.
 |---|---|
 | HDR10+ → Dolby Vision 8.1 | Separate project, see `docs/hdr10plus-to-dv81/`. |
 | VC-1 reader for MPEG-TS / M2TS | A Blu-ray `.m2ts` VC-1 remux goes to mpv (software VC-1). A VC-1 PES reader would plug in as an `ExtractorsFactory` wrapper like `AviTrackFormatExtractorsFactory`, replacing the `TsExtractor` that the `DefaultExtractorsFactory` at `PlayerRuntimeControllerInitialization.kt` (~1226) builds with a custom `TsPayloadReader.Factory` for stream type 0xEA. The decoder side (`video/wvc1` → `video/vc1` bridge) already exists. |
-| Ethernet-aware network defaults | Read `NetworkCapabilities.TRANSPORT_ETHERNET` and suggest performance mode with 4 connections in the Device Assessment on a wired, non-small box. `NetworkSettingsScreen` already classifies the link. |
+| Ethernet-aware network defaults | Read `NetworkCapabilities.TRANSPORT_ETHERNET` and suggest performance mode with 4 connections in the Device Assessment on a wired, non-small box. `NetworkSettingsScreen` already classifies the link. Since 65c13275e (sync of 2026-10-27) upstream's assessment suggests "Connections: Automatic" whenever Automatic speed-up is on, so this would have to change that rule. |
 | VOD cache on USB storage | The cache is fixed to `cacheDir` (`PlayerMediaSourceFactory.kt` ~807). It would need a picker over `context.getExternalCacheDirs()`. |
 
 ## Media3 backports
