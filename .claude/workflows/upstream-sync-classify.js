@@ -11,7 +11,7 @@ export const meta = {
 // args is the JSON that .claude/skills/upstream-sync/scripts/sync.py map-overlap prints. Nothing about a
 // particular sync lives in this file: the groups, commits, conflicts and rules all come from args.
 const a = args
-for (const k of ['repo', 'scratch', 'upstreamRef', 'forkRef', 'mainRef', 'mb', 'groups', 'mergeConflicts', 'rules', 'scale', 'autoClean', 'counts']) {
+for (const k of ['repo', 'scratch', 'upstreamRef', 'forkRef', 'mb', 'groups', 'mergeConflicts', 'rules', 'scale', 'autoClean', 'counts']) {
   if (a == null || a[k] === undefined) throw new Error(`args.${k} is missing: pass the JSON from sync.py map-overlap`)
 }
 if (a.scale.tier === 'skip' || a.groups.length === 0) {
@@ -22,7 +22,7 @@ for (const t of a.truncated || []) log(`Truncated: ${t}`)
 log(`Tier ${a.scale.tier}: ${a.groups.length} group(s); ${a.scale.reasons.join('; ')}`)
 
 const PRE = `Repository: ${a.repo} (an Android TV app in Kotlin; a fork tuned for the Nvidia Shield TV Pro 2019).
-The fork will be REBASED onto ${a.upstreamRef} (${a.upstreamTip}). Merge base: ${a.mb}. Two layers: ${a.mainRef} (upstream + the fork's base layer of CI, test and fix commits) and ${a.forkRef} (${a.mainRef} + the Shield work); each fork commit below names its layer. Upstream added ${a.counts.upstream} commits (${a.counts.upstreamFirstParent} first-parent).
+The fork will be REBASED onto ${a.upstreamRef} (${a.upstreamTip}). Merge base: ${a.mb}. One branch, ${a.forkRef}: upstream, then the fork's CI, test and fix commits at the bottom, then the Shield work. Upstream added ${a.counts.upstream} commits (${a.counts.upstreamFirstParent} first-parent).
 
 Rules for this fork:
 ${a.rules.map(r => `- ${r}`).join('\n')}
@@ -44,14 +44,14 @@ Files that conflict in a trial 3-way merge of the two tips: ${a.mergeConflicts.j
 const COMMIT = {
   type: 'object',
   properties: {
-    sha: { type: 'string' }, subject: { type: 'string' }, layer: { type: 'string', enum: ['main', 'perf'] },
+    sha: { type: 'string' }, subject: { type: 'string' },
     verdict: { type: 'string', enum: ['keep-clean', 'keep-resolve', 'keep-adapt', 'drop-superseded', 'partial-superseded'] },
     conflict_files: { type: 'array', items: { type: 'string' } },
     rationale: { type: 'string' },
     evidence: { type: 'array', items: { type: 'string' } },
     resolution_guidance: { type: 'string' },
   },
-  required: ['sha', 'layer', 'verdict', 'rationale', 'evidence', 'resolution_guidance'],
+  required: ['sha', 'verdict', 'rationale', 'evidence', 'resolution_guidance'],
 }
 const SCHEMA = {
   type: 'object',
@@ -74,7 +74,7 @@ const groupPrompt = g => `${PRE}
 Group: ${g.key}. Focus: ${g.focus}
 
 Fork commits in this group (classify every one):
-${g.commits.map(c => `- ${c.sha} [${c.layer}]${c.protected ? ` [PROTECTED: ${c.protected}]` : ''} ${c.subject}\n  files upstream also changed: ${c.overlapFiles.join(', ')}`).join('\n')}
+${g.commits.map(c => `- ${c.sha}${c.protected ? ` [PROTECTED: ${c.protected}]` : ''} ${c.subject}\n  files upstream also changed: ${c.overlapFiles.join(', ')}`).join('\n')}
 
 Upstream commits that touch these files (read them; ${g.upstreamCommits.length} listed):
 ${g.upstreamCommits.map(u => `- ${u.sha} ${u.subject} (${u.files.join(', ')})`).join('\n') || '- none'}
@@ -90,7 +90,7 @@ const results = raw.filter(Boolean)
 const failedGroups = a.groups.filter((g, i) => !raw[i]).map(g => g.key)
 const classified = new Set(results.flatMap(r => (r.commits || []).map(c => c.sha.slice(0, 9))))
 const unclassified = a.groups.flatMap(g => g.commits).filter(c => !classified.has(c.sha.slice(0, 9)))
-  .map(c => ({ sha: c.sha, subject: c.subject, layer: c.layer }))
+  .map(c => ({ sha: c.sha, subject: c.subject }))
 log(`${results.length}/${a.groups.length} group analyses returned`)
 if (failedGroups.length) log(`FAILED groups (rerun them): ${failedGroups.join(', ')}`)
 if (unclassified.length) log(`${unclassified.length} fork commit(s) have no verdict: ${unclassified.map(c => c.sha.slice(0, 9)).join(', ')}`)
@@ -102,7 +102,7 @@ if (a.groups.length >= 2) {
 
 You are the critic for this classification. Tasks:
 1. Coverage: every fork commit in ${a.mb}..${a.forkRef} must have a verdict. The commits below touched no file upstream changed and were not sent to an analyst ("autoClean"); flag any that upstream still affects semantically (a renamed API, a moved call site, a changed default), with evidence.
-${a.autoClean.map(c => `- ${c.sha.slice(0, 12)} [${c.layer}]${c.protected ? ` [PROTECTED: ${c.protected}]` : ''} ${c.subject}`).join('\n')}
+${a.autoClean.map(c => `- ${c.sha.slice(0, 12)}${c.protected ? ` [PROTECTED: ${c.protected}]` : ''} ${c.subject}`).join('\n')}
 2. Contradictions: the same commit with different verdicts, or two groups whose guidance disagrees for the same file.
 3. Spot-check the 3 riskiest drop-superseded, partial-superseded or keep-adapt verdicts by reading the cited evidence yourself; say whether each holds.
 4. Upstream changes no group read that touch code the fork patches.
