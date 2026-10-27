@@ -1,7 +1,7 @@
 name: Upstream drift
 
 # Compares the fork with ysosrs123/NuvioTV-Fork main once a day and keeps one open issue
-# (label upstream-drift) up to date while the fork is behind: the commit counts per layer,
+# (label upstream-drift) up to date while the fork is behind: the commit counts, whether main still mirrors the base,
 # the Tier 2 paths upstream changed, the files a trial merge conflicts on and upstream's
 # first-parent log. It closes the issue once the fork has caught up. /upstream-sync does
 # the sync itself.
@@ -94,7 +94,10 @@ jobs:
           mb=$(git merge-base "$F" "$U")
           behind=$(git rev-list --count "$F..$U"); ahead=$(git rev-list --count "$U..$F")
           main_behind=$(git rev-list --count "$M..$U"); main_ahead=$(git rev-list --count "$U..$M")
-          if git merge-base --is-ancestor "$M" "$F"; then layers="yes"; else layers="**no**: main is not an ancestor of $FORK_REF"; fi
+          # main mirrors upstream at the base the fork was last rebased onto; it has no commits of its own.
+          if [ "$main_ahead" != 0 ]; then mirror="**no**: main has $main_ahead commit(s) that are not in upstream"
+          elif [ "$(git rev-parse "$M")" = "$mb" ]; then mirror="yes"
+          else mirror="**no**: main is in upstream but not at the base of $FORK_REF"; fi
           u_sha=$(git rev-parse "$U"); f_sha=$(git rev-parse "$F"); m_sha=$(git rev-parse "$M")
 
           pathspecs=()
@@ -134,11 +137,11 @@ jobs:
             echo "| Branch | Behind upstream/main | Ahead |"
             echo "|---|---|---|"
             echo "| \`$FORK_REF\` | $behind | $ahead |"
-            echo "| \`main\` | $main_behind | $main_ahead |"
+            echo "| \`main\` (mirror) | $main_behind | $main_ahead |"
             echo
             echo "Upstream tip \`${u_sha:0:9}\` ($(git log -1 --format=%cs "$U")), merge base \`${mb:0:9}\`:" \
               "[compare](https://github.com/$UPSTREAM_REPO/compare/$mb...$u_sha)."
-            echo "Layers in order (main is an ancestor of \`$FORK_REF\`): $layers."
+            echo "The \`main\` mirror sits at the base of \`$FORK_REF\`: $mirror."
             echo
             echo "### Tier 2 paths upstream changed ($(count "$tier2"))"
             echo
