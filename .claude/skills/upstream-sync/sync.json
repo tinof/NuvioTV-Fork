@@ -36,7 +36,8 @@
     "app/libs/lib-decoder-ffmpeg-release.aar: keep the fork's binary (DTS transcode target; it is also a protected-feature binary). Upstream's AAR has no DTS target. Never commit an AAR with the dcaxll (DTS-HD MA) writer; upstream module changes reach only local module builds until the owner rebuilds a dcaxll-free AAR.",
     "Upstream rewrites already-fetched history: on 2026-10-26 it re-authored its last 20 commits (same trees, AI trailers removed) after the fork had synced to them. Before the publish, fetch upstream again and check that upstream/main still contains the base; if only SHAs changed, rebase both layers onto the new tip with --onto, check the trees are identical, and re-run CI.",
     "main has no CI workflow: Checks (.github/workflows/checks.yml) lives on the Shield layer, and the binary workflows are disabled. Gate the main candidate locally (the contract's gate, JDK 17) before the publish.",
-    "A worktree build has no libnuvio_rpu.so (gitignored, built by scripts/build_rpu_builder.sh with cargo-ndk), so Dolby Vision conversion is off in it. Copy app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so into the worktree before any APK build that judges the protected features."
+    "A worktree build has no libnuvio_rpu.so (gitignored, built by scripts/build_rpu_builder.sh with cargo-ndk), so Dolby Vision conversion is off in it. Copy app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so into the worktree before any APK build that judges the protected features.",
+    "The Checks runner (ubuntu-latest, 2 vCPUs) exposes thread races in upstream tests that pass locally, even on 1 CPU under load (2026-10-27: ParallelRangeProductionWorkloadTest failed twice on CI, 0 of 35 targeted local runs). Do not re-run until green. Reproduce with an injected delay on plain upstream/main, fix the test in a base-layer commit, pass it to verify as --allow-new and put it first in the publish question."
   ],
   "scale": {
     "single_max_commits": 8,
