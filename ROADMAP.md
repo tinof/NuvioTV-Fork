@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-26 | Resource check during 4K DV playback with the DTS-HD MA transcode: 19 % of the four CPU cores (transcode 19.5 % of one core), GPU on overlay and near idle, 49 °C; memory is the limit (SwapFree 31 MB, NvMap full), so a live second decode for DV5 has no room now. | DV5, Q6 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-26 | U1.5: rebased onto upstream 1.1.0-nt.8.1 (official 1.1.0-beta.8); three fork commits dropped as upstream does the same; the AAC-to-DTS and HLG-to-Dolby-Vision work is now a protected feature that `/upstream-sync` checks line by line. | U1 | [log](docs/ROADMAP_LOG.md), PR #22 |
 | 2026-10-26 | M2.1 shipped: `shield_snapshot.sh` and `shield_restore.sh` save the Shield's state before a device session and put it back after, writing a setting back only when the session named it; one round trip on the Shield ended clean with an empty diff. | M2 | [log](docs/ROADMAP_LOG.md), PR #21 |
 | 2026-10-25 | DV2.11 shipped: a Matroska HEVC track whose hvcC carries no parameter sets (BBC broadcast HLG) takes its SPS and alternative-transfer SEI from the first AU before the formats are published, and a converted track gets the AU's parameter sets as its initialization data. | DV2 | [log](docs/ROADMAP_LOG.md), PR #20 |

@@ -440,6 +440,11 @@ Derived, not measured. One 4K frame in P010 is 24.9 MB.
   measured; budgeting it as 24 fps, as AetherEngine does, would admit a 60 fps stream.
 - **Thermal.** Unknown. Under pressure the analysis lowers its rate first, then stops; playback keeps
   the committed or fallback RPUs.
+- **Measured headroom (2026-10-26).** One 4K DV playback with the DTS-HD MA transcode used 19 % of the
+  four cores. The video was on a hardware overlay, at 49 °C with the fan off. Memory had no room:
+  SwapFree 31 MB, NvMap 785 MB used and 0 free. The seek-thumbnail worker's memory gate refused 4K work
+  twice in 5 min. A live analysis decoder would hit the same gate. See the 2026-10-26 entry in
+  `docs/ROADMAP_LOG.md`.
 
 ## 4. Risks and rejected ideas
 

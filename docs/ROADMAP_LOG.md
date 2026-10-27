@@ -10,6 +10,24 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-26: resource headroom during 4K playback (DV5, Q6.5)
+
+The owner asked whether the Shield has room for a live HLG dynamic-metadata generator next to the two
+conversions. This was a read-only measurement during 4K DV playback with the DTS-HD MA transcode.
+
+- **CPU:** 19.3 % of the four cores. The transcode thread used 19.5 % of one core, and the Loader thread
+  (static RPU injection, network and parsing) 4.0 %.
+- **GPU:** close to idle. The load is unreadable without root, but both layers were DEVICE overlays.
+- **Thermals:** 49 °C, fan 0.
+- **Memory:** the limit. SwapFree 31 MB, NvMap 785 MB used and 0 free. The seek-thumbnail worker's
+  `4K-E reserve` turned off twice in 5 min on low swap.
+- **Reading:** a second 4K decode for live analysis (DV design §3: 150–400 MB) has no room now. Idle-time
+  pre-analysis (§2.9) does not need one.
+- **Open:** the title's source was not confirmed as HLG, and the input rate was not logged, so Q6.5 stays
+  open.
+- Full numbers and the method are in the local Shield reference (`docs/nvidia-shield.md`, gitignored), section
+  "Resource use during playback (2026-10-26)". The raw files are in `~/shield-snapshots/20261026-resource-check/`.
+
 ## 2026-10-26: U1.5 sync onto upstream 1.1.0-nt.8.1 (PR #22)
 
 - [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves. Gate: 0 commits behind
