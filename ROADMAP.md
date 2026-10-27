@@ -611,7 +611,7 @@ because a wrong passthrough path is invisible until measured.
 
 - **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-27 (onto
   1.1.0-nt.8.2). The open "Upstream drift" issue (label `upstream-drift`)
-  shows how far behind it is; a daily workflow on `main` keeps it current.
+  shows how far behind it is; a daily workflow on the default branch keeps it current.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
 - [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
@@ -626,9 +626,33 @@ because a wrong passthrough path is invisible until measured.
 - [U1.4][desk] Pull request text per theme with the M1 numbers it rests on and the revert switches. Gate: the
   numbers come from the log. Needs: U1.3, M1.4.
 - [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves: run `/upstream-sync`
-  when the drift issue is open. Two layers: `main` = `upstream/main` + the fork's base layer (CI, test and fix
-  commits, the drift watcher), `perf/shield-pass` = `main` + the Shield work; both are rebased, never merged.
-  Gate: 0 commits behind at each pull request.
+  when the drift issue is open. One rebased branch, never merged: `perf/shield-pass` (the default branch) =
+  `upstream/main` + the fork's CI, test and fix commits and the drift watcher + the Shield work; `main` mirrors
+  upstream at the last synced base. Gate: 0 commits behind at each pull request.
+- Sync v2 (plan of 2026-10-27): cut the fixed cost of a sync, then run small syncs in the cloud at night and
+  publish them with one tap in the morning. Steps in order:
+  - [U1.6][owner] Spikes before building: whether a ruleset on this personal repo can let only a publish deploy
+    key bypass it (otherwise move the repo to an organization), and what a cloud session's GitHub access can do
+    (push outside `claude/`, dispatch a workflow, approve an environment deployment, merge a PR through REST).
+    Also: can a routine run `/upstream-sync`, the cloud clone and REST calls, and commit attribution. Gate:
+    results in the log; the nightly run (U1.10) stays off until a server-side guard exists.
+  - [U1.7][desk] One layer: `main` mirrors upstream at the last synced base, `perf/shield-pass` becomes the
+    default branch with the base commits at its bottom; preflight finds PRs through REST. Gate: the script
+    tests and a replay of the 2026-10-27 sync pass; then the default branch switches and `main` moves to the
+    base, each with the owner's go.
+  - [U1.8][desk] Light path: a sync with at most 3 conflicts, none protected and no upstream change to
+    workflows, binaries, settings stores or both-sided Tier 2 paths skips the classify workflow; a rebase stop
+    that breaks those limits aborts. Gate: script tests; a replay of the 2026-10-27 sync.
+  - [U1.9][desk] CI is the gate: Checks runs on pushed sync candidates with an upstream baseline job and a
+    compare job that fails on new or incomplete results; `shield_build_install.sh` runs `protected-apk` on every
+    local build. Gate: a scratch candidate with an injected failure, and one with a crashed test run, fail.
+  - [U1.10][desk][owner] Nightly cloud run at 02:07 Helsinki time: light syncs only, pushed as
+    `claude/sync/<date>-<n>` with a manifest of the exact verify inputs; anything else stops with a comment on
+    the drift issue. Gate: a one-off run on a replay branch matches the local result. Needs: U1.6, U1.8, U1.9.
+  - [U1.11][desk][owner] One-tap publish: a GitHub Actions workflow that runs only after the owner approves the
+    `sync-publish` environment. It re-checks the candidate with trusted code and the manifest's upstream SHA, then
+    pushes both refs atomically with leases, keeps rollback tags per run, and can roll back both refs. Gate: dry
+    run, a publish and a rollback on spike branches. Needs: U1.6, U1.10.
 
 ## Docs
 
