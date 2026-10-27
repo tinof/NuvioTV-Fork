@@ -18,8 +18,8 @@ roadmap-log:    docs/ROADMAP_LOG.md
 roadmap-memory: off
 push-roadmap:   no
 docs-prefix:    "fork: "
-gate:           ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew :app:testFullDebugUnitTest --continue
-gate-focused:   ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew :app:testFullDebugUnitTest --tests '<pattern>'
+gate:           ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" ./gradlew :app:testFullDebugUnitTest --continue
+gate-focused:   ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}" ./gradlew :app:testFullDebugUnitTest --tests '<pattern>'
 gate-fallback:  ci
 gate-skip:      '*.md' 'docs/**'
 ci:             pr-checks
@@ -139,11 +139,11 @@ none
 ## Notes
 
 Upstream syncs (ROADMAP U1.5) run through `/upstream-sync` (`.claude/skills/upstream-sync/`), not `/ship`.
-Two layers, both rebased: `main` = `upstream/main` + the base layer (CI, test and fix commits and
-`.github/workflows/upstream-drift.yml`, which only runs from the default branch); `perf/shield-pass` = `main` +
-the Shield work, so `main` stays its ancestor. A sync publishes both with one atomic `--force-with-lease`
-push, after scripted verification, the gate against an upstream baseline, an independent review of the
-changed hunks and green CI on pushed candidate branches. Upstream's four issue workflows (triage, labels,
+One rebased branch: `perf/shield-pass`, the default branch, = `upstream/main` + the fork's CI, test and fix
+commits and `.github/workflows/upstream-drift.yml` (which only runs from the default branch) + the Shield work.
+`main` mirrors upstream at the base `perf/shield-pass` was last rebased onto and carries no fork commit. A
+sync publishes both with one atomic `--force-with-lease` push, after scripted verification, the gate against an
+upstream baseline, an independent review of the changed hunks and green CI on a pushed candidate branch. Upstream's four issue workflows (triage, labels,
 housekeeping, release) are disabled in this fork so they leave the drift issue alone; their files stay as
 upstream has them.
 
