@@ -125,9 +125,12 @@ to `todo-edit` as in step 6. Resolve conflicts as in step 6.
    `--decisions` turns this layer's decided drops into expected drops (a drop that belongs to the other layer is
    only a note) and prints hints for adapt verdicts; it never waives a path itself.
 
-   Two more flags: `--protected-drop <sha,...>` accepts owner-approved drops of protected-feature commits, and
-   `--creation-factor N` (default 100) is passed to `git range-diff`; at git's own 60 a commit whose diff changed a
-   lot (a binary next to a rewritten README) shows as one dropped and one new commit.
+   Three more flags:
+   - `--protected-drop <sha,...>` accepts owner-approved drops of protected-feature commits.
+   - `--allow-new <sha,...>` accepts commits the sync adds on purpose, such as a base-layer fix for an upstream
+     test that fails on CI. Each one goes into the step 9 publish question for the owner.
+   - `--creation-factor N` (default 100) is passed to `git range-diff`. At git's own 60, a commit whose diff
+     changed a lot (a binary next to a rewritten README) shows as one dropped and one new commit.
 
    **Protected features** (report section of that name): for each feature, the commits it owns (by path anchor or
    subject) and every line they added that the old tip still has. A line missing from the new tip, in any file,
