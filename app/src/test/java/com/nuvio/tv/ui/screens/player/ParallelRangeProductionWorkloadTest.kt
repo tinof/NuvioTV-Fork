@@ -328,9 +328,16 @@ class ParallelRangeProductionWorkloadTest {
         manualClock.set(1000)
         Fixture().use { f ->
             val ds=f.source();f.bootstrap(ds)
+            // The three first requests are refused together: each waits until all three are sent, so a
+            // slow runner cannot refuse piece 1 before pieces 2 and 3 pass the gate.
+            val burst=CountDownLatch(3)
             f.beforeWorkerOpen={ _,attempt,spec ->
-                if(attempt==1) throw HttpDataSource.InvalidResponseCodeException(
-                    429,"fixture limiter",null,emptyMap(),spec,byteArrayOf())
+                if(attempt==1) {
+                    burst.countDown()
+                    if(!burst.await(5,TimeUnit.SECONDS)) throw IOException("the three first requests never met")
+                    throw HttpDataSource.InvalidResponseCodeException(
+                        429,"fixture limiter",null,emptyMap(),spec,byteArrayOf())
+                }
             }
             ds.open(f.spec(1))
             for(chunk in 1L..3L) invoke(ds,"ensureChunkScheduled",chunk)
