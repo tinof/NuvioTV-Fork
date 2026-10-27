@@ -2,10 +2,10 @@
 
 Commands:
   preflight [--allow-branch B ...] [--no-fetch] [--json]
-  map-overlap [--upstream R] [--main R] [--perf R] [--scratch DIR]
+  map-overlap [--upstream R] [--perf R] [--scratch DIR]
   todo-edit --drop SHA[,SHA...] <git-rebase-todo>
   drops --decisions classify.json --range BASE..TIP
-  verify --base-old R --old R --base-new R --new R --upstream R [--main-new R]
+  verify --base-old R --old R --base-new R --new R --upstream R
          [--decisions classify.json] [--expect-drop SHA,...] [--allow-new SHA,...] [--allow-same PATH ...]
          [--allow-changed PATH ...]
          [--protected-drop SHA,...] [--creation-factor N]
@@ -231,7 +231,7 @@ def added_lines(diff_text):
 
 
 def in_range(drops, shas):
-    """The drops that name one of [shas] (full SHAs of a layer's commits), and the rest."""
+    """The drops that name one of [shas] (full SHAs of the old range's commits), and the rest."""
     hit = [d for d in drops if any(sha_matches(s, d) for s in shas)]
     return hit, [d for d in drops if d not in hit]
 
@@ -301,7 +301,7 @@ def commits_with_files(rng):
 
 def cmd_preflight(a, cfg):
     fork, up = cfg["remotes"]["fork"], cfg["remotes"]["upstream"]
-    main_b, perf_b = cfg["layers"]["main"], cfg["layers"]["perf"]
+    main_b, perf_b = cfg["layers"]["mirror"], cfg["layers"]["perf"]
     if not a.no_fetch:
         git("fetch", "--prune", "--quiet", fork)
         git("fetch", "--quiet", up)
@@ -312,12 +312,16 @@ def cmd_preflight(a, cfg):
         if ref_exists(b) and out("rev-parse", b) != out("rev-parse", f"{fork}/{b}"):
             blocks.append(f"local {b} differs from {fork}/{b}")
     fmain, fperf, umain = f"{fork}/{main_b}", f"{fork}/{perf_b}", f"{up}/main"
-    if git("merge-base", "--is-ancestor", fmain, fperf, check=False).returncode != 0:
-        blocks.append(f"{fmain} is not an ancestor of {fperf} (the two-layer model is broken)")
+    # main mirrors upstream at the base perf was last rebased onto, so it marks where the fork's commits start.
+    if git("merge-base", "--is-ancestor", fmain, umain, check=False).returncode != 0:
+        blocks.append(f"{fmain} is not in {umain}: upstream rewrote its history, or {main_b} carries commits of its "
+                      f"own. Find the upstream commit with the same tree and rebase with --onto (sync.json traps)")
+    elif out("rev-parse", fmain) != out("merge-base", fperf, umain):
+        warns.append(f"{fmain} is not the base of {fperf}: the next publish moves it there")
     for base in (perf_b, main_b):
-        for pr in gh_json("pr", "list", "-R", cfg["repo"], "--base", base, "--state", "open",
-                          "--json", "number,title,headRefName") or []:
-            blocks.append(f"PR #{pr['number']} ({pr['headRefName']}) is open into {base}: merge or close it first")
+        # REST, not `gh pr list`: GraphQL is blocked in cloud sessions.
+        for pr in gh_json("api", f"repos/{cfg['repo']}/pulls?state=open&base={base}") or []:
+            blocks.append(f"PR #{pr['number']} ({pr['head']['ref']}) is open into {base}: merge or close it first")
     skip = set(a.allow_branch or []) | {main_b, perf_b}
     prefixes = tuple(cfg["ignored_branch_prefixes"])
     perf_subjects = set(lines("log", "--format=%s", f"{umain}..{fperf}"))
@@ -358,7 +362,6 @@ def cmd_preflight(a, cfg):
             warns.append(f"worktree {p.group(1)} has {m.group(1)} checked out")
     counts = {
         perf_b: (int(out("rev-list", "--count", f"{fperf}..{umain}")), int(out("rev-list", "--count", f"{umain}..{fperf}"))),
-        main_b: (int(out("rev-list", "--count", f"{fmain}..{umain}")), int(out("rev-list", "--count", f"{umain}..{fmain}"))),
     }
     report = {"blocks": blocks, "warnings": warns, "behind_ahead": counts, "upstream": out("rev-parse", umain)}
     if a.json:
@@ -372,22 +375,14 @@ def cmd_preflight(a, cfg):
             print(f"BLOCKED: {b}")
     if blocks:
         return FAIL
-    return NOTHING if counts[perf_b][0] == 0 and counts[main_b][0] == 0 else OK
+    return NOTHING if counts[perf_b][0] == 0 else OK
 
 
 def cmd_map_overlap(a, cfg):
-    up, main_r, perf_r = a.upstream, a.main, a.perf
+    up, perf_r = a.upstream, a.perf
     mb = out("merge-base", perf_r, up)
     behind = int(out("rev-list", "--count", f"{perf_r}..{up}"))
-    layered = git("merge-base", "--is-ancestor", main_r, perf_r, check=False).returncode == 0
-    fork_commits = []
-    if layered:
-        for c in commits_with_files(f"{mb}..{main_r}"):
-            fork_commits.append({**c, "layer": "main"})
-        for c in commits_with_files(f"{main_r}..{perf_r}"):
-            fork_commits.append({**c, "layer": "perf"})
-    else:
-        fork_commits = [{**c, "layer": "perf"} for c in commits_with_files(f"{mb}..{perf_r}")]
+    fork_commits = commits_with_files(f"{mb}..{perf_r}")
     upstream_files = set(lines("diff", "--no-renames", "--name-only", mb, up))
     fork_files = set(lines("diff", "--no-renames", "--name-only", mb, perf_r))
     overlap = upstream_files & fork_files
@@ -402,7 +397,7 @@ def cmd_map_overlap(a, cfg):
         if c["overlapFiles"]:
             by_theme[commit_theme(c["overlapFiles"], themes, c["subject"])].append(c)
         else:
-            auto_clean.append({k: c[k] for k in ("sha", "subject", "layer", "files", "protected")})
+            auto_clean.append({k: c[k] for k in ("sha", "subject", "files", "protected")})
     overlap_commits = sum(len(v) for v in by_theme.values())
     tier = scale_tier(overlap_commits, len(conflicts), scale)
     focus = {t["key"]: t["focus"] for t in themes}
@@ -429,8 +424,8 @@ def cmd_map_overlap(a, cfg):
     first_parent = [{"sha": l.split(" ", 1)[0], "subject": l.split(" ", 1)[1] if " " in l else ""}
                     for l in lines("log", "--first-parent", "--format=%h %s", f"{mb}..{up}")]
     result = {
-        "repo": os.getcwd(), "scratch": a.scratch, "upstreamRef": up, "forkRef": perf_r, "mainRef": main_r,
-        "mb": mb, "upstreamTip": out("rev-parse", up), "forkTip": out("rev-parse", perf_r), "layered": layered,
+        "repo": os.getcwd(), "scratch": a.scratch, "upstreamRef": up, "forkRef": perf_r,
+        "mb": mb, "upstreamTip": out("rev-parse", up), "forkTip": out("rev-parse", perf_r),
         "counts": {"fork": len(fork_commits), "upstream": int(out("rev-list", "--count", f"{mb}..{up}")),
                    "upstreamFirstParent": len(first_parent), "behind": behind, "overlapCommits": overlap_commits},
         "upstreamFirstParent": first_parent, "mergeConflicts": conflicts,
@@ -454,7 +449,7 @@ def cmd_todo_edit(a, cfg):
 
 
 def cmd_drops(a, cfg):
-    """Prints the decided drops that belong to one layer's range, comma-separated, for todo-edit."""
+    """Prints the decided drops that belong to a range, comma-separated, for todo-edit."""
     drops, _ = decisions(json.loads(Path(a.decisions).read_text()))
     shas = lines("rev-list", a.range)
     print(",".join(in_range(drops, shas)[0]))
@@ -464,16 +459,16 @@ def cmd_drops(a, cfg):
 def cmd_verify(a, cfg):
     fails, notes = [], []
     drops = [d for d in (a.expect_drop or "").split(",") if d]
-    # A commit the sync adds on purpose (a base-layer fix for a test that fails on CI) is new in the range-diff.
+    # A commit the sync adds on purpose (a fix for an upstream test that fails on CI) is new in the range-diff.
     added = [n for n in (getattr(a, "allow_new", None) or "").split(",") if n]
     if a.decisions:
         auto_drops, hints = decisions(json.loads(Path(a.decisions).read_text()))
-        # The classify result covers both layers; only drops of commits in this layer's old range apply here.
+        # Only drops of commits in the old range apply; a decision that names another commit is stale.
         mine, other = in_range(auto_drops, lines("rev-list", f"{a.base_old}..{a.old}"))
         drops += [d for d in mine if d not in drops]
         notes += [f"hint: {h}" for h in hints]
         notes += [f"expected drop from the classify decisions: {d}" for d in mine]
-        notes += [f"decided drop {d} belongs to the other layer" for d in other]
+        notes += [f"decided drop {d} is not in {a.base_old}..{a.old}" for d in other]
     allow_same, allow_changed = set(a.allow_same or []), set(a.allow_changed or [])
     for p in sorted(allow_same):
         notes.append(f"waived by --allow-same: {p} may equal {a.base_new}")
@@ -604,12 +599,10 @@ def cmd_verify(a, cfg):
     if protected_report:
         report += ["### Protected features", "", *protected_report, ""]
 
-    # 8. Up to date and layered.
+    # 8. Up to date.
     behind = int(out("rev-list", "--count", f"{a.new}..{a.upstream}"))
     if behind:
         fails.append(f"{a.new} is {behind} commits behind {a.upstream}")
-    if a.main_new and git("merge-base", "--is-ancestor", a.main_new, a.new, check=False).returncode != 0:
-        fails.append(f"{a.main_new} is not an ancestor of {a.new}")
 
     report += ["### Notes", "", *[f"- {n}" for n in notes or ["none"]], "", "### Result", ""]
     report += [f"- FAIL: {f}" for f in fails] or ["- all checks pass"]
@@ -659,7 +652,6 @@ def main(argv):
     s.add_argument("--json", action="store_true")
     s = sub.add_parser("map-overlap")
     s.add_argument("--upstream", default="upstream/main")
-    s.add_argument("--main", default="origin/main")
     s.add_argument("--perf", default="origin/perf/shield-pass")
     s.add_argument("--scratch", default="")
     s = sub.add_parser("todo-edit")
@@ -671,7 +663,6 @@ def main(argv):
     s = sub.add_parser("verify")
     for name in ("--base-old", "--old", "--base-new", "--new", "--upstream"):
         s.add_argument(name, required=True)
-    s.add_argument("--main-new")
     s.add_argument("--decisions")
     s.add_argument("--expect-drop")
     s.add_argument("--allow-new", help="commits the sync added on purpose, SHA[,SHA...]")
