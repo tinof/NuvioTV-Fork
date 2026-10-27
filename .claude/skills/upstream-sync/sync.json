@@ -6,12 +6,13 @@
     "upstream": "upstream"
   },
   "layers": {
-    "main": "main",
-    "perf": "perf/shield-pass"
+    "perf": "perf/shield-pass",
+    "mirror": "main"
   },
   "ignored_branch_prefixes": [
     "backup/",
-    "sync/"
+    "sync/",
+    "claude/"
   ],
   "issue_workflows": [
     "Issue triage",
@@ -34,10 +35,10 @@
     "Locale files: upstream moves existing strings; a fork hunk that carries one as context re-adds it and aapt fails on the duplicate.",
     "Protected features (protected_features): never drop or partially supersede a commit of the AAC-to-DTS transcode or the HLG-to-Dolby-Vision conversion without asking the owner, even where the owner rule would settle it. verify fails on a lost line those commits added and on a dropped one without --protected-drop.",
     "app/libs/lib-decoder-ffmpeg-release.aar: keep the fork's binary (DTS transcode target; it is also a protected-feature binary). Upstream's AAR has no DTS target. Never commit an AAR with the dcaxll (DTS-HD MA) writer; upstream module changes reach only local module builds until the owner rebuilds a dcaxll-free AAR.",
-    "Upstream rewrites already-fetched history: on 2026-10-26 it re-authored its last 20 commits (same trees, AI trailers removed) after the fork had synced to them. Before the publish, fetch upstream again and check that upstream/main still contains the base; if only SHAs changed, rebase both layers onto the new tip with --onto, check the trees are identical, and re-run CI.",
-    "main has no CI workflow: Checks (.github/workflows/checks.yml) lives on the Shield layer, and the binary workflows are disabled. Gate the main candidate locally (the contract's gate, JDK 17) before the publish.",
+    "Upstream rewrites already-fetched history: on 2026-10-26 it re-authored its last 20 commits (same trees, AI trailers removed) after the fork had synced to them. Before the publish, fetch upstream again and check that upstream/main still contains the base; if only SHAs changed, rebase perf onto the new tip with --onto, check the trees are identical, and re-run CI. Preflight blocks when main is no longer in upstream/main.",
+    "main is a mirror of upstream at the base perf/shield-pass was last rebased onto; it carries no fork commit and no CI. The fork's CI, test fixes and drift watcher are the bottom commits of perf/shield-pass, the default branch. Move main only in the publish push, never on its own.",
     "A worktree build has no libnuvio_rpu.so (gitignored, built by scripts/build_rpu_builder.sh with cargo-ndk), so Dolby Vision conversion is off in it. Copy app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so into the worktree before any APK build that judges the protected features.",
-    "The Checks runner (ubuntu-latest, 2 vCPUs) exposes thread races in upstream tests that pass locally, even on 1 CPU under load (2026-10-27: ParallelRangeProductionWorkloadTest failed twice on CI, 0 of 35 targeted local runs). Do not re-run until green. Reproduce with an injected delay on plain upstream/main, fix the test in a base-layer commit, pass it to verify as --allow-new and put it first in the publish question."
+    "The Checks runner (ubuntu-latest, 2 vCPUs) exposes thread races in upstream tests that pass locally, even on 1 CPU under load (2026-10-27: ParallelRangeProductionWorkloadTest failed twice on CI, 0 of 35 targeted local runs). Do not re-run until green. Reproduce with an injected delay on plain upstream/main, fix the test in a new commit at the bottom of the fork's commits, pass it to verify as --allow-new and put it first in the publish question."
   ],
   "scale": {
     "single_max_commits": 8,
