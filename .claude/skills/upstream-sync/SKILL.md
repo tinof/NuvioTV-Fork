@@ -71,14 +71,25 @@ On a block, report it and stop. The owner merges, rebases or deletes such branch
 `python3 -I $S/sync.py map-overlap --scratch <scratch>/classify > <scratch>/overlap.json`. Exit 3 means
 the fork is not behind: stop.
 
-Report to the owner: the counts, the scale tier and its reasons, the groups with their commit counts, the trial-merge conflict list, and any truncation.
+Report to the owner: the counts, the scale tier and its reasons, the light blockers, the groups with their commit counts, the trial-merge conflict list, and any truncation.
 
 Scale tiers:
 - `skip`: no fork commit touches a file upstream changed, and the trial merge is clean. No agents are needed.
+- `light`: at most `light.max_conflicts` (3) files conflict and `light.blockers` is empty. No agents are needed.
 - `single`: one analyst.
 - `fanout`: one analyst per group, at most 9, plus a critic.
 
-## 4. Classify (skip for tier `skip`)
+`light.blockers` names everything that keeps a sync off the light path:
+- more conflict files than the limit;
+- a conflict in a protected file, or a protected commit that touches a conflicting file;
+- an upstream change under `light.blocked_paths` in `sync.json` (workflows, `app/libs`, settings stores,
+  `DeviceProfile`);
+- a Tier 2 path both sides changed, unless upstream only changed lines that `light.benign_tier2_lines` allows
+  (a version bump in `app/build.gradle.kts`).
+
+`light.eligible` (no blockers, tier `skip` or `light`) is the only kind of sync a nightly run takes.
+
+## 4. Classify (skip for tiers `skip` and `light`)
 
 1. Run `Workflow({name: 'upstream-sync-classify', args: <the overlap.json object>})`. Pass args as a JSON object, not a string.
 2. Save the result to `<scratch>/classify.json`.
@@ -96,10 +107,14 @@ Scale tiers:
    ```
    With no drops, use a plain `git rebase --onto upstream/main OLD_BASE sync/<date>-perf`. `todo-edit` exits 1 and aborts the rebase if a SHA is not in the todo.
 2. At each stop:
+   0. On the light path, run `python3 -I $S/sync.py stop-check` first. Exit 1 means the stop needs more than the
+      light path allows (a protected commit or file, a blocked path, or more conflict files than the limit across
+      the rebase): `git rebase --abort`, then classify (step 4, tier `single`) before you rebase again.
    1. Run `git status -sb`.
    2. Run `git diff --cached --stat`: rerere autoupdate may already have staged an old resolution, so read it, don't trust it.
    3. Run `python3 -I $S/both.py --list <file>`.
-3. Resolve each conflict from the classify guidance:
+3. Resolve each conflict from the classify guidance (on the light path, keep both sides unless one side
+   already holds the other):
    - Use `both.py <file> ours|theirs|ours-theirs|theirs-ours [block]` for the mechanical cases (`SEP=1` puts a blank line between the two sides).
    - Edit by hand otherwise.
    - For a binary file, use `git checkout --theirs|--ours`.
