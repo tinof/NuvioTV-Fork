@@ -40,6 +40,19 @@
     "A worktree build has no libnuvio_rpu.so (gitignored, built by scripts/build_rpu_builder.sh with cargo-ndk), so Dolby Vision conversion is off in it. Copy app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so into the worktree before any APK build that judges the protected features.",
     "The Checks runner (ubuntu-latest, 2 vCPUs) exposes thread races in upstream tests that pass locally, even on 1 CPU under load (2026-10-27: ParallelRangeProductionWorkloadTest failed twice on CI, 0 of 35 targeted local runs). Do not re-run until green. Reproduce with an injected delay on plain upstream/main, fix the test in a new commit at the bottom of the fork's commits, pass it to verify as --allow-new and put it first in the publish question."
   ],
+  "light": {
+    "max_conflicts": 3,
+    "blocked_paths": [
+      ".github/workflows/**",
+      "app/libs/**",
+      "**/*DataStore.kt",
+      "**/DeviceProfile.kt"
+    ],
+    "benign_tier2_lines": [
+      "^\\s*versionCode\\s*=\\s*\\d+\\s*$",
+      "^\\s*versionName\\s*=\\s*\"[^\"]*\"\\s*$"
+    ]
+  },
   "scale": {
     "single_max_commits": 8,
     "single_max_conflicts": 3,
