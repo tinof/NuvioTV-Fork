@@ -4,6 +4,7 @@ Commands:
   preflight [--allow-branch B ...] [--no-fetch] [--json]
   map-overlap [--upstream R] [--perf R] [--scratch DIR]
   todo-edit --drop SHA[,SHA...] <git-rebase-todo>
+  stop-check
   drops --decisions classify.json --range BASE..TIP
   verify --base-old R --old R --base-new R --new R --upstream R
          [--decisions classify.json] [--expect-drop SHA,...] [--allow-new SHA,...] [--allow-same PATH ...]
@@ -88,12 +89,89 @@ def commit_theme(files, themes, subject=""):
     return next(k for k in order if counts.get(k) == best)
 
 
-def scale_tier(overlap_commits, conflicts, scale):
+def scale_tier(overlap_commits, conflicts, scale, light=None, blockers=()):
+    """skip: nothing overlaps. light: few conflicts and no light blocker, so no analyst is needed. single and
+    fanout: one analyst, or one per group."""
     if overlap_commits == 0 and conflicts == 0:
         return "skip"
+    if light is not None and not blockers and conflicts <= light["max_conflicts"]:
+        return "light"
     if overlap_commits <= scale["single_max_commits"] and conflicts <= scale["single_max_conflicts"]:
         return "single"
     return "fanout"
+
+
+def path_matches(path, pattern):
+    """A Tier 2 style glob: `**` spans directories, `*` and `?` stay inside one path segment."""
+    rx, i = "", 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            rx, i = rx + "(?:.*/)?", i + 3
+        elif pattern.startswith("**", i):
+            rx, i = rx + ".*", i + 2
+        elif pattern[i] == "*":
+            rx, i = rx + "[^/]*", i + 1
+        elif pattern[i] == "?":
+            rx, i = rx + "[^/]", i + 1
+        else:
+            rx, i = rx + re.escape(pattern[i]), i + 1
+    return re.fullmatch(rx, path) is not None
+
+
+def protected_path(path, features):
+    """The key of the protected feature that owns [path] by anchor or binary, or None."""
+    for f in features:
+        if path in f.get("binaries", []) or any(re.search(p, path) for p in f["anchors"]):
+            return f["key"]
+    return None
+
+
+def benign_change(changed_lines, patterns):
+    """True when every line upstream added or removed matches one of [patterns] (a version bump)."""
+    return bool(changed_lines) and all(any(re.search(p, l) for p in patterns) for l in changed_lines)
+
+
+def light_blockers(conflicts, upstream_files, fork_files, fork_commits, features, light, tier2, benign=()):
+    """Why a sync may not take the light path (no classify analysts, and the only kind a nightly run takes).
+    [benign] lists both-sided Tier 2 paths whose upstream change is only lines like a version bump."""
+    blockers = []
+    if len(conflicts) > light["max_conflicts"]:
+        blockers.append(f"{len(conflicts)} files conflict in a trial merge (light limit {light['max_conflicts']})")
+    for path in conflicts:
+        key = protected_path(path, features)
+        if key:
+            blockers.append(f"conflict in a protected file ({key}): {path}")
+        owners = sorted({c["sha"][:9] for c in fork_commits if c.get("protected") and path in c["files"]})
+        if owners:
+            blockers.append(f"protected commits touch the conflicting file {path}: {', '.join(owners)}")
+    for path in sorted(upstream_files):
+        if any(path_matches(path, g) for g in light["blocked_paths"]):
+            blockers.append(f"upstream changes {path}")
+    for path in sorted(upstream_files & fork_files):
+        if path not in conflicts and path in benign:
+            continue
+        if any(path_matches(path, g) for g in tier2):
+            blockers.append(f"both sides change the Tier 2 path {path}")
+    return blockers
+
+
+def stop_findings(unmerged, commit_files, subject, features, light, seen):
+    """At a rebase stop of a light sync: what makes the stop too much for the light path. [seen] is every file that
+    conflicted at an earlier stop of the same rebase."""
+    findings = []
+    key = feature_of(commit_files, features, subject)
+    if key:
+        findings.append(f"the replayed commit belongs to the protected feature {key}: {subject}")
+    for path in unmerged:
+        owner = protected_path(path, features)
+        if owner:
+            findings.append(f"conflict in a protected file ({owner}): {path}")
+        if any(path_matches(path, g) for g in light["blocked_paths"]):
+            findings.append(f"conflict in a light-blocked path: {path}")
+    total = set(seen) | set(unmerged)
+    if len(total) > light["max_conflicts"]:
+        findings.append(f"{len(total)} files have conflicted so far (light limit {light['max_conflicts']})")
+    return findings
 
 
 def merge_groups(groups, limit):
@@ -320,7 +398,7 @@ def cmd_preflight(a, cfg):
         warns.append(f"{fmain} is not the base of {fperf}: the next publish moves it there")
     for base in (perf_b, main_b):
         # REST, not `gh pr list`: GraphQL is blocked in cloud sessions.
-        for pr in gh_json("api", f"repos/{cfg['repo']}/pulls?state=open&base={base}") or []:
+        for pr in gh_json("api", f"repos/{cfg['repo']}/pulls?state=open&base={base}&per_page=100") or []:
             blocks.append(f"PR #{pr['number']} ({pr['head']['ref']}) is open into {base}: merge or close it first")
     skip = set(a.allow_branch or []) | {main_b, perf_b}
     prefixes = tuple(cfg["ignored_branch_prefixes"])
@@ -399,11 +477,21 @@ def cmd_map_overlap(a, cfg):
         else:
             auto_clean.append({k: c[k] for k in ("sha", "subject", "files", "protected")})
     overlap_commits = sum(len(v) for v in by_theme.values())
-    tier = scale_tier(overlap_commits, len(conflicts), scale)
+    light = cfg["light"]
+    tier2 = tier2_globs(Path(".claude/workflow.md").read_text()) if Path(".claude/workflow.md").exists() else []
+    benign = set()
+    for path in upstream_files & fork_files:
+        if any(path_matches(path, g) for g in tier2):
+            diff = out("diff", "--no-renames", "--unified=0", mb, up, "--", path).splitlines()
+            changed = [l[1:] for l in diff if l[:1] in "+-" and not l.startswith(("+++", "---"))]
+            if benign_change(changed, light["benign_tier2_lines"]):
+                benign.add(path)
+    blockers = light_blockers(conflicts, upstream_files, fork_files, fork_commits, features, light, tier2, benign)
+    tier = scale_tier(overlap_commits, len(conflicts), scale, light, blockers)
     focus = {t["key"]: t["focus"] for t in themes}
     groups = [{"key": k, "focus": focus[k], "commits": v, "files": sorted({f for c in v for f in c["overlapFiles"]})}
               for k, v in by_theme.items() if v]
-    if tier == "single" and groups:
+    if tier in ("single", "light") and groups:
         groups = merge_groups(groups, 1)
         groups[0]["key"] = "all"
     elif tier == "fanout":
@@ -432,7 +520,9 @@ def cmd_map_overlap(a, cfg):
         "rules": [cfg["owner_rule"], *cfg["traps"]],
         "scale": {"tier": tier, "reasons": [f"{overlap_commits} fork commits touch files upstream changed",
                                             f"{len(conflicts)} files conflict in a trial merge"]},
-        "groups": groups if tier != "skip" else [], "autoClean": auto_clean, "truncated": truncated,
+        # A nightly run takes only a sync with no light blocker (tier skip or light).
+        "light": {"eligible": not blockers, "blockers": blockers},
+        "groups": groups if tier not in ("skip", "light") else [], "autoClean": auto_clean, "truncated": truncated,
     }
     print(json.dumps(result, indent=1))
     return NOTHING if behind == 0 else OK
@@ -445,6 +535,28 @@ def cmd_todo_edit(a, cfg):
         print(f"todo-edit: not in the rebase todo: {', '.join(missing)}", file=sys.stderr)
         return FAIL
     path.write_text(text)
+    return OK
+
+
+def cmd_stop_check(a, cfg):
+    """At a conflict stop of a light rebase: exit 1 when the stop needs more than the light path allows. The
+    caller then aborts the rebase and classifies (a local run) or stops with a report (a nightly run)."""
+    rebase_dir = Path(out("rev-parse", "--git-path", "rebase-merge"))
+    if not rebase_dir.is_dir() or not ref_exists("REBASE_HEAD"):
+        print("stop-check: no rebase is stopped here", file=sys.stderr)
+        return USAGE
+    unmerged = sorted(set(lines("diff", "--name-only", "--diff-filter=U")))
+    commit_files = lines("show", "--no-renames", "--format=", "--name-only", "REBASE_HEAD")
+    subject = out("show", "-s", "--format=%s", "REBASE_HEAD")
+    seen_file = rebase_dir / "upstream-sync-seen"
+    seen = seen_file.read_text().split() if seen_file.exists() else []
+    findings = stop_findings(unmerged, commit_files, subject, cfg.get("protected_features", []), cfg["light"], seen)
+    seen_file.write_text("\n".join(sorted(set(seen) | set(unmerged))) + "\n")
+    for f in findings:
+        print(f"STOP: {f}")
+    if findings:
+        return FAIL
+    print(f"ok: {len(unmerged)} conflicting file(s) at this stop, {len(set(seen) | set(unmerged))} in this rebase")
     return OK
 
 
@@ -657,6 +769,7 @@ def main(argv):
     s = sub.add_parser("todo-edit")
     s.add_argument("--drop", required=True)
     s.add_argument("todo")
+    sub.add_parser("stop-check")
     s = sub.add_parser("drops")
     s.add_argument("--decisions", required=True)
     s.add_argument("--range", required=True)
@@ -678,6 +791,7 @@ def main(argv):
     cfg = load_config()
     try:
         return {"preflight": cmd_preflight, "map-overlap": cmd_map_overlap, "todo-edit": cmd_todo_edit, "drops": cmd_drops,
+                "stop-check": cmd_stop_check,
                 "verify": cmd_verify, "protected-apk": cmd_protected_apk,
                 "test-failures": cmd_test_failures}[a.cmd](a, cfg)
     except RuntimeError as e:
