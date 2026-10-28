@@ -98,6 +98,61 @@ class HelperTest(unittest.TestCase):
         self.assertEqual("single", sync.scale_tier(8, 3, scale))
         self.assertEqual("fanout", sync.scale_tier(9, 0, scale))
         self.assertEqual("fanout", sync.scale_tier(1, 4, scale))
+        light = CONFIG["light"]
+        self.assertEqual("light", sync.scale_tier(48, 2, scale, light))
+        self.assertEqual("skip", sync.scale_tier(0, 0, scale, light, ["upstream changes app/libs/x.aar"]))
+        self.assertEqual("fanout", sync.scale_tier(48, 2, scale, light, ["a blocker"]))
+        self.assertEqual("fanout", sync.scale_tier(48, 4, scale, light))
+
+    def test_path_matches_tier2_globs(self):
+        self.assertTrue(sync.path_matches(".github/workflows/checks.yml", ".github/workflows/**"))
+        self.assertTrue(sync.path_matches("app/src/main/java/a/PlayerSettingsDataStore.kt", "**/*DataStore.kt"))
+        self.assertTrue(sync.path_matches("DeviceProfile.kt", "**/DeviceProfile.kt"))
+        self.assertTrue(sync.path_matches("app/build.gradle.kts", "**/*.gradle.kts"))
+        self.assertFalse(sync.path_matches("app/src/a/b.kt", "app/src/*.kt"))
+        self.assertTrue(sync.path_matches("app/src/x/iec/Sink.kt", "app/src/x/iec/**"))
+
+    def test_light_blockers_name_every_reason(self):
+        features, light = CONFIG["protected_features"], CONFIG["light"]
+        prci = "app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerRuntimeControllerInitialization.kt"
+        store = "app/src/main/java/com/nuvio/tv/data/local/PlayerSettingsDataStore.kt"
+        dts = {"sha": "d2b07e187aec", "files": [prci], "protected": "aac-to-dts"}
+        plain = {"sha": "4f5d7705acf8", "files": [prci, store], "protected": None}
+        self.assertEqual([], sync.light_blockers([], {"app/a.kt"}, {"app/a.kt"}, [plain], features, light, []))
+        b = sync.light_blockers([prci], {prci, store, ".github/workflows/x.yml", "app/libs/a.aar"}, {prci, store},
+                                [dts, plain], features, light, ["app/src/main/java/com/nuvio/tv/data/local/*DataStore.kt"])
+        text = "\n".join(b)
+        self.assertIn(f"protected commits touch the conflicting file {prci}: d2b07e187", text)
+        self.assertIn(f"upstream changes {store}", text)
+        self.assertIn("upstream changes .github/workflows/x.yml", text)
+        self.assertIn("upstream changes app/libs/a.aar", text)
+        self.assertIn(f"both sides change the Tier 2 path {store}", text)
+        b = sync.light_blockers(["ffmpeg-decoder-downmix/src/main/jni/dcaxll/a.c", "b", "c", "d"], set(), set(), [],
+                                features, light, [])
+        self.assertIn("4 files conflict in a trial merge (light limit 3)", b)
+        self.assertIn("conflict in a protected file (aac-to-dts): ffmpeg-decoder-downmix/src/main/jni/dcaxll/a.c", b)
+
+    def test_a_version_bump_is_benign(self):
+        pats = CONFIG["light"]["benign_tier2_lines"]
+        self.assertTrue(sync.benign_change(['        versionCode = 1538', '        versionName = "1.1.0-nt.8.2"'], pats))
+        self.assertFalse(sync.benign_change(['        versionCode = 1538', '        minSdk = 26'], pats))
+        self.assertFalse(sync.benign_change([], pats))
+        gradle = "app/build.gradle.kts"
+        args = ([], {gradle}, {gradle}, [], CONFIG["protected_features"], CONFIG["light"], ["**/*.gradle.kts"])
+        self.assertEqual([], sync.light_blockers(*args, benign={gradle}))
+        self.assertEqual([f"both sides change the Tier 2 path {gradle}"], sync.light_blockers(*args))
+
+    def test_stop_findings(self):
+        features, light = CONFIG["protected_features"], CONFIG["light"]
+        self.assertEqual([], sync.stop_findings(["app/a.kt"], ["app/a.kt"], "fix: a", features, light, []))
+        f = sync.stop_findings(["app/a.kt"], ["app/a.kt"], "feat(audio): Transcode AAC to DTS picks DTS-HD MA",
+                               features, light, [])
+        self.assertTrue(any("protected feature aac-to-dts" in x for x in f), f)
+        f = sync.stop_findings(["app/libs/lib-decoder-ffmpeg-release.aar"], [], "build: x", features, light, [])
+        self.assertTrue(any("protected file (aac-to-dts)" in x for x in f), f)
+        self.assertTrue(any("light-blocked path" in x for x in f), f)
+        f = sync.stop_findings(["d"], ["d"], "fix: d", features, light, ["a", "b", "c"])
+        self.assertIn("4 files have conflicted so far (light limit 3)", f)
         groups = [{"key": k, "focus": k, "commits": [k] * n, "files": [k]} for k, n in (("a", 1), ("b", 2), ("c", 5))]
         merged = sync.merge_groups(groups, 2)
         self.assertEqual(2, len(merged))
@@ -443,7 +498,7 @@ class PreflightRepoTest(RepoFixture, unittest.TestCase):
     def fake_gh(self, *args):
         self.calls.append(args)
         if args[0] == "api" and "/pulls?" in args[1]:
-            return self.pulls if args[1].endswith("base=perf/shield-pass") else []
+            return self.pulls if "base=perf/shield-pass&" in args[1] else []
         return []
 
     def refs(self, main, perf, upstream="U"):
@@ -462,7 +517,8 @@ class PreflightRepoTest(RepoFixture, unittest.TestCase):
         self.refs(main="U", perf="new")
         code, report = self.preflight()
         self.assertEqual(sync.NOTHING, code, report)
-        self.assertIn(("api", f"repos/{self.cfg['repo']}/pulls?state=open&base=perf/shield-pass"), self.calls)
+        self.assertIn(("api", f"repos/{self.cfg['repo']}/pulls?state=open&base=perf/shield-pass&per_page=100"),
+                      self.calls)
         self.assertFalse(any(c[0] == "pr" for c in self.calls), "gh pr uses GraphQL, which cloud sessions block")
 
     def test_main_outside_upstream_blocks(self):
@@ -495,6 +551,39 @@ class SkillDocTest(unittest.TestCase):
         var = re.search(r"--force-with-lease=refs/heads/main:<(\w+)>", doc).group(1)
         self.assertIn(f"`{var}` (`origin/main`", doc)
         self.assertNotRegex(doc, rf"as `{var}` instead")
+
+
+class StopCheckRepoTest(RepoFixture, unittest.TestCase):
+    """stop-check at a real conflict stop: a fork commit that edits upstream.txt, which U also changed."""
+
+    def stop_at_conflict(self, subject):
+        run("git", "checkout", "-q", "-b", "x", "B", cwd=self.dir)
+        self.files = {"shared.txt": list(self.LINES), "fork-only.txt": list(self.LINES), "upstream.txt": ["u"]}
+        self.commit(subject, {"upstream.txt": {1: "fork"}})
+        r = subprocess.run(["git", "rebase", "--onto", "U", "B", "x"], cwd=self.dir, capture_output=True, text=True)
+        self.assertNotEqual(0, r.returncode, "the fixture must stop on a conflict")
+
+    def stop_check(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = sync.cmd_stop_check(argparse.Namespace(), self.cfg)
+        return code, buf.getvalue()
+
+    def test_a_small_plain_conflict_passes(self):
+        self.stop_at_conflict("fix: fork edits the upstream file")
+        code, report = self.stop_check()
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("ok: 1 conflicting file(s) at this stop, 1 in this rebase", report)
+
+    def test_a_protected_commit_stops_the_light_path(self):
+        self.stop_at_conflict("feat(dv): HLG conversion edits the upstream file")
+        code, report = self.stop_check()
+        self.assertEqual(sync.FAIL, code)
+        self.assertIn("STOP: the replayed commit belongs to the protected feature hlg-to-dv", report)
+
+    def test_outside_a_rebase_it_is_a_usage_error(self):
+        code, _ = self.stop_check()
+        self.assertEqual(sync.USAGE, code)
 
 
 class RenameRepoTest(unittest.TestCase):
