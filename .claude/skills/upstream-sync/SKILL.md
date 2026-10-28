@@ -22,8 +22,8 @@ issue (label `upstream-drift`, kept current by `.github/workflows/upstream-drift
   - `perf/shield-pass` (the default branch) = `upstream/main` + the fork's CI, test and fix commits and the
     drift watcher at the bottom + the Shield work.
   - `main` is a mirror: upstream's commit that `perf/shield-pass` was last rebased onto, with no fork commit. It
-    marks where the fork's commits start (`OLD_MAIN..OLD_PERF`). Only the publish push in step 8 moves it.
-  - Each sync runs `git rebase --onto upstream/main OLD_MAIN perf/shield-pass`.
+    marks where the fork's commits start (`OLD_BASE..OLD_PERF`). Only the publish push in step 8 moves it.
+  - Each sync runs `git rebase --onto upstream/main OLD_BASE perf/shield-pass`.
 - **Sides during a rebase:** "ours" is the new base (upstream), "theirs" is the fork commit being replayed.
 - **Toolchain:** JDK, Gradle, AGP, Kotlin and the JVM target always follow upstream.
 - **Owner rule (`owner_rule` in `sync.json`):**
@@ -59,9 +59,10 @@ On a block, report it and stop. The owner merges, rebases or deletes such branch
 
 1. Fetch both remotes. Then `git config rerere.enabled true` and `git config rerere.autoupdate true`.
 2. Create the backup branch `backup/perf-pre-sync-<date>` from `origin/perf/shield-pass`. Record the full old SHAs
-   `OLD_PERF` (`origin/perf/shield-pass`) and `OLD_MAIN` (`origin/main`, the base). Add local tags
-   `sync/<date>/old-perf` and `sync/<date>/old-main`. If preflight warned that `origin/main` is not at the base of
-   `perf/shield-pass`, use `git merge-base origin/perf/shield-pass upstream/main` as `OLD_MAIN` instead.
+   `OLD_PERF` (`origin/perf/shield-pass`), `OLD_MAIN` (`origin/main`, the lease for `main` in step 8) and `OLD_BASE`
+   (`git merge-base origin/perf/shield-pass upstream/main`, where the fork's commits start). Add local tags
+   `sync/<date>/old-perf`, `sync/<date>/old-main` and `sync/<date>/old-base`. `OLD_BASE` equals `OLD_MAIN` unless
+   preflight warned that `origin/main` is not at the base of `perf/shield-pass`; the lease stays `OLD_MAIN` either way.
 3. Create the worktree: `git worktree add -b sync/<date>-perf ../NuvioTV-Fork-wt/upstream-sync OLD_PERF`, and copy `local.properties` and `app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so` into it (both are gitignored; without the library an APK built there has Dolby Vision conversion off).
 4. Run the baseline gate on plain `upstream/main` in a second worktree. Use the contract's `gate` command (JDK 17 and `ANDROID_HOME` per `.claude/workflow.md`; the first run takes about 6 minutes). Save the failures to `<scratch>/baseline-failures.txt`: from the repository root, run `python3 -I $S/sync.py test-failures <baseline worktree>/app/build/test-results/testFullDebugUnitTest`. Use the absolute path; the baseline worktree has no skill, and a relative path would read this checkout's results. Upstream's own failures are not the sync's fault; `sync.json` lists the known ones.
 
@@ -88,12 +89,12 @@ Scale tiers:
 
 ## 5. Rebase
 
-1. Start the rebase in the worktree. The drops come from `python3 -I $S/sync.py drops --decisions <scratch>/classify.json --range OLD_MAIN..OLD_PERF`:
+1. Start the rebase in the worktree. The drops come from `python3 -I $S/sync.py drops --decisions <scratch>/classify.json --range OLD_BASE..OLD_PERF`:
    ```
    GIT_SEQUENCE_EDITOR="python3 -I $PWD/$S/sync.py todo-edit --drop <sha,sha>" \
-     git rebase -i --onto upstream/main OLD_MAIN sync/<date>-perf
+     git rebase -i --onto upstream/main OLD_BASE sync/<date>-perf
    ```
-   With no drops, use a plain `git rebase --onto upstream/main OLD_MAIN sync/<date>-perf`. `todo-edit` exits 1 and aborts the rebase if a SHA is not in the todo.
+   With no drops, use a plain `git rebase --onto upstream/main OLD_BASE sync/<date>-perf`. `todo-edit` exits 1 and aborts the rebase if a SHA is not in the todo.
 2. At each stop:
    1. Run `git status -sb`.
    2. Run `git diff --cached --stat`: rerere autoupdate may already have staged an old resolution, so read it, don't trust it.
@@ -111,14 +112,14 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
 
 1. Run:
    ```
-   python3 -I $S/sync.py verify --base-old OLD_MAIN --old OLD_PERF --base-new NEW_BASE --new NEW_PERF \
+   python3 -I $S/sync.py verify --base-old OLD_BASE --old OLD_PERF --base-new NEW_BASE --new NEW_PERF \
      --upstream NEW_BASE --decisions <scratch>/classify.json
    ```
 2. A failure blocks. Two flags waive a single path, and only for a decision on that path:
    - `--allow-same <path>`: a fork change to the path was knowingly superseded.
    - `--allow-changed <path>`: a fork-only file was knowingly adapted.
 
-   `--decisions` turns the decided drops in `OLD_MAIN..OLD_PERF` into expected drops (a decision that names
+   `--decisions` turns the decided drops in `OLD_BASE..OLD_PERF` into expected drops (a decision that names
    another commit is only a note) and prints hints for adapt verdicts; it never waives a path itself.
 
    Three more flags:
