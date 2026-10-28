@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -482,6 +483,18 @@ class PreflightRepoTest(RepoFixture, unittest.TestCase):
         code, report = self.preflight()
         self.assertEqual(sync.OK, code, report)
         self.assertIn("perf/shield-pass: 1 behind upstream/main", report)
+
+
+class SkillDocTest(unittest.TestCase):
+    """The publish command in SKILL.md, which no script runs."""
+
+    def test_main_lease_is_origin_main_even_when_main_is_not_at_the_base(self):
+        # Preflight only warns when origin/main is behind the fork's base. A lease on that base instead of the
+        # fetched origin/main makes the atomic publish push fail as stale although nothing moved.
+        doc = (SKILL / "SKILL.md").read_text()
+        var = re.search(r"--force-with-lease=refs/heads/main:<(\w+)>", doc).group(1)
+        self.assertIn(f"`{var}` (`origin/main`", doc)
+        self.assertNotRegex(doc, rf"as `{var}` instead")
 
 
 class RenameRepoTest(unittest.TestCase):
