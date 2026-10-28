@@ -639,10 +639,12 @@ because a wrong passthrough path is invisible until measured.
   - [U1.7][desk] One layer: `main` mirrors upstream at the last synced base, `perf/shield-pass` becomes the
     default branch with the base commits at its bottom; preflight finds PRs through REST. Gate: the script
     tests and a replay of the 2026-10-27 sync pass; then the default branch switches and `main` moves to the
-    base, each with the owner's go. Landed: PR #25; gate pending.
+    base, each with the owner's go. Landed: PR #25; gate passed 2026-10-28 (default branch `perf/shield-pass`,
+    `main` at upstream `2b51aba36`, drift dry run green, preflight exits 3).
   - [U1.8][desk] Light path: a sync with at most 3 conflicts, none protected and no upstream change to
-    workflows, binaries, settings stores or both-sided Tier 2 paths skips the classify workflow; a rebase stop
-    that breaks those limits aborts. Gate: script tests; a replay of the 2026-10-27 sync.
+    workflows, binaries, settings stores or both-sided Tier 2 paths (a version bump alone is allowed) skips the
+    classify workflow; a rebase stop that breaks those limits aborts. Gate: script tests; a replay of the
+    2026-10-27 sync.
   - [U1.9][desk] CI is the gate: Checks runs on pushed sync candidates with an upstream baseline job and a
     compare job that fails on new or incomplete results; `shield_build_install.sh` runs `protected-apk` on every
     local build. Gate: a scratch candidate with an injected failure, and one with a crashed test run, fail.
