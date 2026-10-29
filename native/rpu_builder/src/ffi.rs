@@ -6,7 +6,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 
 use jni::objects::{JByteArray, JClass, JIntArray, JObject};
-use jni::sys::{jint, jintArray, jlong, jobjectArray, jstring};
+use jni::sys::{jdouble, jint, jintArray, jlong, jobjectArray, jstring};
 use jni::JNIEnv;
 
 use crate::api::{self, WrapperError, BUILDERS, OK, PANIC};
@@ -112,13 +112,14 @@ pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeCreate
     level6: JIntArray<'local>,
     source_range: JIntArray<'local>,
     level5: JIntArray<'local>,
+    source_primaries: jint,
 ) -> jlong {
     guard(-jlong::from(PANIC), || {
         handle_or_code((|| {
             let level6 = read_ints(&mut env, &level6)?;
             let source_range = read_ints(&mut env, &source_range)?;
             let level5 = read_ints(&mut env, &level5)?;
-            let params = api::params(
+            let params = api::params_with_primaries(
                 profile,
                 composer,
                 cm_version,
@@ -126,6 +127,7 @@ pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeCreate
                 level6.as_deref(),
                 source_range.as_deref(),
                 level5.as_deref(),
+                source_primaries,
             )?;
             api::create(&BUILDERS, &params)
         })())
@@ -213,6 +215,45 @@ pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeHdr10P
             let l1 = api::hdr10plus_l1(&bytes, peak_source, cm_version)?;
             write_ints(&mut env, &out, &l1)
         })())
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeHdr10PlusFrame<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    payload: JByteArray<'local>,
+    peak_source: jint,
+    cm_version: jint,
+    out: JIntArray<'local>,
+) -> jint {
+    guard(PANIC, || {
+        code((|| {
+            if payload.is_null() {
+                return Err(WrapperError::BadArgument("null payload".into()));
+            }
+            let bytes = env.convert_byte_array(&payload);
+            let bytes = checked(&mut env, bytes)?;
+            let frame = api::hdr10plus_frame(&bytes, peak_source, cm_version)?;
+            write_ints(&mut env, &out, &frame)
+        })())
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeSourceRange81<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    min_nits: jdouble,
+    max_nits: jdouble,
+    out: JIntArray<'local>,
+) -> jint {
+    guard(PANIC, || {
+        code(write_ints(
+            &mut env,
+            &out,
+            &api::source_range_81(min_nits, max_nits),
+        ))
     })
 }
 
