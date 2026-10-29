@@ -126,8 +126,8 @@ internal fun PlaybackVideoSection(
             onToggle = { onUpdate { setDv5ToDv81Enabled(!settings.dv5ToDv81Enabled) } },
             enabled = enabled && dv81Conversion
         )
-        // DV2.7: only HLG converts so far, only on Nvidia, and never in the strip or HDR10 base-layer
-        // modes (DvConversionGate).
+        // DV2.7, DV3.1: HLG and HDR10+ convert (plain HDR10 is DV3.3), only on Nvidia, and never in the
+        // strip or HDR10 base-layer modes (DvConversionGate).
         if (DeviceProfile.isNvidia()) {
             val stripMode = settings.dv7HandlingMode == Dv7HandlingMode.STRIP_DV ||
                 settings.dv7HandlingMode == Dv7HandlingMode.HDR10_BASE_LAYER

@@ -30,7 +30,8 @@ import java.io.ByteArrayOutputStream
  * DV2.7: a track without Dolby Vision that DV2.3 converts gets its RPUs from
  * [rpuSource] ([prepareDolbyVisionConversion] at track init, which keeps the
  * track native when there is no RPU) and [injectDolbyVisionRpu] per AU,
- * written by one [ConvertedTrackInjector] per track.
+ * written by one [ConvertedTrackInjector] per track. DV3.1: an HDR10+ track's
+ * RPUs change per scene; [onRelease] frees their native builder.
  */
 @UnstableApi
 internal class DolbyVisionMatroskaTransformer(
@@ -40,7 +41,10 @@ internal class DolbyVisionMatroskaTransformer(
     private val injectHdr10Sei: Boolean = false,
     // DV2.7: the RPUs of tracks converted from HDR10 or HLG, and the scene-refresh debug switch.
     // DV3.2: the HLG composer comes from debug.nuvio.dv_hlg_canary, read once per extractor.
-    private val rpuSource: DvRpuSource = StaticDvRpuSource.fromSwitches(),
+    // DV3.1: 8.1 from HDR10+, off with debug.nuvio.dv_hdr10plus 0 (then the first AU is not scanned).
+    private val hdr10PlusEnabled: Boolean = DebugSwitches.flag(Hdr10PlusDvRpuSource.SWITCH) != false,
+    private val rpuSource: DvRpuSource =
+        DvRpuSources(StaticDvRpuSource.fromSwitches(), Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled)),
     private val refreshEveryStart: Boolean = DebugSwitches.flag(REFRESH_EVERY_START_SWITCH) == true,
 ) : MatroskaExtractor.DolbyVisionSampleTransformer {
 
@@ -200,6 +204,8 @@ internal class DolbyVisionMatroskaTransformer(
     // Strip mode removes every RPU, so it never signals a conversion (the gate excludes it too).
     override fun isDolbyVisionConversionEnabled(): Boolean = config.convertNonDolbyVision && !stripRpuOnly
 
+    override fun convertsHdr10Plus(): Boolean = isDolbyVisionConversionEnabled() && hdr10PlusEnabled
+
     override fun onDolbyVisionConversionSignalled(trackId: Int, decision: DvSignallingDecision.Convert) {
         config.stats.recordConvertedTrack(decision.target)
     }
@@ -211,24 +217,43 @@ internal class DolbyVisionMatroskaTransformer(
     override fun prepareDolbyVisionConversion(
         trackId: Int,
         decision: DvSignallingDecision.Convert,
-        nalUnitLengthFieldLength: Int
-    ): DvSignallingDecision = when (val prepared = rpuSource.prepare(decision.target)) {
-        is DvRpuSource.Prepared.Ready -> if (!ConvertedTrackInjector.fits(prepared.shot, nalUnitLengthFieldLength)) {
-            // Every AU would go out without its RPU.
-            DvSignallingDecision.Native(
-                "no RPU: ${prepared.shot.size(true)} bytes do not fit a $nalUnitLengthFieldLength-byte NAL length"
-            )
-        } else {
-            convertedTracks[trackId] = ConvertedTrackInjector(prepared.shot, refreshEveryStart)
-            val refresh = if (refreshEveryStart) "frame 0 and every start" else "frame 0 only"
-            android.util.Log.i(
-                TAG,
-                "DV_INJECT track $trackId: ${prepared.label}, RPU ${prepared.shot.size(true)}/" +
-                    "${prepared.shot.size(false)} bytes, scene refresh on $refresh"
-            )
-            decision
+        nalUnitLengthFieldLength: Int,
+        facts: DvTrackFacts
+    ): DvSignallingDecision {
+        // A track prepared again (the first AU after track init, a Tracks element read again) starts over.
+        convertedTracks.remove(trackId)?.release()
+        return when (val prepared = rpuSource.prepare(decision.target, facts)) {
+            is DvRpuSource.Prepared.Ready -> {
+                val first = prepared.rpus.first
+                val reason = when {
+                    nalUnitLengthFieldLength < prepared.rpus.minNalLengthFieldLength ->
+                        "a $nalUnitLengthFieldLength-byte NAL length cannot hold every RPU of this source"
+                    !ConvertedTrackInjector.fits(first, nalUnitLengthFieldLength) ->
+                        "${first.size(true)} bytes do not fit a $nalUnitLengthFieldLength-byte NAL length"
+                    else -> null
+                }
+                if (reason != null) {
+                    // Every AU would go out without its RPU.
+                    prepared.rpus.release()
+                    DvSignallingDecision.Native("no RPU: $reason")
+                } else {
+                    convertedTracks[trackId] = ConvertedTrackInjector(prepared.rpus, refreshEveryStart)
+                    val refresh = if (refreshEveryStart) "frame 0 and every start" else "frame 0 only"
+                    android.util.Log.i(
+                        TAG,
+                        "DV_INJECT track $trackId: ${prepared.label}, RPU ${first.size(true)}/" +
+                            "${first.size(false)} bytes, scene refresh on $refresh"
+                    )
+                    decision
+                }
+            }
+            is DvRpuSource.Prepared.Unavailable -> DvSignallingDecision.Native("no RPU: ${prepared.reason}")
         }
-        is DvRpuSource.Prepared.Unavailable -> DvSignallingDecision.Native("no RPU: ${prepared.reason}")
+    }
+
+    override fun onRelease() {
+        for (injector in convertedTracks.values) injector.release()
+        convertedTracks.clear()
     }
 
     override fun injectDolbyVisionRpu(
@@ -236,12 +261,14 @@ internal class DolbyVisionMatroskaTransformer(
         sampleLengthDelimitedData: ByteArray?,
         sampleLength: Int,
         nalUnitLengthFieldLength: Int,
-        streamStart: Boolean
+        streamStart: Boolean,
+        timeUs: Long
     ): ByteArray? {
         val sample = sampleLengthDelimitedData ?: return null
         val injector = convertedTracks[trackId] ?: return null
         lastTransformedLength = sampleLength
-        if (!injector.inject(sample, sampleLength, nalUnitLengthFieldLength, streamStart, scratch)) {
+        // The HDR10+ payload is read here, before the strip mode below removes it.
+        if (!injector.inject(sample, sampleLength, nalUnitLengthFieldLength, streamStart, timeUs, scratch)) {
             // The extractor's Annex B writer refuses the same sample; the RPU cannot go anywhere.
             if (!injectFailureLogged) {
                 injectFailureLogged = true

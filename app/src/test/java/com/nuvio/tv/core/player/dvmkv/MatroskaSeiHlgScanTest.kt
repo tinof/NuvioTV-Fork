@@ -20,6 +20,8 @@ import com.nuvio.tv.core.player.DolbyVisionMatroskaTransformer
 import com.nuvio.tv.core.player.DolbyVisionStatsSession
 import com.nuvio.tv.core.player.DoviRpuBuilder
 import com.nuvio.tv.core.player.DvRpuSource
+import com.nuvio.tv.core.player.DvTrackFacts
+import com.nuvio.tv.core.player.StaticTrackRpus
 import com.nuvio.tv.core.player.DvSignallingDecision
 import com.nuvio.tv.core.player.HevcColourFixtures
 import com.nuvio.tv.core.player.HlgDecision
@@ -148,7 +150,7 @@ class MatroskaSeiHlgScanTest {
 
     private val refreshRpu = byteArrayOf(0x7C, 0x01, 0x11, 0x22, 0x33, 0x44)
     private val plainRpu = byteArrayOf(0x7C, 0x01, 0x55, 0x66, 0x77)
-    private val readySource = DvRpuSource { DvRpuSource.Prepared.Ready(DoviRpuBuilder.ShotRpu(refreshRpu, plainRpu), "test") }
+    private val readySource = DvRpuSource { _, _ -> DvRpuSource.Prepared.Ready(StaticTrackRpus(DoviRpuBuilder.ShotRpu(refreshRpu, plainRpu)), "test") }
 
     private val idr = byteArrayOf(0x26, 0x01, 0xAF.toByte(), 0x10)
     private val trail = byteArrayOf(0x02, 0x01, 0xD0.toByte(), 0x21)
