@@ -169,4 +169,76 @@ class HevcInitNalsTest {
         val late = lengthPrefixed(idr, sps)
         assertNull(HevcInitNals.readAuPrefix(late, late.size, late.size, 4).sps)
     }
+
+    // DV3.1: the HDR10+ T.35 payloads an hvcC or an AU carries.
+
+    private val hdr10PlusPayload =
+        byteArrayOf(0xB5.toByte(), 0x00, 0x3C, 0x00, 0x01, 0x04, 0x01, 0x40, 0x00, 0x00, 0x01, 0x22)
+
+    /** A prefix SEI NAL of [messages] (payloadType, RBSP payload), escaped as a coded NAL is. */
+    private fun seiNal(vararg messages: Pair<Int, ByteArray>): ByteArray {
+        val rbsp = mutableListOf<Byte>()
+        for ((type, payload) in messages) {
+            rbsp += type.toByte()
+            rbsp += payload.size.toByte()
+            rbsp += payload.toList()
+        }
+        rbsp += 0x80.toByte()
+        val escaped = mutableListOf<Byte>(0x4E, 0x01)
+        var zeros = 0
+        for (b in rbsp) {
+            if (zeros == 2 && (b.toInt() and 0xFF) <= 3) {
+                escaped += 3
+                zeros = 0
+            }
+            escaped += b
+            zeros = if (b == 0.toByte()) zeros + 1 else 0
+        }
+        return escaped.toByteArray()
+    }
+
+    @Test
+    fun `HDR10+ payloads come back unescaped from the country code on, every message in order`() {
+        val other = byteArrayOf(0xB5.toByte(), 0x00, 0x3C, 0x00, 0x01, 0x04, 0x01, 0x7F)
+        val nal = seiNal(5 to ByteArray(16), 4 to hdr10PlusPayload, 147 to byteArrayOf(18), 4 to other)
+        // The payload holds 00 00 01: the coded NAL carries an emulation prevention byte in it.
+        assertEquals(-1, String(nal, Charsets.ISO_8859_1).indexOf(String(hdr10PlusPayload, Charsets.ISO_8859_1)))
+        val payloads = HevcInitNals.hdr10PlusPayloadsInSei(nal)
+        assertEquals(2, payloads.size)
+        assertArrayEquals(hdr10PlusPayload, payloads[0])
+        assertArrayEquals(other, payloads[1])
+    }
+
+    @Test
+    fun `a T35 message of another provider or another payload type is not a candidate`() {
+        val dolby = byteArrayOf(0xB5.toByte(), 0x00, 0x3B, 0x00, 0x00, 0x08, 0x00)
+        assertEquals(0, HevcInitNals.hdr10PlusPayloadsInSei(seiNal(4 to dolby)).size)
+        // The HDR10+ bytes in a user_data_unregistered message are not a T.35 message.
+        assertEquals(0, HevcInitNals.hdr10PlusPayloadsInSei(seiNal(5 to hdr10PlusPayload)).size)
+    }
+
+    @Test
+    fun `an hvcC prefix SEI array can carry HDR10+`() {
+        val hvcC = HevcColourFixtures.hvcC(
+            33 to listOf(HevcColourFixtures.sps("pq")),
+            39 to listOf(seiNal(4 to hdr10PlusPayload))
+        )
+        assertArrayEquals(hdr10PlusPayload, HevcInitNals.hdr10PlusPayloads(initData(hvcC)).single())
+        assertEquals(0, HevcInitNals.hdr10PlusPayloads(initData(HevcColourFixtures.hvcCOf("pq"))).size)
+    }
+
+    @Test
+    fun `an AU's HDR10+ payloads are those before its first slice`() {
+        val before = seiNal(4 to hdr10PlusPayload)
+        val after = seiNal(4 to byteArrayOf(0xB5.toByte(), 0x00, 0x3C, 0x00, 0x01, 0x04, 0x01, 0x55))
+        val au = lengthPrefixed(aud, before, idr, after)
+        assertArrayEquals(hdr10PlusPayload, HevcInitNals.hdr10PlusPayloadsInAu(au, au.size, 4).single())
+        // The AU prefix walk of the early scan collects them too.
+        assertArrayEquals(hdr10PlusPayload, HevcInitNals.readAuPrefix(au, au.size, au.size, 4).hdr10PlusPayloads.single())
+        // A malformed length ends the walk with what was found before it.
+        val broken = lengthPrefixed(before) + byteArrayOf(0, 0, 0x7F, 0x7F, 0x26)
+        assertArrayEquals(hdr10PlusPayload, HevcInitNals.hdr10PlusPayloadsInAu(broken, broken.size, 4).single())
+        assertEquals(0, HevcInitNals.hdr10PlusPayloadsInAu(au, au.size, 0).size)
+        assertEquals(0, HevcInitNals.hdr10PlusPayloadsInAu(lengthPrefixed(aud, idr), 13, 4).size)
+    }
 }
