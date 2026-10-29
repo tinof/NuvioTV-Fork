@@ -65,6 +65,7 @@ import com.nuvio.tv.core.player.HevcInitNals;
 import com.nuvio.tv.core.player.HevcVuiColour;
 import com.nuvio.tv.core.player.DvSignalling;
 import com.nuvio.tv.core.player.DvSignallingDecision;
+import com.nuvio.tv.core.player.DvTrackFacts;
 import com.nuvio.tv.core.player.HlgContract;
 import com.nuvio.tv.core.player.HlgDecision;
 import com.nuvio.tv.core.util.TtffTrace;
@@ -238,14 +239,26 @@ public class MatroskaExtractor implements Extractor {
      * Vision Format without RPUs must never reach the decoder.
      */
     default DvSignallingDecision prepareDolbyVisionConversion(
-        int trackId, DvSignallingDecision.Convert decision, int nalUnitLengthFieldLength) {
+        int trackId,
+        DvSignallingDecision.Convert decision,
+        int nalUnitLengthFieldLength,
+        DvTrackFacts facts) {
       return new DvSignallingDecision.Native("no RPU injector");
+    }
+
+    /**
+     * Fork (DV3.1): whether a PQ track may convert from HDR10+, so the early scan reads its first AU
+     * for an HDR10+ SEI. Read at track init.
+     */
+    default boolean convertsHdr10Plus() {
+      return false;
     }
 
     /**
      * Fork (DV2.7): rewrites an AU of a converted track with its RPU, in place of {@link
      * #transformHevcSample}; the result follows the same rules. {@code streamStart} is true for the
-     * track's frame 0, the first AU of the linear stream.
+     * track's frame 0, the first AU of the linear stream; {@code timeUs} is the AU's presentation
+     * time (DV3.1).
      */
     @Nullable
     default byte[] injectDolbyVisionRpu(
@@ -253,12 +266,16 @@ public class MatroskaExtractor implements Extractor {
         byte[] sampleLengthDelimitedData,
         int sampleLength,
         int nalUnitLengthFieldLength,
-        boolean streamStart) {
+        boolean streamStart,
+        long timeUs) {
       return null;
     }
 
     /** Fork (DV2.7): the extractor starts reading at a new position, after a seek or a resync. */
     default void onReset() {}
+
+    /** Fork (DV3.1): the extractor is released; native resources of converted tracks are freed. */
+    default void onRelease() {}
   }
 
   /**
@@ -985,6 +1002,10 @@ public class MatroskaExtractor implements Extractor {
   @Override
   public final void release() {
     zlibSampleDecompressor.release();
+    if (dolbyVisionSampleTransformer != null) {
+      // Fork (DV3.1): an HDR10+ track keeps a native RPU builder until here.
+      dolbyVisionSampleTransformer.onRelease();
+    }
   }
 
   @Override
@@ -1935,9 +1956,11 @@ public class MatroskaExtractor implements Extractor {
         break;
       case ID_MAX_CLL:
         getCurrentTrack(id).maxContentLuminance = (int) value;
+        getCurrentTrack(id).maxContentLuminanceStated = true;
         break;
       case ID_MAX_FALL:
         getCurrentTrack(id).maxFrameAverageLuminance = (int) value;
+        getCurrentTrack(id).maxFrameAverageLuminanceStated = true;
         break;
       case ID_PROJECTION_TYPE:
         assertInTrackEntry(id);
@@ -2659,13 +2682,16 @@ public class MatroskaExtractor implements Extractor {
               firstInCluster
                   && currentClusterContentPosition != C.INDEX_UNSET
                   && currentClusterContentPosition == track.dvFirstAuClusterPosition;
+          // DV3.1: the AU's presentation time, as commitSampleToOutput gives it to the sample queue.
+          long auTimeUs = blockTimeUs + (blockSampleIndex * track.defaultSampleDurationNs) / 1000;
           transformedPayload =
               dolbyVisionSampleTransformer.injectDolbyVisionRpu(
                   track.number,
                   sampleLengthDelimitedData,
                   remainingSampleBytes,
                   track.nalUnitLengthFieldLength,
-                  streamStart);
+                  streamStart,
+                  auTimeUs);
         } else {
           transformedPayload =
               dolbyVisionSampleTransformer.transformHevcSample(
@@ -3513,7 +3539,9 @@ public class MatroskaExtractor implements Extractor {
             auLength,
             track.nalUnitLengthFieldLength);
     int result = prefix.getStatus();
-    if (result == HevcInitNals.PREFIX_COMPLETE || prefix.getPreferredTransfer() != null) {
+    if (result == HevcInitNals.PREFIX_COMPLETE
+        || prefix.getPreferredTransfer() != null
+        || !prefix.getHdr10PlusPayloads().isEmpty()) {
       track.applyFirstAu(prefix, checkNotNull(dolbyVisionSampleTransformer));
     } else if (result == HevcInitNals.PREFIX_TRUNCATED) {
       track.endHlgSeiScan(
@@ -3644,6 +3672,9 @@ public class MatroskaExtractor implements Extractor {
     public @C.ColorRange int colorRange = Format.NO_VALUE;
     public int maxContentLuminance = DEFAULT_MAX_CLL;
     public int maxFrameAverageLuminance = DEFAULT_MAX_FALL;
+    // Fork (DV3.1): whether the container states them (the fields above hold defaults otherwise).
+    public boolean maxContentLuminanceStated;
+    public boolean maxFrameAverageLuminanceStated;
     public float primaryRChromaticityX = Format.NO_VALUE;
     public float primaryRChromaticityY = Format.NO_VALUE;
     public float primaryGChromaticityX = Format.NO_VALUE;
@@ -3688,6 +3719,13 @@ public class MatroskaExtractor implements Extractor {
     @Nullable private HevcVuiColour hlgVui;
     public boolean waitingForHlgSeiScan;
     private boolean hlgSeiScanMissed;
+    // Fork (DV3.1): the HDR10+ candidates of the hvcC and of the first AU (the early scan), the target
+    // the decision table gave before the RPU source was asked, and whether the early scan reads the
+    // first AU for HDR10+ (a PQ track the table makes 8.1 that has no HDR10+ in its hvcC).
+    private List<byte[]> hevcHdr10PlusPayloads = Collections.emptyList();
+    @Nullable private List<byte[]> firstAuHdr10PlusPayloads;
+    @Nullable private DvSignallingDecision.Target dvTableTarget;
+    private boolean hdr10PlusScan;
 
     // Audio elements. Initially set to their default values.
     public int channelCount = 1;
@@ -3767,6 +3805,7 @@ public class MatroskaExtractor implements Extractor {
             hevcFirstSps = firstSps;
           }
           hevcPreferredTransfer = HevcInitNals.preferredTransfer(initializationData);
+          hevcHdr10PlusPayloads = HevcInitNals.hdr10PlusPayloads(initializationData);
           break;
         case CODEC_ID_FOURCC:
           Pair<String, @NullableType List<byte[]>> pair =
@@ -4057,7 +4096,14 @@ public class MatroskaExtractor implements Extractor {
                       || hevcFirstSps == null);
           boolean blocksReadable =
               !hasContentEncryption && contentCompressionAlgorithm == CONTENT_COMPRESSION_NONE;
-          waitingForHlgSeiScan = seiCouldMakeHlg && blocksReadable;
+          // DV3.1: a PQ track the table makes 8.1 converts only from HDR10+; without it in the hvcC,
+          // the early scan reads the first AU for it.
+          hdr10PlusScan =
+              convert == null
+                  && dvTableTarget == DvSignallingDecision.Target.PROFILE_8_1
+                  && hevcHdr10PlusPayloads.isEmpty()
+                  && dolbyVisionSampleTransformer.convertsHdr10Plus();
+          waitingForHlgSeiScan = (seiCouldMakeHlg || hdr10PlusScan) && blocksReadable;
           // DV3.2: the inputs of the decision, so a device log shows why a track is not HLG.
           android.util.Log.i(
               TAG,
@@ -4072,6 +4118,7 @@ public class MatroskaExtractor implements Extractor {
               && hevcPreferredTransfer == null
               && !(hlgDecision instanceof HlgDecision.Hlg84)
               && !seiCouldMakeHlg
+              && !hdr10PlusScan
               && hevcFirstSps != null) {
             android.util.Log.i(
                 TAG,
@@ -4080,10 +4127,11 @@ public class MatroskaExtractor implements Extractor {
                     + ": not scanned, an HLG SEI would give "
                     + HlgContract.resolve(containerColour, vui, HlgContract.TRANSFER_HLG));
           }
-          if (seiCouldMakeHlg && !blocksReadable) {
+          if ((seiCouldMakeHlg || hdr10PlusScan) && !blocksReadable) {
             android.util.Log.i(
                 TAG,
-                "HLG SEI scan, track "
+                scanName()
+                    + ", track "
                     + trackId
                     + ": encrypted or compressed blocks are not scanned; native");
           }
@@ -4226,10 +4274,17 @@ public class MatroskaExtractor implements Extractor {
               width,
               height,
               defaultSampleDurationNs);
+      dvTableTarget =
+          dvSignalling instanceof DvSignallingDecision.Convert
+              ? ((DvSignallingDecision.Convert) dvSignalling).getTarget()
+              : null;
       if (dvSignalling instanceof DvSignallingDecision.Convert) {
         dvSignalling =
             transformer.prepareDolbyVisionConversion(
-                hlgTrackId, (DvSignallingDecision.Convert) dvSignalling, nalUnitLengthFieldLength);
+                hlgTrackId,
+                (DvSignallingDecision.Convert) dvSignalling,
+                nalUnitLengthFieldLength,
+                dvTrackFacts());
       }
       android.util.Log.i(TAG, DvSignalling.logLine(hlgTrackId, dvSignalling));
       if (!(dvSignalling instanceof DvSignallingDecision.Convert)) {
@@ -4241,30 +4296,76 @@ public class MatroskaExtractor implements Extractor {
     }
 
     /**
+     * Fork (DV3.1): what the RPU source needs of the track: the HDR10+ candidates of the first AU (when
+     * the early scan read it) or of the hvcC, and the MasteringMetadata the container states.
+     */
+    private DvTrackFacts dvTrackFacts() {
+      return new DvTrackFacts(
+          firstAuHdr10PlusPayloads != null ? firstAuHdr10PlusPayloads : hevcHdr10PlusPayloads,
+          maxMasteringLuminance == Format.NO_VALUE ? null : maxMasteringLuminance,
+          minMasteringLuminance == Format.NO_VALUE ? null : minMasteringLuminance,
+          maxContentLuminanceStated ? maxContentLuminance : null,
+          maxFrameAverageLuminanceStated ? maxFrameAverageLuminance : null,
+          masteringPrimaries(),
+          containerColourPrimaries);
+    }
+
+    /** Fork (DV3.1): the MasteringMetadata chromaticities, R G B W as x y pairs, or null without all. */
+    @Nullable
+    private float[] masteringPrimaries() {
+      float[] primaries = {
+        primaryRChromaticityX, primaryRChromaticityY,
+        primaryGChromaticityX, primaryGChromaticityY,
+        primaryBChromaticityX, primaryBChromaticityY,
+        whitePointChromaticityX, whitePointChromaticityY
+      };
+      for (float value : primaries) {
+        if (value == Format.NO_VALUE) {
+          return null;
+        }
+      }
+      return primaries;
+    }
+
+    /** The early scan's name in log lines: it reads the first AU for HDR10+ (DV3.1) or for HLG. */
+    private String scanName() {
+      return hdr10PlusScan ? "HDR10+ SEI scan" : "HLG SEI scan";
+    }
+
+    /**
      * Fork (DV2.10, DV2.11): the early scan read the NALs before the first slice of the track's first
      * AU before the formats were published: the preferred transfer of its alternative-transfer SEI
      * (null without one) and its parameter sets. A track whose hvcC had no SPS takes the AU's. When the
      * AU makes the track HLG, the decision table runs again and a converted track gets its Dolby Vision
      * Format now, so no sample goes out under the HEVC one; a converted track without parameter sets in
-     * its hvcC gets the AU's as its initialization data.
+     * its hvcC gets the AU's as its initialization data. DV3.1: a PQ track whose first AU carries HDR10+
+     * converts the same way, as 8.1.
      */
     private void applyFirstAu(
         HevcInitNals.AuPrefix prefix, DolbyVisionSampleTransformer transformer) {
       @Nullable Integer preferredTransfer = prefix.getPreferredTransfer();
       @Nullable byte[] sps = hevcFirstSps == null ? prefix.getSps() : null;
+      List<byte[]> hdr10Plus = prefix.getHdr10PlusPayloads();
+      boolean hdr10PlusFound = !hdr10Plus.isEmpty() && transformer.convertsHdr10Plus();
       if (sps != null) {
         hevcFirstSps = sps;
         hlgVui = HevcVuiColour.parse(sps);
       }
-      if (preferredTransfer == null && sps == null) {
+      if (preferredTransfer == null && sps == null && !hdr10PlusFound) {
         endHlgSeiScan(
-            "no alternative transfer SEI before the first slice of the first AU", /* firstAuRead= */ true);
+            hdr10PlusScan
+                ? "no HDR10+ SEI before the first slice of the first AU (static HDR10 is DV3.3)"
+                : "no alternative transfer SEI before the first slice of the first AU",
+            /* firstAuRead= */ true);
         return;
       }
       waitingForHlgSeiScan = false;
       hlgSampleSeiPending = false;
       if (preferredTransfer != null) {
         hevcPreferredTransfer = preferredTransfer;
+      }
+      if (hdr10PlusFound) {
+        firstAuHdr10PlusPayloads = hdr10Plus;
       }
       HlgDecision decision =
           HlgContract.resolve(checkNotNull(hlgContainerColour), hlgVui, hevcPreferredTransfer);
@@ -4276,7 +4377,13 @@ public class MatroskaExtractor implements Extractor {
         // The decision at track init had no SPS to read; this one replaces it.
         hlgDecision = decision;
       }
-      if (!(decision instanceof HlgDecision.Hlg84)) {
+      // DV3.1: a track that is not HLG converts as 8.1 when the table makes it PQ and the AU has HDR10+.
+      boolean hdr10PlusCandidate = decision instanceof HlgDecision.NotHlg && hdr10PlusFound;
+      if (hdr10PlusCandidate) {
+        android.util.Log.i(
+            TAG, "HDR10+ SEI scan, track " + hlgTrackId + ": " + hdr10Plus.size() + " HDR10+ SEI in the first AU");
+      }
+      if (!(decision instanceof HlgDecision.Hlg84) && !hdr10PlusCandidate) {
         return;
       }
       hlgDecision = decision;
@@ -4320,7 +4427,7 @@ public class MatroskaExtractor implements Extractor {
       } else {
         hlgSeiScanMissed = true;
       }
-      android.util.Log.i(TAG, "HLG SEI scan, track " + hlgTrackId + ": " + reason + "; native");
+      android.util.Log.i(TAG, scanName() + ", track " + hlgTrackId + ": " + reason + "; native");
     }
 
     /**
