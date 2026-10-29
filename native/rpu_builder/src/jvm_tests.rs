@@ -13,9 +13,11 @@ use crate::api::{self, BAD_ARGUMENT, OK, UNKNOWN_HANDLE};
 use crate::ffi::{
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeCreate as native_create,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeCreateStatic84 as native_create_static_84,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeHdr10PlusFrame as native_hdr10plus_frame,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeHdr10PlusL1 as native_hdr10plus_l1,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeRelease as native_release,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeRenderShot as native_render_shot,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeSourceRange81 as native_source_range_81,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeStatic84L1 as native_static_84_l1,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeVersion as native_version,
 };
@@ -143,6 +145,7 @@ fn create(
         level6,
         source_range,
         level5,
+        api::BT2020_PRIMARIES,
     );
     assert_no_exception(env, "nativeCreate");
     handle
@@ -275,6 +278,75 @@ fn hdr10plus_l1_fills_the_out_array() {
         assert_eq!(call(env, Some(payload), null_ints()), BAD_ARGUMENT);
         let out = ints(env, &[-1, -1, -1]);
         assert_eq!(call(env, None, out), BAD_ARGUMENT);
+    });
+}
+
+#[test]
+fn hdr10plus_frame_fills_l1_and_the_key() {
+    with_env(|env| {
+        let call = |env: &mut JNIEnv<'_>, payload: Option<&[u8]>, out: JIntArray<'_>| {
+            let payload = payload.map_or_else(
+                || JByteArray::from(JObject::null()),
+                |bytes| env.byte_array_from_slice(bytes).unwrap(),
+            );
+            let (call_env, class) = args(env);
+            let code = native_hdr10plus_frame(call_env, class, payload, 0, 40, out);
+            assert_no_exception(env, "nativeHdr10PlusFrame");
+            code
+        };
+        // profile_a: frames 0 to 2 are one scene, frame 3 starts the next.
+        let payloads = payloads("profile_a");
+        let mut frames = Vec::new();
+        for payload in &payloads[..4] {
+            let out = ints(env, &[-1; 7]);
+            let reference = same(env, &out);
+            assert_eq!(call(env, Some(payload), reference), OK);
+            let frame = read_ints(env, &out);
+            assert_eq!(frame, api::hdr10plus_frame(payload, 0, 40).unwrap());
+            assert_eq!(frame[..3], api::hdr10plus_l1(payload, 0, 40).unwrap());
+            frames.push(frame);
+        }
+        assert_eq!(frames[0][3..], frames[2][3..], "same scene, same key");
+        assert_ne!(frames[2][3..], frames[3][3..], "a new scene, a new key");
+
+        let short = ints(env, &[-1; 3]);
+        let reference = same(env, &short);
+        assert_eq!(call(env, Some(&payloads[0]), reference), BAD_ARGUMENT);
+        assert_eq!(
+            read_ints(env, &short),
+            [-1; 3],
+            "a short out array is not written"
+        );
+        assert_eq!(call(env, Some(&payloads[0]), null_ints()), BAD_ARGUMENT);
+        let out = ints(env, &[-1; 7]);
+        let reference = same(env, &out);
+        assert_eq!(call(env, None, reference), BAD_ARGUMENT);
+        // Not HDR10+: code 4, the out array untouched.
+        let reference = same(env, &out);
+        assert_eq!(call(env, Some(&[0xB5]), reference), 4);
+        assert_eq!(read_ints(env, &out), [-1; 7]);
+    });
+}
+
+#[test]
+fn source_range_81_fills_the_out_array() {
+    with_env(|env| {
+        let call = |env: &mut JNIEnv<'_>, min: f64, max: f64, out: JIntArray<'_>| {
+            let (call_env, class) = args(env);
+            let code = native_source_range_81(call_env, class, min, max, out);
+            assert_no_exception(env, "nativeSourceRange81");
+            code
+        };
+        let out = ints(env, &[0, 0]);
+        let reference = same(env, &out);
+        assert_eq!(call(env, 0.0001, 1000.0, reference), OK);
+        assert_eq!(read_ints(env, &out), [7, 3079]);
+        let reference = same(env, &out);
+        assert_eq!(call(env, 50.0, 1000.0, reference), OK);
+        assert_eq!(read_ints(env, &out), [-1, -1]);
+        let long = ints(env, &[0; 3]);
+        assert_eq!(call(env, 0.0001, 1000.0, long), BAD_ARGUMENT);
+        assert_eq!(call(env, 0.0001, 1000.0, null_ints()), BAD_ARGUMENT);
     });
 }
 
