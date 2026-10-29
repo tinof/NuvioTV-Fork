@@ -556,7 +556,7 @@ def cmd_stop_check(a, cfg):
     commit_files = lines("show", "--no-renames", "--format=", "--name-only", "REBASE_HEAD")
     subject = out("show", "-s", "--format=%s", "REBASE_HEAD")
     seen_file = rebase_dir / "upstream-sync-seen"
-    seen = seen_file.read_text().split() if seen_file.exists() else []
+    seen = [l for l in seen_file.read_text().splitlines() if l] if seen_file.exists() else []
     findings = stop_findings(unmerged, commit_files, subject, cfg.get("protected_features", []), cfg["light"], seen)
     seen_file.write_text("\n".join(sorted(set(seen) | set(unmerged))) + "\n")
     for f in findings:
