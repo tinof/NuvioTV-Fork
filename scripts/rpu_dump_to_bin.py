@@ -23,6 +23,16 @@ next playback (a session). Records are written in seq order, which is the order 
 order), each as `00 00 00 01` followed by the NAL without its 2-byte header: the layout dovi_tool's
 parse_rpu_file splits on. Emulation prevention bytes stay in, as in the stream.
 
+`--order pts` writes the selected records by presentation time instead (ROADMAP DV3.1), up to the first gap
+in presentation time (the B-frames of the last anchor a stopped playback queued): the order of
+`dovi_tool generate --hdr10plus-json` output, which `scripts/rpu_l1_compare.py` compares frame by frame. Select one
+generation of a playback from the start (`--session 1 --gen 0`) with N above the frames played, so every AU is
+dumped once:
+
+    adb shell setprop debug.nuvio.rpu_dump 100000
+    python3 scripts/rpu_dump_to_bin.py dump.logcat -o ours.RPU.bin --session 1 --gen 0 --order pts --strict
+    python3 scripts/rpu_l1_compare.py ours.RPU.bin reference.RPU.bin
+
 logcat loses lines when logd rate-limits a chatty app or its buffer wraps: keep N small, clear the prune list
 as above, and use --strict to fail on a gap. Gaps are found only up to the last record received: records lost
 after it leave no trace, so the summary prints each session's last seq to compare with what the playback should
@@ -151,6 +161,27 @@ def select(sessions, session=None, gen=None, trk=None, refresh_only=False):
     ]
 
 
+def by_presentation_time(records):
+    """The records sorted by pts, cut before the first gap of more than one frame: a playback stopped
+    after an anchor picture whose B-frames were never queued, so the frame index of everything past the
+    gap is unknown. The step is the most common difference between neighbours."""
+    records = sorted(records, key=lambda record: int(record["pts"]))
+    pts = [int(record["pts"]) for record in records]
+    if len(set(pts)) != len(pts):
+        print("warning: repeated pts in the selection; select one generation (--session, --gen)", file=sys.stderr)
+    steps = [b - a for a, b in zip(pts, pts[1:]) if b > a]
+    if not steps:
+        return records
+    step = max(set(steps), key=steps.count)
+    for index, (a, b) in enumerate(zip(pts, pts[1:])):
+        if b - a > step * 3 // 2:
+            dropped = len(records) - index - 1
+            print(f"warning: a gap after pts {a} (step {step} us); the {dropped} record(s) after it are left out",
+                  file=sys.stderr)
+            return records[:index + 1]
+    return records
+
+
 def rpu_bin(records):
     return b"".join(START_CODE + record["nal"][2:] for record in records)
 
@@ -164,6 +195,8 @@ def main(argv=None):
     parser.add_argument("--gen", type=int, action="append", help="only this generation (repeatable)")
     parser.add_argument("--trk", type=int, help="only this track id")
     parser.add_argument("--refresh-only", action="store_true", help="only AUs with scene_refresh_flag 1 (sr=1)")
+    parser.add_argument("--order", choices=("seq", "pts"), default="seq",
+                        help="write the records in queue (decode) order, or by presentation time (DV3.1)")
     parser.add_argument("--strict", action="store_true", help="exit 1 on a seq gap before the last record received, or an incomplete or bad record; "
                              "records lost after the last one cannot be seen")
     args = parser.parse_args(argv)
@@ -188,6 +221,8 @@ def main(argv=None):
                 if id(record) in selected:
                     print("\t".join([str(index)] + [str(record[k]) for k in ("seq",) + RECORD_KEYS[1:]]))
     if args.output:
+        if args.order == "pts":
+            records = by_presentation_time(records)
         args.output.write_bytes(rpu_bin(records))
     for index, session_records in enumerate(sessions, 1):
         last = session_records[-1]["seq"] if session_records else "none"
