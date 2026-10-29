@@ -54,6 +54,7 @@ scripts/*
 !scripts/release_beta.py
 !scripts/verify_native_apk.py
 !scripts/rpu_dump_to_bin.py
+!scripts/rpu_l1_compare.py
 !scripts/tests/
 !scripts/tests/*.py
 /supabase
