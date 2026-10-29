@@ -16,6 +16,8 @@ import com.nuvio.tv.core.player.DolbyVisionMatroskaTransformer
 import com.nuvio.tv.core.player.DolbyVisionStatsSession
 import com.nuvio.tv.core.player.DoviRpuBuilder
 import com.nuvio.tv.core.player.DvRpuSource
+import com.nuvio.tv.core.player.DvTrackFacts
+import com.nuvio.tv.core.player.StaticTrackRpus
 import com.nuvio.tv.core.player.DvSignallingDecision
 import com.nuvio.tv.core.player.HdrColorSignalingExtractor
 import com.nuvio.tv.core.player.HevcColourFixtures
@@ -248,7 +250,7 @@ class MatroskaDvSignallingTest {
         // DV2.7: the transformer is asked before the Format is built and can keep the track native.
         val noRpu = DolbyVisionMatroskaTransformer(
             DolbyVisionConversionConfig(active = false, convertNonDolbyVision = true, stats = DolbyVisionStatsSession()),
-            rpuSource = { DvRpuSource.Prepared.Unavailable("test") },
+            rpuSource = { _, _ -> DvRpuSource.Prepared.Unavailable("test") },
         )
         for ((case, colour) in listOf("pq" to pqColour, "hlg_tagged" to hlgColour)) {
             val out = extract(case, colour, transformer = noRpu)
@@ -277,8 +279,11 @@ class MatroskaDvSignallingTest {
     }
 
     // The table is tested with a source that has an RPU for both targets; MatroskaRpuInjectionTest covers the real one.
-    private val readySource = DvRpuSource {
-        DvRpuSource.Prepared.Ready(DoviRpuBuilder.ShotRpu(byteArrayOf(0x7C, 0x01, 1), byteArrayOf(0x7C, 0x01, 2)), "test")
+    private val readySource = DvRpuSource { _, _ ->
+        DvRpuSource.Prepared.Ready(
+            StaticTrackRpus(DoviRpuBuilder.ShotRpu(byteArrayOf(0x7C, 0x01, 1), byteArrayOf(0x7C, 0x01, 2))),
+            "test",
+        )
     }
 
     private fun transformer(convert: Boolean = true) = DolbyVisionMatroskaTransformer(

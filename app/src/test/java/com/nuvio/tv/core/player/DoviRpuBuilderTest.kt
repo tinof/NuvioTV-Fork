@@ -52,7 +52,26 @@ class DoviRpuBuilderTest {
             unavailable,
             DoviRpuBuilder.hdr10PlusL1(byteArrayOf(0xB5.toByte()), PeakSource.HISTOGRAM, CmVersion.V40)
         )
+        assertEquals(
+            unavailable,
+            DoviRpuBuilder.hdr10PlusFrame(byteArrayOf(0xB5.toByte()), PeakSource.HISTOGRAM, CmVersion.V40)
+        )
+        assertNull(DoviRpuBuilder.sourceRange81(0.0001, 1000.0))
+        // L9 primaries outside 0..2 are refused before the library is asked.
+        assertEquals(badArgument, DoviRpuBuilder.create(hdr10Plus.copy(sourcePrimaryIndex = 3)))
         assertEquals(Code.UNAVAILABLE, DoviRpuBuilder.release(Handle(1)))
+    }
+
+    @Test
+    fun `an HDR10+ frame unpacks L1 and the two key halves`() {
+        val frame = DoviRpuBuilder.hdr10PlusFrameOf(intArrayOf(0, 1229, 3079, -1, -2, 0x7FFF_FFFF, 1))
+        assertEquals(L1(0, 1229, 3079), frame.l1)
+        // The low half is unsigned: -2 is 0xFFFF_FFFE, not a sign extension into the high half.
+        assertEquals(DoviRpuBuilder.SceneKey(-2L, 0x7FFF_FFFF_0000_0001L), frame.key)
+        assertEquals(
+            DoviRpuBuilder.hdr10PlusFrameOf(intArrayOf(5, 5, 5, 1, 2, 3, 4)).key,
+            DoviRpuBuilder.hdr10PlusFrameOf(intArrayOf(9, 9, 9, 1, 2, 3, 4)).key
+        )
     }
 
     @Test
