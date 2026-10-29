@@ -7,6 +7,7 @@ import androidx.media3.container.NalUnitUtil
  * Reads NAL units from the HEVC initialization data Media3's HevcConfig builds from an hvcC: every
  * NAL of every hvcC array, each behind a start code, in one buffer. For the HLG contract (ROADMAP
  * DV2.4): the first SPS, and the alternative-transfer SEI an hvcC can carry in its prefix SEI array.
+ * For the HDR10+ provider (DV3.1): the HDR10+ T.35 payloads of an hvcC or an access unit.
  */
 @UnstableApi
 internal object HevcInitNals {
@@ -18,6 +19,8 @@ internal object HevcInitNals {
     private val START_CODE = byteArrayOf(0, 0, 0, 1)
     private const val NAL_TYPE_PREFIX_SEI = 39
     private const val SEI_PAYLOAD_ALTERNATIVE_TRANSFER = 147
+    private const val SEI_PAYLOAD_T35 = 4
+    private val HDR10_PLUS_T35_HEADER = byteArrayOf(0xB5.toByte(), 0x00, 0x3C, 0x00, 0x01)
 
     /** The first SPS NAL (2-byte header included, as coded), or null when there is none. */
     @JvmStatic
@@ -87,7 +90,13 @@ internal object HevcInitNals {
      * [PREFIX_COMPLETE], [PREFIX_TRUNCATED] or [PREFIX_MALFORMED]; what was read before a truncation or
      * a malformed length is kept.
      */
-    class AuPrefix(val status: Int, val preferredTransfer: Int?, val parameterSets: List<ByteArray>) {
+    class AuPrefix(
+        val status: Int,
+        val preferredTransfer: Int?,
+        val parameterSets: List<ByteArray>,
+        /** ROADMAP DV3.1: the HDR10+ candidates of the prefix SEI NALs, as [hdr10PlusPayloadsInSei]. */
+        val hdr10PlusPayloads: List<ByteArray> = emptyList(),
+    ) {
         /** The first SPS NAL, or null. */
         val sps: ByteArray? get() = parameterSets.firstOrNull { nalType(it) == NAL_TYPE_SPS }
 
@@ -110,8 +119,9 @@ internal object HevcInitNals {
     @JvmStatic
     fun readAuPrefix(buffer: ByteArray, available: Int, auLength: Int, nalUnitLengthFieldLength: Int): AuPrefix {
         val parameterSets = mutableListOf<ByteArray>()
+        val hdr10PlusPayloads = mutableListOf<ByteArray>()
         var preferredTransfer: Int? = null
-        fun result(status: Int) = AuPrefix(status, preferredTransfer, parameterSets)
+        fun result(status: Int) = AuPrefix(status, preferredTransfer, parameterSets, hdr10PlusPayloads)
         if (nalUnitLengthFieldLength !in 1..4) return result(PREFIX_MALFORMED)
         val limit = minOf(available, auLength)
         var pos = 0
@@ -127,8 +137,10 @@ internal object HevcInitNals {
             val end = pos + nalLength.toInt()
             if (end > limit) return result(PREFIX_TRUNCATED)
             if (type in NAL_TYPE_VPS..NAL_TYPE_PPS) parameterSets += buffer.copyOfRange(pos, end)
-            if (type == NAL_TYPE_PREFIX_SEI && preferredTransfer == null) {
-                preferredTransfer = preferredTransferInSei(buffer.copyOfRange(pos, end))
+            if (type == NAL_TYPE_PREFIX_SEI) {
+                val sei = buffer.copyOfRange(pos, end)
+                if (preferredTransfer == null) preferredTransfer = preferredTransferInSei(sei)
+                hdr10PlusPayloads += hdr10PlusPayloadsInSei(sei)
             }
             pos = end
         }
@@ -176,6 +188,77 @@ internal object HevcInitNals {
 
     /** Walks the sei_message()s of one SEI NAL (H.265 7.3.5) for payloadType 147. */
     private fun preferredTransferInSei(nal: ByteArray): Int? {
+        var transfer: Int? = null
+        forEachSeiMessage(nal) { type, rbsp, start, size ->
+            if (type == SEI_PAYLOAD_ALTERNATIVE_TRANSFER && size >= 1) {
+                transfer = rbsp[start].toInt() and 0xFF
+                false
+            } else {
+                true
+            }
+        }
+        return transfer
+    }
+
+    /**
+     * The payloads of the ITU-T T.35 SEI messages (payloadType 4) of one SEI NAL that start with the
+     * HDR10+ T.35 header (country 0xB5, provider 0x003C, oriented code 0x0001), in order: each one the
+     * RBSP from the country code on, the bytes `hdr10plus_tool` and `DoviRpuBuilder` read. Whether one
+     * is HDR10+ is the library's call ([DoviRpuBuilder.Code.NOT_HDR10_PLUS]).
+     */
+    @JvmStatic
+    fun hdr10PlusPayloadsInSei(nal: ByteArray): List<ByteArray> {
+        // The header has no 00 00 pair, so emulation prevention never splits it: a raw search is exact.
+        if (indexOf(nal, 0, nal.size, HDR10_PLUS_T35_HEADER) < 0) return emptyList()
+        val payloads = mutableListOf<ByteArray>()
+        forEachSeiMessage(nal) { type, rbsp, start, size ->
+            if (type == SEI_PAYLOAD_T35 && size >= HDR10_PLUS_T35_HEADER.size &&
+                indexOf(rbsp, start, start + HDR10_PLUS_T35_HEADER.size, HDR10_PLUS_T35_HEADER) == start
+            ) {
+                payloads += rbsp.copyOfRange(start, start + size)
+            }
+            true
+        }
+        return payloads
+    }
+
+    /** The HDR10+ candidates (as [hdr10PlusPayloadsInSei]) of the prefix SEI NALs an hvcC carries. */
+    @JvmStatic
+    fun hdr10PlusPayloads(initializationData: List<ByteArray>?): List<ByteArray> =
+        nals(initializationData).filter { nalType(it) == NAL_TYPE_PREFIX_SEI }.flatMap(::hdr10PlusPayloadsInSei)
+
+    /**
+     * The HDR10+ candidates of one access unit (ROADMAP DV3.1): those of its prefix SEI NALs before the
+     * first VCL NAL, [length] bytes of [sample] behind [nalUnitLengthFieldLength]-byte lengths. Empty
+     * when there are none or the lengths do not parse. Only SEI NALs that hold the T.35 header are
+     * copied, so an AU without HDR10+ costs one pass over its NAL headers.
+     */
+    @JvmStatic
+    fun hdr10PlusPayloadsInAu(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int): List<ByteArray> {
+        if (nalUnitLengthFieldLength !in 1..4) return emptyList()
+        var payloads: MutableList<ByteArray>? = null
+        var pos = 0
+        while (pos + nalUnitLengthFieldLength + 2 <= length) {
+            var nalLength = 0L
+            repeat(nalUnitLengthFieldLength) { nalLength = (nalLength shl 8) or (sample[pos++].toLong() and 0xFF) }
+            if (nalLength < 2 || nalLength > length - pos) break
+            val end = pos + nalLength.toInt()
+            val type = (sample[pos].toInt() ushr 1) and 0x3F
+            if (type < NAL_TYPE_FIRST_NON_VCL) break
+            if (type == NAL_TYPE_PREFIX_SEI && indexOf(sample, pos, end, HDR10_PLUS_T35_HEADER) >= 0) {
+                val found = hdr10PlusPayloadsInSei(sample.copyOfRange(pos, end))
+                if (found.isNotEmpty()) (payloads ?: mutableListOf<ByteArray>().also { payloads = it }) += found
+            }
+            pos = end
+        }
+        return payloads ?: emptyList()
+    }
+
+    /**
+     * Calls [visit] with (payloadType, RBSP, payload start, payload size) for each sei_message() of
+     * one SEI NAL (H.265 7.3.5), until it returns false or a message runs past the RBSP.
+     */
+    private inline fun forEachSeiMessage(nal: ByteArray, visit: (Int, ByteArray, Int, Int) -> Boolean) {
         val rbsp = nal.copyOf()
         val rbspLimit = NalUnitUtil.unescapeStream(rbsp, rbsp.size)
         // The last byte holds rbsp_stop_one_bit; messages end before it.
@@ -187,21 +270,35 @@ internal object HevcInitNals {
                 payloadType += 255
                 pos++
             }
-            if (pos >= end) return null
+            if (pos >= end) return
             payloadType += rbsp[pos++].toInt() and 0xFF
             var payloadSize = 0
             while (pos < end && rbsp[pos] == 0xFF.toByte()) {
                 payloadSize += 255
                 pos++
             }
-            if (pos >= end) return null
+            if (pos >= end) return
             payloadSize += rbsp[pos++].toInt() and 0xFF
-            if (pos + payloadSize > end) return null
-            if (payloadType == SEI_PAYLOAD_ALTERNATIVE_TRANSFER && payloadSize >= 1) {
-                return rbsp[pos].toInt() and 0xFF
-            }
+            if (pos + payloadSize > end) return
+            if (!visit(payloadType, rbsp, pos, payloadSize)) return
             pos += payloadSize
         }
-        return null
+    }
+
+    /** The first index of [pattern] in [buffer] between [from] and [to], or -1. */
+    private fun indexOf(buffer: ByteArray, from: Int, to: Int, pattern: ByteArray): Int {
+        var i = from
+        while (i <= to - pattern.size) {
+            var match = true
+            for (j in pattern.indices) {
+                if (buffer[i + j] != pattern[j]) {
+                    match = false
+                    break
+                }
+            }
+            if (match) return i
+            i++
+        }
+        return -1
     }
 }
