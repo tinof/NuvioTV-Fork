@@ -10,6 +10,77 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-29: DV3.1 HDR10+ → Dolby Vision 8.1, code (step stays open)
+
+- [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
+  on the owner's TV; the debug log shows an RPU in every AU and L1 equal to `dovi_tool` for the same
+  frames.
+
+**Spec first.** The HDR10+ rules of hdr-analyze `docs/RPU_BUILDER.md` are now in `DESIGN.md` 2.4, with
+what the extractor's decode order changes: L1 from each AU's own payload (L1 is a function of the scene
+key's fields alone, so it equals the scene L1 `dovi_tool` holds, in any read order), the previous payload
+in decode order for an AU without one, and the scene refresh where the key differs from the already-read
+AU with the largest presentation time below.
+
+**Codex review of the rules** (gpt-6.1-sol, high, read-only, 2026-10-29). Five findings, with what was
+done:
+
+1. The L1-from-the-key claim holds (`hdr10plus.rs` `l1()`, `peak_brightness_nits` in hdr10plus 2.1.5).
+   Kept.
+2. The refresh rule is a heuristic: it misses a flag only for keys A, B, A within the reorder depth, and
+   adds flags with an unchanged L1. Codex proposed a flag on every AU whose predecessor is not known to be
+   read. Not taken: with x265's default B-pyramid that flags most frames of every scene. Both cases are
+   written into 2.4.
+3. A seek onto a scene's first AU gets no flag where the `mkvdovi` file has one. Kept as DV2.7's
+   parity rule, written into 2.4; `debug.nuvio.dv_refresh_every_start` tests whether the TV cares.
+4. The spec turned a zero mastering minimum into 0.005 nits; `mkvdovi` keeps it. Fixed: only a zero
+   MaxCLL or MaxFALL counts as not stated.
+5. Every AU of a Dolby Vision track needs an RPU. The provider always returns one (the last shot on a
+   failure), and the track converts only with a NAL length field of 2 bytes or more.
+
+**Claude review of the diff** (3 Opus finders by lens, one Fable whole-diff reviewer, one Opus skeptic per
+finding). Confirmed and fixed:
+
+- L9 was always BT.2020; `mkvdovi` detects P3-D65 for a P3-mastered title. `nativeCreate` now takes the
+  source primaries, read from the Matroska mastering chromaticities, then the container's Primaries.
+- `mkvdovi`'s MaxFALL <= MaxCLL fix-up for a half-stated pair was missing.
+- A gap carried in one generation flagged the first AU of the next after a second seek.
+- The extractor seek test passed with the reset unwired; its fixture now changes scene at the seek
+  point (checked by removing the reset: the test fails).
+- `rpu_dump_to_bin.py --order pts` misaligned frames past the B-frames a stopped playback never queued;
+  it now stops at the first gap in presentation time.
+
+Refuted: an implausible stated mastering minimum gets a source range after the 10 000 cap; that follows
+2.4's rule (the range is taken over the final L6 values, where `mkvdovi` refuses the title).
+
+**What shipped (branch `fork/DV3.1-hdr10plus-81`):**
+
+- `native/rpu_builder`: `nativeHdr10PlusFrame` (L1 and a 128-bit digest of the `SceneKey`) and
+  `nativeSourceRange81` (`source_range_81`). No hdr-analyze change and no pin move: `SceneKey` is `Hash`
+  and `Eq`, and `git log f55c779..HEAD -- dovi_rpu_builder` in hdr-analyze is empty. The new fixture test
+  writes the 16 HDR10+ `dovi_tool` outputs from per-AU L1 and key changes and agrees with `Hdr10PlusHold`
+  frame by frame.
+- `Hdr10PlusDvRpuSource` and `Hdr10PlusTrackRpus`, `DvRpuSources` (8.4 static, 8.1 HDR10+), `TrackRpus`
+  behind `ConvertedTrackInjector`, the extractor's early scan for HDR10+ in a PQ track's first AU, the
+  AU's presentation time to the injector, and `release()` reaching the transformer.
+- The setting reads "Convert HLG and HDR10+ to Dolby Vision" (one toggle; plain HDR10 still plays as it
+  is). `debug.nuvio.dv_hdr10plus 0` keeps every PQ track native.
+- `scripts/rpu_dump_to_bin.py --order pts` and `scripts/rpu_l1_compare.py` for the gate's L1 check.
+
+**Device run sheet (owner).** Build from this branch with cargo-ndk installed (the APK needs
+`libnuvio_rpu.so`), follow M2, then for one HDR10+ MKV:
+
+1. Setting on; `adb shell setprop debug.nuvio.rpu_dump 100000`; play from the start for a minute.
+   Logcat must show `HDR10+ SEI scan, track N: … HDR10+ SEI in the first AU`, `DV signalling, track N:
+   Dolby Vision 8.1 as dvhe.08.LL` and `DV_INJECT track N: HDR10+ 8.1, …`; the TV must show Dolby Vision.
+2. On the desk: `hdr10plus_tool extract title.mkv -o title.json`, then `dovi_tool generate` with
+   `mkvdovi`'s HDR10+ `extra.json` (or `mkvdovi` itself) for `reference.RPU.bin`;
+   `scripts/rpu_dump_to_bin.py dump.logcat -o ours.RPU.bin --session 1 --gen 0 --order pts --strict`;
+   `scripts/rpu_l1_compare.py ours.RPU.bin reference.RPU.bin`. Pass: 0 L1 and 0 other differences.
+3. A seek and a mid-file resume, each with `debug.nuvio.dv_refresh_every_start` 0 and 1: the picture must
+   not flash or shift, the dump must still have an RPU on every AU.
+4. Clear every `debug.nuvio.*` the session set.
+
 ## 2026-10-29: U1.8 Light path (PR #28)
 
 - [U1.8][desk] Light path: a sync with at most 3 conflicts, none protected and no upstream change to
