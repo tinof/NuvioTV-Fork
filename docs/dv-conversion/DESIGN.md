@@ -228,20 +228,121 @@ injector:
   `prepareDolbyVisionConversion`. Without an RPU for the target, or when the RPU does not fit the
   hvcC's NAL length field, the track stays native (`Native("no RPU: …")`), so a Dolby Vision Format never
   goes out without RPUs.
-- `StaticDvRpuSource` is the only provider: 8.4 with the BT.2100 composer and `static84L1()`. For
+- `StaticDvRpuSource` is the 8.4 provider: the BT.2100 composer and `static84L1()`. For
   DV3.2's G-C check, `debug.nuvio.dv_hlg_canary` = 1 gives it the canary composer instead (a TV that
   applies the composer shows the picture green); like the refresh switch it is read once per extractor,
   and the `DV_INJECT` log line names the composer a playback used. It renders
   the one shot at track init and releases the builder handle at once, because `ShotRpu` holds its own
-  bytes. 8.1 has no provider before DV3.1 (HDR10+) and DV3.3 (static HDR10), so PQ tracks stay native.
-  A provider that renders per shot keeps its handle and needs a release hook on the extractor, which
-  does not exist yet.
+  bytes. 8.1 comes from the HDR10+ provider of DV3.1 (below); static HDR10 is DV3.3.
 - A converted track always takes the transform path. There `injectDolbyVisionRpu` (one
   `ConvertedTrackInjector` per track) copies every NAL byte for byte, drops any RPU NAL the AU already
   carries and appends the shot's RPU as the last NAL, where `dovi_tool` and the Profile 7 path put it.
   The HDR10+ strip mode runs after it.
 - An AU whose NAL lengths do not parse keeps its bytes; the extractor's Annex B writer then refuses it
   as before.
+
+**HDR10+ → 8.1, the rules (DV3.1, Matroska).** The provider ports `dovi_tool generate --hdr10plus-json`
+as `mkvdovi` runs it, per AU, in the extractor. The rules of hdr-analyze `docs/RPU_BUILDER.md` ("HDR10+ →
+L1"), and what the extractor's decode order changes in them:
+
+- **Which tracks.** A PQ track (the PQ row of 2.5) converts only when its first AU, or the hvcC, carries
+  an HDR10+ payload that `Hdr10PlusFrame::parse` accepts. A PQ track without one stays native until
+  DV3.3 adds static HDR10. Matroska has no HDR10+ flag, and BlockAdditions with T.35 are VP9 only in
+  the extractor, so the evidence is the in-band SEI, read by the first-AU scan of DV2.10.
+- **Which messages.** Every `user_data_registered_itu_t_t35` message (payloadType 4) of every prefix SEI
+  NAL before the first slice. Its RBSP from the country code on is the payload. One that is not HDR10+
+  (code 4) is skipped, as `hdr10plus_tool` skips it; the first HDR10+ message of the AU counts. A
+  suffix SEI is not read: encoders put HDR10+ in a prefix SEI, so a suffix-only stream is a known gap.
+- **L1 per AU.** L1 is a function of the fields in `SceneKey` alone (average maxRGB, the percentiles,
+  MaxSCL; the peak source and the CM version are fixed per track). So the L1 of an AU's own payload
+  equals the L1 `dovi_tool` holds for that AU's scene, in any read order. The provider computes L1 from
+  each AU's payload and never holds a decode-order "current scene": that would give the leading
+  pictures of an open-GOP cut the next scene's L1. Defaults are `mkvdovi`'s: peak source `histogram`,
+  CM v4.0, the L1 average floor of the CM version (V29's floor is for measured L1 only).
+- **An AU without a payload** gets the previous payload in decode order, as `hdr10plus_tool` (and FFmpeg)
+  give it to `dovi_tool`. A payload that fails to parse or validate (code 5, a multi-window payload
+  included) or has no value for the peak source (code 6) is treated the same way, with one log line per
+  track. After a seek or a resync the previous AU in decode order is not known. Until the first payload
+  of the new generation, an AU carries the last L1 the track wrote, which is the first AU's L1 when
+  nothing was written yet. This is the one place where the L1 can differ from `dovi_tool`. Real HDR10+
+  streams carry a payload in every AU, and the extractor resumes at a keyframe, so the gap is the AUs of
+  a stream that omits payloads, not the normal case.
+- **Scene refresh.** `dovi_tool` sets `scene_refresh_flag` on the first frame of each scene, and a scene
+  starts when the key differs from the previous frame's in presentation order. The extractor writes each
+  AU's bytes before it reads the next AU, so with B-frames the previous frame in presentation order may
+  not be read yet. The rule used: an AU gets the flag when its key differs from the key of the AU with the
+  largest presentation time below its own among the AUs read since the last reset (a small map from
+  presentation time to key, the last 64 AUs). When the true predecessor was already read, this is
+  `dovi_tool`'s rule. When it was not, the AU is compared with an earlier frame. That gives an extra flag
+  on an AU whose L1 equals its predecessor's (a B-pyramid whose scene starts on a B-frame: the anchors
+  read before it are flagged too), and misses a flag only when the keys go A, B, A within the reorder
+  depth. So every L1 change in presentation order carries the flag, except that A-B-A case. Extra flags
+  carry an unchanged L1; this is the HDR10+ exception to "no mid-shot refresh" in 2.2.
+  Leading pictures of an open-GOP cut compare with the old scene's trailing pictures and get no flag.
+  Codex's review (2026-10-29) proposed the flag on every AU whose predecessor is not known to be read;
+  with x265's default B-pyramid that flags most frames of every scene, a larger departure from `mkvdovi`
+  than the A-B-A case, so it is not used.
+- **Starts and seeks.** The DV2.7 rules stay: the flag on frame 0, and with
+  `debug.nuvio.dv_refresh_every_start` on the first IRAP AU of every generation. A reset clears the
+  map, so the first AU after a seek has no predecessor and gets no flag of its own (`mkvdovi` parity
+  for a start inside a scene). A seek that lands on the first AU of a scene therefore gets no flag where
+  the `mkvdovi` file has one; the switch is the way to test whether the TV cares (DV3.2 asks the same for
+  8.4). The first payload after a carried-over L1 gets the flag when its L1 differs from the carried one.
+- **Presentation time.** A Matroska block time is a presentation time. The extractor passes each AU's,
+  with a laced block's frames at the block time plus the default duration per frame, as the sample
+  queue gets them.
+- **The RPUs.** The builder handle is created at track init with the Profile 8.1 params of `mkvdovi`:
+  CM v4.0 with the crate's default config and neutral trims (`CmMetadata::mkvdovi_default`), L6 from
+  the Matroska MasteringMetadata, MaxCLL and MaxFALL, and the source range of `source_range_81` over
+  the final L6 mastering values (none when they are implausible). A field the container does not state
+  takes `mkvdovi`'s default (1000 / 0.005 nits, MaxCLL 1000, MaxFALL 400); a zero MaxCLL or MaxFALL
+  counts as not stated, a zero mastering minimum is kept, as `mkvdovi` keeps it. When only one of MaxCLL
+  and MaxFALL is stated and the filled one breaks MaxFALL <= MaxCLL, the filled one gives way
+  (`resolve_light_levels`). L9's source primaries are `detect_source_primaries`': the mastering display's
+  gamut (P3 0, BT.709 1, BT.2020 2, matched on the red, green and blue chromaticities within 0.002),
+  then the container's Primaries (1, 9, 11 and 12), BT.2020 otherwise. The mastering minimum
+  is rounded to 0.0001 nits, and each field is capped at 10 000 (`Level6::clamped`), where `mkvdovi`
+  would refuse the title. A mastering display stated only in the stream's SEI is not read, so such a
+  title gets the defaults where `mkvdovi` (through MediaInfo) gets the SEI's values. A shot is rendered
+  when an L1 is new, and the last few are cached (scenes can alternate). The handle lives until the
+  extractor is released: `release()` now reaches the transformer, and preparing a track again releases
+  the injector it had.
+- **Every AU gets an RPU.** The track converts only when the first AU's payload renders and the NAL
+  length field has at least 2 bytes (an 8.1 RPU is far below 64 KiB). A shot that fails to render, or an
+  exception in the provider, gives the AU the last shot written, with one log line per track. An AU
+  whose NAL lengths do not parse is refused by the extractor's Annex B writer, as before.
+- **HDR10+ SEIs stay in the stream**, as `dovi_tool inject-rpu` leaves them. The HDR10+ strip mode still
+  runs after the injection when it is on. The provider reads the payload before that.
+- **Revert.** `debug.nuvio.dv_hdr10plus` = 0 keeps every PQ track native, read once per extractor. The
+  setting, now "Convert HLG and HDR10+ to Dolby Vision", covers both.
+
+**Implemented in DV3.1 (Matroska).** `DvRpuSources` asks `StaticDvRpuSource` for 8.4 and
+`Hdr10PlusDvRpuSource` for 8.1; `prepare` gets the track's `DvTrackFacts` (the HDR10+ candidates of the
+hvcC or the first AU, and the MasteringMetadata, MaxCLL and MaxFALL the container states; the extractor
+now records whether MaxCLL and MaxFALL are stated, as Media3 fills in 1000 and 200 otherwise).
+- At track init a PQ track whose hvcC has no HDR10+ payload is native (`no RPU: no HDR10+ SEI …`). If
+  the table made it 8.1 and the transformer converts HDR10+ (`convertsHdr10Plus`: conversion on and the
+  switch not 0), the DV2.10 early scan reads its first AU too, under the log name `HDR10+ SEI scan`.
+  `HevcInitNals.readAuPrefix` collects the T.35 payloads of the prefix SEI NALs before the first slice
+  (`hdr10PlusPayloadsInSei`: payloadType 4 with the header `B5 003C 0001`). When there is one,
+  `applyFirstAu` runs the table again with them, and the Dolby Vision 8.1 Format replaces the provisional
+  HEVC one before any sample, as for HLG. The scan's limits are DV2.10's: a laced, compressed or
+  encrypted first block, or a payload only in a later AU, leaves the track native.
+- `ConvertedTrackInjector` takes a `TrackRpus`: `StaticTrackRpus` for 8.4, `Hdr10PlusTrackRpus` for
+  8.1. The injector still sets the DV2.7 refresh (frame 0, the switch) and ORs in the source's own.
+  `Hdr10PlusTrackRpus.next` reads the AU's payloads (`HevcInitNals.hdr10PlusPayloadsInAu`, before the
+  strip mode), asks `nativeHdr10PlusFrame` for L1 and key, and keeps the presentation time → key map of
+  the last 64 AUs. Shots are cached by L1 (8). The extractor passes each AU's presentation time to
+  `injectDolbyVisionRpu`.
+- `MatroskaExtractor.release()` calls the transformer's `onRelease`, which releases every track's
+  injector; `prepareDolbyVisionConversion` releases the injector a track had before.
+- Tests: `Hdr10PlusDvRpuSourceTest` (the rules above on a fake library: B-pyramid, open GOP, gaps,
+  resets, the L6 rules), `MatroskaHdr10PlusTest` (through the extractor), `HevcInitNalsTest` (the
+  payload walk, emulation prevention included), and in `native/rpu_builder` the fixture test that
+  per-AU L1 with key-change refresh writes the 16 HDR10+ `dovi_tool` outputs byte for byte.
+- Device check: `scripts/rpu_dump_to_bin.py --order pts` writes the DV2.8 dump in presentation order,
+  and `scripts/rpu_l1_compare.py` compares it with `dovi_tool generate --hdr10plus-json`'s RPUs frame by
+  frame: L1 and the rest of the RPU must be equal, `scene_refresh_flag` differences are reported.
 
 ### 2.5 Signalling decision table
 
@@ -252,7 +353,7 @@ metadata and the SPS in the initialization data.
 |---|---|
 | Track already carries Dolby Vision (dvcC or `dv*` codecs) | Existing path; no conversion |
 | Protected content, setting off, or no Dolby Vision display or decoder | Native playback |
-| HEVC Main10, PQ from the container or SPS VUI, no contradicting tag | Dolby Vision 8.1 |
+| HEVC Main10, PQ from the container or SPS VUI, no contradicting tag | Dolby Vision 8.1 when the hvcC or the first AU carries HDR10+ (DV3.1, 2.4); native otherwise until DV3.3 |
 | HEVC Main10, HLG from the container or SPS VUI, limited range, BT.2020 NCL matrix and BT.2020 primaries (untagged fields accepted with a log line) | Dolby Vision 8.4 |
 | HLG with a contradicting range, matrix or primaries tag | Native playback |
 | HLG in an alternative-transfer SEI (preferred transfer 18) of the hvcC or the first AU, over stated transfers that are HLG-compatible (1, 6, 14, 15) or unspecified, the other fields as in the HLG row (BBC broadcast HLG) | Dolby Vision 8.4 (DV2.10) |
@@ -317,7 +418,7 @@ contract, for HEVC tracks without a dvcC or `dv*` codecs, and keeps the result o
   `libavcodec/dovi_rpuenc.c` table (Dolby's PDF was not read), with the DefaultDuration rate or 60 fps
   without one; above level 13 the track plays native.
 - The gate, once per playback (`DvConversionGate`): the setting `convertHdrToDolbyVision` (off; shown
-  on Nvidia since DV2.7 as "Convert HLG to Dolby Vision", because only 8.4 has a provider; greyed out in
+  on Nvidia since DV2.7, as "Convert HLG and HDR10+ to Dolby Vision" since DV3.1; greyed out in
   the strip and HDR10 base-layer modes), the revert switch `debug.nuvio.dv_convert` (0 turns it off, nothing turns it on),
   Nvidia, a Dolby Vision decoder and display, `DoviRpuBuilder.isAvailable()`, and neither the strip,
   HDR10 base-layer nor map-to-HEVC mode. A Dolby Vision decoder failure of a playback that signalled a
