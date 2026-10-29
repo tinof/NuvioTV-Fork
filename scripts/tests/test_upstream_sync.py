@@ -141,6 +141,14 @@ class HelperTest(unittest.TestCase):
             b = sync.light_blockers([], {path}, set(), [], CONFIG["protected_features"], CONFIG["light"], [])
             self.assertEqual([f"upstream changes {path}"], b, path)
 
+    def test_every_settings_store_is_a_tier2_path(self):
+        root = SKILL.parents[2]
+        tier2 = sync.tier2_globs((root / ".claude/workflow.md").read_text())
+        local = root / "app/src/main/java/com/nuvio/tv/data/local"
+        stores = sorted(str(p.relative_to(root)) for p in local.glob("*.kt") if "DataStore" in p.read_text())
+        missing = [p for p in stores if not any(sync.path_matches(p, g) for g in tier2)]
+        self.assertEqual([], missing, "a settings store that is not a Tier 2 path gets a Tier 1 review")
+
     def test_a_version_bump_is_benign(self):
         pats = CONFIG["light"]["benign_tier2_lines"]
         self.assertTrue(sync.benign_change(['        versionCode = 1538', '        versionName = "1.1.0-nt.8.2"'], pats))
