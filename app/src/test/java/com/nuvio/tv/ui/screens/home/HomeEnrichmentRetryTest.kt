@@ -42,7 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * relaxed mock never completes, so nothing beyond the pipeline under test runs.
  *
  * Uses runBlocking and polling rather than virtual time: onItemFocusPipeline launches on
- * Dispatchers.IO and debounces for 220ms, so the assertions wait for a monotonic call count
+ * Dispatchers.IO, so the assertions wait for a monotonic call count and then join the focus job
  * instead of advancing a scheduler the pipeline does not use.
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -88,6 +88,7 @@ class HomeEnrichmentRetryTest {
         viewModel.onItemFocusPipeline(item(itemId))
         awaitCalls(calls, expected = 1, what = "the first focus should have attempted one fetch")
         awaitCalls(backgroundCalls, expected = 1, what = "a failed enrichment still warms the detail cache")
+        awaitFocusJob(viewModel)
 
         // The addon comes back. Focus has to move away and back, which is what a remote does.
         reachable.set(true)
@@ -95,6 +96,7 @@ class HomeEnrichmentRetryTest {
         focusAndSettle(viewModel, item(itemId))
 
         awaitCalls(calls, expected = 2, what = "a failed fetch should be retried on a later focus")
+        awaitFocusJob(viewModel)
         assertTrue(
             "the successful retry should be recorded, so it is not fetched a third time",
             itemId in viewModel.prefetchedExternalMetaIds
@@ -112,6 +114,7 @@ class HomeEnrichmentRetryTest {
         // A further focus must not refetch now that the item resolved.
         focusAndSettle(viewModel, item(otherId))
         focusAndSettle(viewModel, item(itemId))
+        awaitFocusJob(viewModel)
         assertEquals("a resolved item must not be refetched", 2, calls.get())
         // Reuse belongs to the repository's cache, so the pipeline asks it again on each settled
         // focus: five focuses here, five requests, and never more than one per focus.
@@ -149,6 +152,7 @@ class HomeEnrichmentRetryTest {
 
         viewModel.onItemFocusPipeline(item(itemId))
         awaitCalls(calls, 1, "TMDB succeeding should not stop the external fetch being attempted")
+        awaitFocusJob(viewModel)
 
         // The state the second gate reads: TMDB resolved and is cached, external failed and is not.
         assertTrue("TMDB should be cached after it resolved", itemId in viewModel.prefetchedTmdbIds)
@@ -162,6 +166,7 @@ class HomeEnrichmentRetryTest {
         focusAndSettle(viewModel, item(itemId))
 
         awaitCalls(calls, 2, "a TMDB success must not suppress the external retry")
+        awaitFocusJob(viewModel)
         assertTrue(
             "the external retry resolved, so it should now be cached too",
             itemId in viewModel.prefetchedExternalMetaIds
@@ -214,6 +219,7 @@ class HomeEnrichmentRetryTest {
         focusAndSettle(viewModel, item(itemId))
 
         awaitCalls(calls, 2, "a thrown exception should be retried like any other failure")
+        awaitFocusJob(viewModel)
         assertTrue(
             "a thrown exception must not be cached as a resolved lookup",
             itemId !in viewModel.prefetchedExternalMetaIds
@@ -326,8 +332,8 @@ class HomeEnrichmentRetryTest {
     }
 
     /**
-     * The pipeline debounces by 220ms and then fetches on Dispatchers.IO, so the count is polled
-     * rather than sampled after a fixed wait.
+     * The pipeline fetches on Dispatchers.IO, so the count is polled rather than sampled after a
+     * fixed wait.
      */
     private suspend fun awaitCalls(calls: AtomicInteger, expected: Int, what: String) {
         val reached = runCatching {
@@ -336,6 +342,18 @@ class HomeEnrichmentRetryTest {
             }
         }.isSuccess
         assertEquals(what, expected, if (reached) expected else calls.get())
+    }
+
+    /**
+     * The call count rises inside the fetch, but the prefetched marks, the merge and the
+     * background prefetch come only after both sources finish. Join the focus job, so the
+     * assertions read the state it settled on. Call it before the next focus replaces the job.
+     */
+    private suspend fun awaitFocusJob(viewModel: HomeViewModel) {
+        val finished = runCatching {
+            withTimeout(5_000) { viewModel.tmdbEnrichFocusJob?.join() }
+        }.isSuccess
+        assertTrue("the focus job should finish within 5 s", finished)
     }
 
     /**
