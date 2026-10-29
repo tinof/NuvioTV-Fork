@@ -522,7 +522,8 @@ def cmd_map_overlap(a, cfg):
                                             f"{len(conflicts)} files conflict in a trial merge"]},
         # A nightly run takes only a sync with no light blocker (tier skip or light).
         "light": {"eligible": not blockers, "blockers": blockers},
-        "groups": groups if tier not in ("skip", "light") else [], "autoClean": auto_clean, "truncated": truncated,
+        # A light sync keeps its group: a stop-check abort classifies from this output.
+        "groups": groups if tier != "skip" else [], "autoClean": auto_clean, "truncated": truncated,
     }
     print(json.dumps(result, indent=1))
     return NOTHING if behind == 0 else OK
