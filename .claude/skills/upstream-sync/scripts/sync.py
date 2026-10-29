@@ -545,7 +545,13 @@ def cmd_stop_check(a, cfg):
     if not rebase_dir.is_dir() or not ref_exists("REBASE_HEAD"):
         print("stop-check: no rebase is stopped here", file=sys.stderr)
         return USAGE
-    unmerged = sorted(set(lines("diff", "--name-only", "--diff-filter=U")))
+    unmerged = set(lines("diff", "--name-only", "--diff-filter=U"))
+    # rerere autoupdate stages a recorded resolution, so redo the replay's merge in memory to count those too.
+    if ref_exists("REBASE_HEAD^"):
+        r = git("merge-tree", "--write-tree", "--name-only", "--no-messages", "--merge-base=REBASE_HEAD^", "HEAD",
+                "REBASE_HEAD", check=False)
+        unmerged |= set(parse_merge_tree(r.stdout, r.returncode))
+    unmerged = sorted(unmerged)
     commit_files = lines("show", "--no-renames", "--format=", "--name-only", "REBASE_HEAD")
     subject = out("show", "-s", "--format=%s", "REBASE_HEAD")
     seen_file = rebase_dir / "upstream-sync-seen"
