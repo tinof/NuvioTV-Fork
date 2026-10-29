@@ -620,6 +620,15 @@ class StopCheckRepoTest(RepoFixture, unittest.TestCase):
         self.assertEqual(sync.OK, code, report)
         self.assertIn("ok: 1 conflicting file(s) at this stop, 1 in this rebase", report)
 
+    def test_a_seen_path_with_a_space_counts_once(self):
+        self.stop_at_conflict("fix: fork edits the upstream file")
+        rebase_dir = Path(sync.out("rev-parse", "--git-path", "rebase-merge"))
+        (rebase_dir / "upstream-sync-seen").write_text("app/My Store.kt\nb.kt\n")
+        code, report = self.stop_check()
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("ok: 1 conflicting file(s) at this stop, 3 in this rebase", report)
+        self.assertIn("app/My Store.kt", (rebase_dir / "upstream-sync-seen").read_text().splitlines())
+
     def test_outside_a_rebase_it_is_a_usage_error(self):
         code, _ = self.stop_check()
         self.assertEqual(sync.USAGE, code)
