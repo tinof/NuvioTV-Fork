@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-29 | U1.8: `/upstream-sync` gains a light tier that skips classify for a sync with at most 3 conflicts and nothing protected, blocked or both-sided in Tier 2 (a version bump allowed); `stop-check` aborts a light rebase that goes past those limits. | U1 | [log](docs/ROADMAP_LOG.md), PR #28 |
 | 2026-10-29 | U1.6: a ruleset with a deploy-key bypass works on this personal repo; a cloud session cannot review a deployment (GitHub 403) but can push any branch, dispatch a workflow and merge a PR through REST; the clone is shallow; routines load `/upstream-sync`. | U1 | [log](docs/ROADMAP_LOG.md), issue #26 |
 | 2026-10-27 | U1.5: rebased onto upstream 1.1.0-nt.8.2 with no drop and no new Nvidia gate; both protected features kept every line; a base-layer commit fixes a race in upstream's rate-gate test that failed on CI, and `/upstream-sync` verify gains `--allow-new` for such commits. | U1 | [log](docs/ROADMAP_LOG.md), PR #24 |
 | 2026-10-26 | Resource check during 4K DV playback with the DTS-HD MA transcode: 19 % of the four CPU cores (transcode 19.5 % of one core), GPU on overlay and near idle, 49 °C; memory is the limit (SwapFree 31 MB, NvMap full), so a live second decode for DV5 has no room now. | DV5, Q6 | [log](docs/ROADMAP_LOG.md) |
@@ -613,6 +614,7 @@ because a wrong passthrough path is invisible until measured.
 - **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-27 (onto
   1.1.0-nt.8.2). The open "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
+  Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
 - [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
@@ -644,10 +646,6 @@ because a wrong passthrough path is invisible until measured.
     tests and a replay of the 2026-10-27 sync pass; then the default branch switches and `main` moves to the
     base, each with the owner's go. Landed: PR #25; gate passed 2026-10-28 (default branch `perf/shield-pass`,
     `main` at upstream `2b51aba36`, drift dry run green, preflight exits 3).
-  - [U1.8][desk] Light path: a sync with at most 3 conflicts, none protected and no upstream change to
-    workflows, binaries, settings stores or both-sided Tier 2 paths (a version bump alone is allowed) skips the
-    classify workflow; a rebase stop that breaks those limits aborts. Gate: script tests; a replay of the
-    2026-10-27 sync.
   - [U1.9][desk] CI is the gate: Checks runs on pushed sync candidates with an upstream baseline job and a
     compare job that fails on new or incomplete results; `shield_build_install.sh` runs `protected-apk` on every
     local build. Gate: a scratch candidate with an injected failure, and one with a crashed test run, fail.
