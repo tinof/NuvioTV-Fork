@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-29 | U1.6: a ruleset with a deploy-key bypass works on this personal repo; a cloud session cannot review a deployment (GitHub 403) but can push any branch, dispatch a workflow and merge a PR through REST; the clone is shallow; routines load `/upstream-sync`. | U1 | [log](docs/ROADMAP_LOG.md), issue #26 |
 | 2026-10-27 | U1.5: rebased onto upstream 1.1.0-nt.8.2 with no drop and no new Nvidia gate; both protected features kept every line; a base-layer commit fixes a race in upstream's rate-gate test that failed on CI, and `/upstream-sync` verify gains `--allow-new` for such commits. | U1 | [log](docs/ROADMAP_LOG.md), PR #24 |
 | 2026-10-26 | Resource check during 4K DV playback with the DTS-HD MA transcode: 19 % of the four CPU cores (transcode 19.5 % of one core), GPU on overlay and near idle, 49 °C; memory is the limit (SwapFree 31 MB, NvMap full), so a live second decode for DV5 has no room now. | DV5, Q6 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-26 | U1.5: rebased onto upstream 1.1.0-nt.8.1 (official 1.1.0-beta.8); three fork commits dropped as upstream does the same; the AAC-to-DTS and HLG-to-Dolby-Vision work is now a protected feature that `/upstream-sync` checks line by line. | U1 | [log](docs/ROADMAP_LOG.md), PR #22 |
@@ -635,7 +636,9 @@ because a wrong passthrough path is invisible until measured.
     key bypass it (otherwise move the repo to an organization), and what a cloud session's GitHub access can do
     (push outside `claude/`, dispatch a workflow, approve an environment deployment, merge a PR through REST).
     Also: can a routine run `/upstream-sync`, the cloud clone and REST calls, and commit attribution. Gate:
-    results in the log; the nightly run (U1.10) stays off until a server-side guard exists.
+    results in the log; the nightly run (U1.10) stays off until a server-side guard exists. Done 2026-10-29:
+    the deploy-key ruleset works without an organization, and GitHub refuses a deployment review from the
+    cloud token; a cloud REST merge still works, see U1.11.
   - [U1.7][desk] One layer: `main` mirrors upstream at the last synced base, `perf/shield-pass` becomes the
     default branch with the base commits at its bottom; preflight finds PRs through REST. Gate: the script
     tests and a replay of the 2026-10-27 sync pass; then the default branch switches and `main` moves to the
@@ -650,11 +653,15 @@ because a wrong passthrough path is invisible until measured.
     local build. Gate: a scratch candidate with an injected failure, and one with a crashed test run, fail.
   - [U1.10][desk][owner] Nightly cloud run at 02:07 Helsinki time: light syncs only, pushed as
     `claude/sync/<date>-<n>` with a manifest of the exact verify inputs; anything else stops with a comment on
-    the drift issue. Gate: a one-off run on a replay branch matches the local result. Needs: U1.6, U1.8, U1.9.
+    the drift issue. The run unshallows its clone first, and the routine is created without connectors.
+    Gate: a one-off run on a replay branch matches the local result, and its commits, PR text and comments carry
+    no attribution footer. Needs: U1.6, U1.8, U1.9.
   - [U1.11][desk][owner] One-tap publish: a GitHub Actions workflow that runs only after the owner approves the
     `sync-publish` environment. It re-checks the candidate with trusted code and the manifest's upstream SHA, then
-    pushes both refs atomically with leases, keeps rollback tags per run, and can roll back both refs. Gate: dry
-    run, a publish and a rollback on spike branches. Needs: U1.6, U1.10.
+    pushes both refs atomically with leases, keeps rollback tags per run, and can roll back both refs.
+    `sync-publish` deploys only from `perf/shield-pass`, and a ruleset refuses a merge into `perf/shield-pass`
+    from the Claude App token while the owner's merges go through. Gate: dry run, a publish and a rollback on
+    spike branches; a cloud REST merge into a protected spike branch is refused. Needs: U1.6, U1.10.
 
 ## Docs
 
