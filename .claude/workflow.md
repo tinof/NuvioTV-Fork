@@ -60,7 +60,7 @@ app/src/main/java/com/nuvio/tv/ui/screens/player/iec/**
 app/src/main/java/com/nuvio/tv/ui/screens/player/PlaybackSpeedAware*.kt
 app/src/main/java/com/nuvio/tv/ui/screens/player/Passthrough*.kt
 app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerRuntimeControllerLifecycle.kt
-app/src/main/java/com/nuvio/tv/data/local/*DataStore.kt
+app/src/main/java/com/nuvio/tv/data/local/**
 app/src/main/java/com/nuvio/tv/core/performance/DeviceProfile.kt
 app/src/main/java/com/nuvio/tv/MainActivity.kt
 app/src/main/java/com/nuvio/tv/core/player/LetterboxRenderPolicy.kt
@@ -74,7 +74,7 @@ gradle/**
 
 Display-mode switching and passthrough decide picture and sound on the Shield; the player lifecycle and
 the window setup are where incidents 01 and 02 came from; settings stores and `DeviceProfile` carry the
-Nvidia defaults; the AARs are patched engine code; the build files carry the toolchain that has to stay
+Nvidia defaults (the whole `data/local` directory, because many stores have no `DataStore` suffix); the AARs are patched engine code; the build files carry the toolchain that has to stay
 on upstream's versions. CI workflows build and sign the APKs the Shield runs, and the agent config
 instructs the reviewers.
 
