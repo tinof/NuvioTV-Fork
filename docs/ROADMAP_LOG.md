@@ -10,6 +10,29 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-29: U1.8 Light path (PR #28)
+
+- [U1.8][desk] Light path: a sync with at most 3 conflicts, none protected and no upstream change to
+  workflows, binaries, settings stores or both-sided Tier 2 paths (a version bump alone is allowed) skips the
+  classify workflow; a rebase stop that breaks those limits aborts. Gate: script tests; a replay of the
+  2026-10-27 sync.
+
+**Evidence**
+
+- Script tests: `python3 -I -m unittest discover -s scripts/tests -p test_upstream_sync.py`, 52 tests green,
+  among them `StopCheckRepoTest`, `MapOverlapRepoTest`, `test_light_blockers_name_every_reason` and
+  `test_every_settings_store_blocks_the_light_path`. The unit-test gate stayed green.
+- Replay against each upstream step of the 2026-10-27 sync: the first three steps are light, and a light rebase
+  onto `3baaf5c4d` verifies (234 identical, 0 protected lines lost). From `77eb738f3` (DTS-HD passthrough in the
+  IEC sink) on, the sync is not light.
+- Cross-review (codex, gemini) found four P1s. Three were fixed with tests: `stop-check` now counts a conflict
+  that rerere autoupdate already staged, every store in `data/local` blocks the light path, and a light sync keeps
+  its classify group for the fallback after an abort. The owner kept the version-bump exemption, because
+  upstream bumps `app/build.gradle.kts` every release.
+
+**Resolution:** `sync.py map-overlap` reports `light.eligible` and its blockers, the light tier skips classify,
+and `sync.py stop-check` aborts a light rebase whose stops break the limits.
+
 ## 2026-10-29: U1.6 spikes for sync v2 (issue #26)
 
 - [U1.6][owner] Spikes before building. Gate: results in the log; the nightly run (U1.10) stays off until a
