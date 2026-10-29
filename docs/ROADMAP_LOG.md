@@ -10,7 +10,7 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
-## 2026-10-29: DV3.1 HDR10+ → Dolby Vision 8.1, code (step stays open)
+## 2026-10-29: DV3.1 HDR10+ → Dolby Vision 8.1, code (PR #30, step stays open)
 
 - [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
   on the owner's TV; the debug log shows an RPU in every AU and L1 equal to `dovi_tool` for the same
@@ -53,7 +53,7 @@ finding). Confirmed and fixed:
 Refuted: an implausible stated mastering minimum gets a source range after the 10 000 cap; that follows
 2.4's rule (the range is taken over the final L6 values, where `mkvdovi` refuses the title).
 
-**What shipped (branch `fork/DV3.1-hdr10plus-81`):**
+**What shipped (PR #30):**
 
 - `native/rpu_builder`: `nativeHdr10PlusFrame` (L1 and a 128-bit digest of the `SceneKey`) and
   `nativeSourceRange81` (`source_range_81`). No hdr-analyze change and no pin move: `SceneKey` is `Hash`
