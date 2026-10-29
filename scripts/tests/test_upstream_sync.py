@@ -562,6 +562,21 @@ class SkillDocTest(unittest.TestCase):
         self.assertNotRegex(doc, rf"as `{var}` instead")
 
 
+class MapOverlapRepoTest(RepoFixture, unittest.TestCase):
+    """map-overlap on the fixture: the old fork on B edits shared.txt, which U also changed."""
+
+    def test_a_light_sync_keeps_its_group_for_the_classify_fallback(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = sync.cmd_map_overlap(argparse.Namespace(upstream="U", perf="old", scratch=""), self.cfg)
+        result = json.loads(buf.getvalue())
+        self.assertEqual(sync.OK, code)
+        self.assertEqual("light", result["scale"]["tier"], result["light"])
+        self.assertEqual(["all"], [g["key"] for g in result["groups"]],
+                         "a stop-check abort classifies from this output, so the light tier must keep its group")
+        self.assertEqual(2, len(result["groups"][0]["commits"]))
+
+
 class StopCheckRepoTest(RepoFixture, unittest.TestCase):
     """stop-check at a real conflict stop: a fork commit that edits upstream.txt, which U also changed."""
 
