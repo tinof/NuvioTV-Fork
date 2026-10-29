@@ -233,7 +233,7 @@
     },
     {
       "key": "hlg-to-dv",
-      "name": "HLG and HDR10 to Dolby Vision 8.4 / 8.1 conversion (ROADMAP DV2, DV3)",
+      "name": "HLG and HDR10+ to Dolby Vision 8.4 / 8.1 conversion (ROADMAP DV2, DV3)",
       "subjects": "HLG|RPU|nuvio_rpu|Dolby Vision conversion|converted track|DV2\\.|DV3\\.",
       "anchors": [
         "HlgContract",
@@ -253,7 +253,9 @@
         "verify_native_apk",
         "ConvertHdrToDolbyVision",
         "DolbyVisionMatroskaTransformer",
-        "^docs/dv-conversion/"
+        "^docs/dv-conversion/",
+        "Hdr10PlusDvRpuSource",
+        "rpu_l1_compare"
       ],
       "binaries": [],
       "tests": [
@@ -268,7 +270,8 @@
         "*StaticDvRpuSource*",
         "*dvmkv*",
         "*ConvertHdrToDolbyVision*",
-        "*DvConvertFallback*"
+        "*DvConvertFallback*",
+        "*Hdr10PlusDvRpuSource*"
       ],
       "apk": {
         "lib": "lib/arm64-v8a/libnuvio_rpu.so",
