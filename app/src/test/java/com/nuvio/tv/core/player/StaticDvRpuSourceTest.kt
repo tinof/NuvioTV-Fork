@@ -38,7 +38,7 @@ class StaticDvRpuSourceTest {
     fun `without the library the canary source is unavailable as well`() {
         assertEquals(
             DvRpuSource.Prepared.Unavailable("static84L1 failed: UNAVAILABLE"),
-            StaticDvRpuSource(HlgComposer.CANARY).prepare(DvSignallingDecision.Target.PROFILE_8_4)
+            StaticDvRpuSource(HlgComposer.CANARY).prepare(DvSignallingDecision.Target.PROFILE_8_4, DvTrackFacts.NONE)
         )
     }
 }

@@ -26,7 +26,7 @@ class ConvertedTrackInjectorTest {
 
     @Test
     fun `every AU gets one RPU as its last NAL and keeps every other NAL byte for byte`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = false)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = false)
         for (nals in listOf(listOf(vps, sps, pps, prefixSei, idr), listOf(trail), listOf(prefixSei, trail))) {
             val out = inject(injector, nals, streamStart = false)
             assertEquals(lengthPrefixed(nals + listOf(plainRpu)).toList(), out.toList())
@@ -35,14 +35,14 @@ class ConvertedTrackInjectorTest {
 
     @Test
     fun `an RPU the AU already carries is dropped, so it has exactly one`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = false)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = false)
         val out = inject(injector, listOf(prefixSei, strayRpu, idr, strayRpu), streamStart = false)
         assertArrayEquals(lengthPrefixed(listOf(prefixSei, idr, plainRpu)), out)
     }
 
     @Test
     fun `by default only frame 0 carries scene refresh`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = false)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = false)
         assertArrayEquals(lengthPrefixed(listOf(idr, refreshRpu)), inject(injector, listOf(idr), streamStart = true))
         assertArrayEquals(lengthPrefixed(listOf(trail, plainRpu)), inject(injector, listOf(trail), streamStart = false))
         // A seek: its first AU is not frame 0 and carries 0, as an mkvdovi file played from there does.
@@ -55,7 +55,7 @@ class ConvertedTrackInjectorTest {
 
     @Test
     fun `with the switch the first AU after every start, seek or resync carries scene refresh`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = true)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = true)
         assertArrayEquals(lengthPrefixed(listOf(idr, refreshRpu)), inject(injector, listOf(idr), streamStart = false))
         assertArrayEquals(lengthPrefixed(listOf(trail, plainRpu)), inject(injector, listOf(trail), streamStart = false))
         injector.onReset()
@@ -67,7 +67,7 @@ class ConvertedTrackInjectorTest {
 
     @Test
     fun `with the switch the flag waits for the first IRAP AU after a seek, the one the decoder starts on`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = true)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = true)
         injector.onReset()
         // Media3 drops the AUs before the first keyframe after a seek.
         assertArrayEquals(lengthPrefixed(listOf(trail, plainRpu)), inject(injector, listOf(trail), streamStart = false))
@@ -81,55 +81,55 @@ class ConvertedTrackInjectorTest {
 
     @Test
     fun `every NAL length field size from 1 to 4 bytes`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = false)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = false)
         for (fieldLength in 1..4) {
             val sample = lengthPrefixed(listOf(sps, idr), fieldLength)
             val out = ExposedByteArrayOutputStream(16)
-            assertTrue(injector.inject(sample, sample.size, fieldLength, streamStart = false, out = out))
+            assertTrue(injector.inject(sample, sample.size, fieldLength, streamStart = false, timeUs = 0, out = out))
             assertArrayEquals("$fieldLength", lengthPrefixed(listOf(sps, idr, plainRpu), fieldLength), out.toByteArray())
         }
     }
 
     @Test
     fun `only the first length bytes of a reused buffer are read`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = false)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = false)
         val sample = lengthPrefixed(listOf(idr))
         val buffer = sample + ByteArray(32) { 0x7F }
         val out = ExposedByteArrayOutputStream(16)
-        assertTrue(injector.inject(buffer, sample.size, 4, streamStart = false, out = out))
+        assertTrue(injector.inject(buffer, sample.size, 4, streamStart = false, timeUs = 0, out = out))
         assertArrayEquals(lengthPrefixed(listOf(idr, plainRpu)), out.toByteArray())
     }
 
     @Test
     fun `a zero-length NAL is kept`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = false)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = false)
         val out = inject(injector, listOf(idr, ByteArray(0)), streamStart = false)
         assertArrayEquals(lengthPrefixed(listOf(idr, ByteArray(0), plainRpu)), out)
     }
 
     @Test
     fun `a sample whose NAL lengths do not add up is refused`() {
-        val injector = ConvertedTrackInjector(shot, refreshEveryStart = false)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(shot), refreshEveryStart = false)
         val sample = lengthPrefixed(listOf(idr))
         val out = ExposedByteArrayOutputStream(16)
         // A length that runs past the sample, a truncated length field, a 4-byte length above Int.MAX_VALUE.
-        assertFalse(injector.inject(sample, sample.size - 1, 4, streamStart = false, out = out))
-        assertFalse(injector.inject(sample + byteArrayOf(0, 0), sample.size + 2, 4, streamStart = false, out = out))
+        assertFalse(injector.inject(sample, sample.size - 1, 4, streamStart = false, timeUs = 0, out = out))
+        assertFalse(injector.inject(sample + byteArrayOf(0, 0), sample.size + 2, 4, streamStart = false, timeUs = 0, out = out))
         val huge = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()) + idr
-        assertFalse(injector.inject(huge, huge.size, 4, streamStart = false, out = out))
-        assertFalse(injector.inject(sample, sample.size, 0, streamStart = false, out = out))
-        assertFalse(injector.inject(sample, sample.size, 5, streamStart = false, out = out))
+        assertFalse(injector.inject(huge, huge.size, 4, streamStart = false, timeUs = 0, out = out))
+        assertFalse(injector.inject(sample, sample.size, 0, streamStart = false, timeUs = 0, out = out))
+        assertFalse(injector.inject(sample, sample.size, 5, streamStart = false, timeUs = 0, out = out))
     }
 
     @Test
     fun `an RPU too long for the length field is refused`() {
         val long = DoviRpuBuilder.ShotRpu(ByteArray(300) { 0x7C }, ByteArray(256) { 0x7C })
-        val injector = ConvertedTrackInjector(long, refreshEveryStart = false)
+        val injector = ConvertedTrackInjector(StaticTrackRpus(long), refreshEveryStart = false)
         val sample = lengthPrefixed(listOf(idr), 1)
-        assertFalse(injector.inject(sample, sample.size, 1, streamStart = false, out = ExposedByteArrayOutputStream(16)))
+        assertFalse(injector.inject(sample, sample.size, 1, streamStart = false, timeUs = 0, out = ExposedByteArrayOutputStream(16)))
         val wide = lengthPrefixed(listOf(idr), 2)
         val out = ExposedByteArrayOutputStream(16)
-        assertTrue(injector.inject(wide, wide.size, 2, streamStart = false, out = out))
+        assertTrue(injector.inject(wide, wide.size, 2, streamStart = false, timeUs = 0, out = out))
         assertEquals(wide.size + 2 + 256, out.size())
     }
 
@@ -153,7 +153,7 @@ class ConvertedTrackInjectorTest {
     private fun inject(injector: ConvertedTrackInjector, nals: List<ByteArray>, streamStart: Boolean): ByteArray {
         val sample = lengthPrefixed(nals)
         val out = ExposedByteArrayOutputStream(16)
-        assertTrue(injector.inject(sample, sample.size, 4, streamStart, out))
+        assertTrue(injector.inject(sample, sample.size, 4, streamStart, timeUs = 0, out = out))
         return out.toByteArray()
     }
 

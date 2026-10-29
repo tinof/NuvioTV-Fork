@@ -106,14 +106,20 @@ internal object DoviRpuBuilder {
      * Everything in an RPU apart from L1. CM v4.0 uses the crate's default config and trim
      * targets; [l1AvgCmVersion] picks the L1 average floor (819 under V29, 1229 under V40).
      * [level6] null is mkvdovi's default (1000 / 0.005 nits, MaxCLL 1000, MaxFALL 400).
+     * [sourcePrimaryIndex] is L9's under CM v4.0: 0 P3-D65, 1 BT.709, 2 BT.2020 (the crate's default).
      */
     data class Params(
         val profile: Profile,
         val cmVersion: CmVersion,
         val l1AvgCmVersion: CmVersion,
         val level6: Level6? = null,
-        val level5: Level5? = null
+        val level5: Level5? = null,
+        val sourcePrimaryIndex: Int = PRIMARIES_BT2020
     )
+
+    const val PRIMARIES_P3_D65 = 0
+    const val PRIMARIES_BT709 = 1
+    const val PRIMARIES_BT2020 = 2
 
     /**
      * Both RPU NALs of one shot (the `0x7C01` header and the escaped payload, no start code),
@@ -175,7 +181,8 @@ internal object DoviRpuBuilder {
                     params.l1AvgCmVersion.value,
                     params.level6?.let(::level6Args),
                     sourceRange,
-                    params.level5?.let(::level5Args)
+                    params.level5?.let(::level5Args),
+                    params.sourcePrimaryIndex
                 )
             }
         )
@@ -223,6 +230,53 @@ internal object DoviRpuBuilder {
         return Outcome.Ok(L1(out[0], out[1], out[2]))
     }
 
+    /**
+     * The identity of an HDR10+ payload's `SceneKey`: the fields `dovi_tool`'s scene rule compares.
+     * Equal for every payload of one scene; valid within one library build only.
+     */
+    data class SceneKey(val high: Long, val low: Long)
+
+    /** One HDR10+ payload: its L1 (as [hdr10PlusL1]) and its [SceneKey]. */
+    data class Hdr10PlusFrame(val l1: L1, val key: SceneKey)
+
+    /**
+     * [hdr10PlusL1] plus the payload's [SceneKey], from one parse (ROADMAP DV3.1). The codes are
+     * those of [hdr10PlusL1].
+     */
+    fun hdr10PlusFrame(
+        payload: ByteArray,
+        peakSource: PeakSource,
+        cmVersion: CmVersion
+    ): Outcome<Hdr10PlusFrame> {
+        val out = IntArray(7)
+        val code = native("nativeHdr10PlusFrame") {
+            nativeHdr10PlusFrame(payload, peakSource.value, cmVersion.value, out)
+        } ?: return Outcome.Failed(Code.UNAVAILABLE)
+        if (code != Code.OK.value) return Outcome.Failed(Code.fromNative(code))
+        return Outcome.Ok(hdr10PlusFrameOf(out))
+    }
+
+    /**
+     * The Profile 8.1 source range `mkvdovi` derives from the mastering display ([minNits],
+     * [maxNits]): `source_range_81`. Null when the values are not a plausible mastering display
+     * (the generator's L6 lookup then decides, as `P81(null)`), or without the library.
+     */
+    fun sourceRange81(minNits: Double, maxNits: Double): SourceRange? {
+        val out = IntArray(2)
+        val code = native("nativeSourceRange81") { nativeSourceRange81(minNits, maxNits, out) }
+        if (code != Code.OK.value || out[0] < 0 || out[1] < 0) return null
+        return SourceRange(out[0], out[1])
+    }
+
+    /** `[min, avg, max, k0, k1, k2, k3]` of `nativeHdr10PlusFrame`. */
+    internal fun hdr10PlusFrameOf(out: IntArray) = Hdr10PlusFrame(
+        L1(out[0], out[1], out[2]),
+        SceneKey(halves(out[3], out[4]), halves(out[5], out[6]))
+    )
+
+    private fun halves(high: Int, low: Int): Long =
+        (high.toLong() shl 32) or (low.toLong() and 0xFFFF_FFFFL)
+
     fun release(handle: Handle): Code =
         native("nativeRelease") { nativeRelease(handle.value) }?.let(Code::fromNative)
             ?: Code.UNAVAILABLE
@@ -248,7 +302,8 @@ internal object DoviRpuBuilder {
         val range = (params.profile as? Profile.P81)?.sourceRange
         val level6 = params.level6
         val level5 = params.level5
-        return (range == null || (range.minPq.fitsU16() && range.maxPq.fitsU16())) &&
+        return params.sourcePrimaryIndex in PRIMARIES_P3_D65..PRIMARIES_BT2020 &&
+            (range == null || (range.minPq.fitsU16() && range.maxPq.fitsU16())) &&
             (level6 == null || level6Args(level6).all { it >= 0 }) &&
             (level5 == null || level5Args(level5).all { it.fitsU16() })
     }
@@ -303,7 +358,8 @@ internal object DoviRpuBuilder {
         l1AvgCmVersion: Int,
         level6: IntArray?,
         sourceRange: IntArray?,
-        level5: IntArray?
+        level5: IntArray?,
+        sourcePrimaries: Int
     ): Long
 
     @JvmStatic
@@ -326,6 +382,19 @@ internal object DoviRpuBuilder {
         cmVersion: Int,
         out: IntArray
     ): Int
+
+    // [min, avg, max, k0, k1, k2, k3]; the code.
+    @JvmStatic
+    private external fun nativeHdr10PlusFrame(
+        payload: ByteArray,
+        peakSource: Int,
+        cmVersion: Int,
+        out: IntArray
+    ): Int
+
+    // [min, max], or [-1, -1] for no range; the code.
+    @JvmStatic
+    private external fun nativeSourceRange81(minNits: Double, maxNits: Double, out: IntArray): Int
 
     @JvmStatic
     private external fun nativeRelease(handle: Long): Int
