@@ -17,6 +17,8 @@ import com.nuvio.tv.core.player.DolbyVisionMatroskaTransformer
 import com.nuvio.tv.core.player.DolbyVisionStatsSession
 import com.nuvio.tv.core.player.DoviRpuBuilder
 import com.nuvio.tv.core.player.DvRpuSource
+import com.nuvio.tv.core.player.DvTrackFacts
+import com.nuvio.tv.core.player.StaticTrackRpus
 import com.nuvio.tv.core.player.DvSignallingDecision
 import com.nuvio.tv.core.player.HevcColourFixtures
 import io.mockk.every
@@ -100,7 +102,7 @@ class MatroskaRpuInjectionTest {
 
     private val refreshRpu = byteArrayOf(0x7C, 0x01, 0x11, 0x22, 0x33, 0x44)
     private val plainRpu = byteArrayOf(0x7C, 0x01, 0x55, 0x66, 0x77)
-    private val readySource = DvRpuSource { DvRpuSource.Prepared.Ready(DoviRpuBuilder.ShotRpu(refreshRpu, plainRpu), "test") }
+    private val readySource = DvRpuSource { _, _ -> DvRpuSource.Prepared.Ready(StaticTrackRpus(DoviRpuBuilder.ShotRpu(refreshRpu, plainRpu)), "test") }
 
     private val idr = byteArrayOf(0x26, 0x01, 0xAF.toByte(), 0x10)
     private val trail = byteArrayOf(0x02, 0x01, 0xD0.toByte(), 0x21)
@@ -250,7 +252,7 @@ class MatroskaRpuInjectionTest {
 
     @Test
     fun `an RPU that does not fit the track's NAL length field keeps the track native`() {
-        val long = DvRpuSource { DvRpuSource.Prepared.Ready(DoviRpuBuilder.ShotRpu(ByteArray(416), ByteArray(417)), "test") }
+        val long = DvRpuSource { _, _ -> DvRpuSource.Prepared.Ready(StaticTrackRpus(DoviRpuBuilder.ShotRpu(ByteArray(416), ByteArray(417))), "test") }
         val transformer = transformer(source = long)
         val convert = DvSignallingDecision.Convert(
             DvSignallingDecision.Target.PROFILE_8_4,
@@ -261,10 +263,10 @@ class MatroskaRpuInjectionTest {
         )
         assertEquals(
             DvSignallingDecision.Native("no RPU: 416 bytes do not fit a 1-byte NAL length"),
-            transformer.prepareDolbyVisionConversion(1, convert, 1)
+            transformer.prepareDolbyVisionConversion(1, convert, 1, DvTrackFacts.NONE)
         )
-        assertEquals(convert, transformer.prepareDolbyVisionConversion(1, convert, 2))
-        assertEquals(convert, transformer.prepareDolbyVisionConversion(1, convert, 4))
+        assertEquals(convert, transformer.prepareDolbyVisionConversion(1, convert, 2, DvTrackFacts.NONE))
+        assertEquals(convert, transformer.prepareDolbyVisionConversion(1, convert, 4, DvTrackFacts.NONE))
     }
 
     @Test
@@ -276,12 +278,17 @@ class MatroskaRpuInjectionTest {
     }
 
     @Test
-    fun `a PQ track has no 8_1 provider and plays native, its samples untouched`() {
+    fun `a PQ track without HDR10+ plays native with the real sources, its samples untouched`() {
+        // DV3.1: 8.1 comes only from HDR10+ (MatroskaHdr10PlusTest); static HDR10 is DV3.3.
+        val sources = com.nuvio.tv.core.player.DvRpuSources(
+            com.nuvio.tv.core.player.StaticDvRpuSource(),
+            com.nuvio.tv.core.player.Hdr10PlusDvRpuSource(),
+        )
         val native = readFile(file(pqColour), transformer = null)
-        val out = readFile(file(pqColour), transformer(source = com.nuvio.tv.core.player.StaticDvRpuSource()))
+        val out = readFile(file(pqColour), transformer(source = sources))
         assertEquals(MimeTypes.VIDEO_H265, out.format!!.sampleMimeType)
         assertEquals(
-            DvSignallingDecision.Native("no RPU: no 8.1 RPU provider"),
+            DvSignallingDecision.Native("no RPU: no HDR10+ SEI in the hvcC or the first AU (static HDR10 is DV3.3)"),
             out.track!!.dolbyVisionSignalling
         )
         assertFalse(out.track!!.isDolbyVisionConverted)
