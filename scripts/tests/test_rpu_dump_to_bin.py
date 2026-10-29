@@ -56,6 +56,31 @@ class RpuDumpToBinTest(unittest.TestCase):
         records = records_of(RPU_BIN.read_bytes())
         self.assertEqual(b"".join(records[i] for i in (0, 3, 5)), data)
 
+    def test_pts_order_sorts_by_presentation_time(self):
+        # Three records queued in decode order 0 2 1 by presentation time: --order pts writes 0 1 2.
+        records = records_of(RPU_BIN.read_bytes())[:3]
+        lines = []
+        for seq, (record, pts) in enumerate(zip(records, (0, 2, 1))):
+            nal = b"\x7c\x01" + record[4:]
+            lines += [line.replace(f"pts={seq * 41708}", f"pts={pts * 41708}") for line in record_lines(seq, nal, 64)]
+        code, data, _ = self.run_main("\n".join(lines), "--order", "pts", "--strict")
+        self.assertEqual(0, code)
+        self.assertEqual(records[0] + records[2] + records[1], data)
+        code, data, _ = self.run_main("\n".join(lines), "--strict")
+        self.assertEqual(b"".join(records), data)
+
+    def test_pts_order_stops_at_the_first_gap(self):
+        # Queued 0 1 2 then the anchor 5, whose B-frames 3 and 4 were never queued: 5 is left out.
+        records = records_of(RPU_BIN.read_bytes())[:4]
+        lines = []
+        for seq, (record, pts) in enumerate(zip(records, (0, 1, 2, 5))):
+            nal = b"\x7c\x01" + record[4:]
+            lines += [line.replace(f"pts={seq * 41708}", f"pts={pts * 41708}") for line in record_lines(seq, nal, 64)]
+        code, data, stderr = self.run_main("\n".join(lines), "--order", "pts", "--strict")
+        self.assertEqual(0, code)
+        self.assertEqual(b"".join(records[:3]), data)
+        self.assertIn("1 record(s) after it are left out", stderr)
+
     def test_dropped_line_is_a_gap(self):
         lines = LOGCAT.read_text().splitlines()
         dropped = [line for line in lines if "seq=2 " not in line]
