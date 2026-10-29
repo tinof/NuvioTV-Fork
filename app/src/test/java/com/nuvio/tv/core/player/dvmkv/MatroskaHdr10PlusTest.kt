@@ -205,6 +205,21 @@ class MatroskaHdr10PlusTest {
     }
 
     @Test
+    fun `a T35 message in the hvcC that is not HDR10+ still lets the first AU's HDR10+ convert the track`() {
+        // The HDR10+ T.35 header with application identifier 5: a candidate the library refuses.
+        val other = fakeHdr10PlusSei(byteArrayOf(0xB5.toByte(), 0x00, 0x3C, 0x00, 0x01, 0x05, 0x01, 0x09, 0x09))
+        val hvcC = HevcColourFixtures.hvcC(
+            32 to listOf(HevcColourFixtures.vps("pq")),
+            33 to listOf(HevcColourFixtures.sps("pq")),
+            34 to listOf(HevcColourFixtures.pps("pq")),
+            39 to listOf(other),
+        )
+        val out = readFile(mkv(trackEntry(pqColour, hvcC = hvcC), *clusters.toTypedArray()), transformer())
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        assertEquals(listOf(1001, 1001, 1002, 1002, 1003, 1003), out.rpus.map { fakeAvgOfNal(it) })
+    }
+
+    @Test
     fun `B-frames take the refresh at the scene's first frame in presentation order`() {
         // Presentation 0 to 4 with scenes 1 1 2 2 2, read in decode order 0 4 2 1 3.
         val file = mkv(

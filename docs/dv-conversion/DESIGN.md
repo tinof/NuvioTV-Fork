@@ -320,7 +320,7 @@ L1"), and what the extractor's decode order changes in them:
 `Hdr10PlusDvRpuSource` for 8.1; `prepare` gets the track's `DvTrackFacts` (the HDR10+ candidates of the
 hvcC or the first AU, and the MasteringMetadata, MaxCLL and MaxFALL the container states; the extractor
 now records whether MaxCLL and MaxFALL are stated, as Media3 fills in 1000 and 200 otherwise).
-- At track init a PQ track whose hvcC has no HDR10+ payload is native (`no RPU: no HDR10+ SEI …`). If
+- At track init a PQ track whose hvcC has no HDR10+ payload the library accepts is native (`no RPU: …`). If
   the table made it 8.1 and the transformer converts HDR10+ (`convertsHdr10Plus`: conversion on and the
   switch not 0), the DV2.10 early scan reads its first AU too, under the log name `HDR10+ SEI scan`.
   `HevcInitNals.readAuPrefix` collects the T.35 payloads of the prefix SEI NALs before the first slice
