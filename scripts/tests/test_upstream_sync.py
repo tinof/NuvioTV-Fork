@@ -581,6 +581,21 @@ class StopCheckRepoTest(RepoFixture, unittest.TestCase):
         self.assertEqual(sync.FAIL, code)
         self.assertIn("STOP: the replayed commit belongs to the protected feature hlg-to-dv", report)
 
+    def test_a_conflict_rerere_already_staged_still_counts(self):
+        run("git", "config", "rerere.enabled", "true", cwd=self.dir)
+        run("git", "config", "rerere.autoupdate", "true", cwd=self.dir)
+        self.stop_at_conflict("fix: fork edits the upstream file")
+        (self.dir / "upstream.txt").write_text("merged\n")
+        run("git", "add", "upstream.txt", cwd=self.dir)
+        run("git", "rerere", cwd=self.dir)
+        run("git", "rebase", "--abort", cwd=self.dir)
+        r = subprocess.run(["git", "rebase", "--onto", "U", "B", "x"], cwd=self.dir, capture_output=True, text=True)
+        self.assertNotEqual(0, r.returncode, "the rebase must still stop when rerere staged the resolution")
+        self.assertEqual([], sync.lines("diff", "--name-only", "--diff-filter=U"), "rerere left nothing unmerged")
+        code, report = self.stop_check()
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("ok: 1 conflicting file(s) at this stop, 1 in this rebase", report)
+
     def test_outside_a_rebase_it_is_a_usage_error(self):
         code, _ = self.stop_check()
         self.assertEqual(sync.USAGE, code)
