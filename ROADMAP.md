@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-29 | DV3.1 code: a Matroska PQ track with HDR10+ in its hvcC or first AU converts to Dolby Vision 8.1, L1 from each AU's own HDR10+ SEI (`dovi_tool` parity, 16 fixtures byte for byte), the scene refresh in presentation order; plain HDR10 stays native; the setting becomes "Convert HLG and HDR10+ to Dolby Vision". Device gate open. | DV3 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-29 | U1.8: `/upstream-sync` gains a light tier that skips classify for a sync with at most 3 conflicts and nothing protected, blocked or both-sided in Tier 2 (a version bump allowed); `stop-check` aborts a light rebase that goes past those limits. | U1 | [log](docs/ROADMAP_LOG.md), PR #28 |
 | 2026-10-29 | U1.6: a ruleset with a deploy-key bypass works on this personal repo; a cloud session cannot review a deployment (GitHub 403) but can push any branch, dispatch a workflow and merge a PR through REST; the clone is shallow; routines load `/upstream-sync`. | U1 | [log](docs/ROADMAP_LOG.md), issue #26 |
 | 2026-10-27 | U1.5: rebased onto upstream 1.1.0-nt.8.2 with no drop and no new Nvidia gate; both protected features kept every line; a base-layer commit fixes a race in upstream's rate-gate test that failed on CI, and `/upstream-sync` verify gains `--allow-new` for such commits. | U1 | [log](docs/ROADMAP_LOG.md), PR #24 |
@@ -849,7 +850,7 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   `scripts/rpu_dump_to_bin.py` rebuilds an `RPU.bin`; the device checks the review left are DV2.9.
   DV2.7 is done (PR #17): a converted track gets one RPU NAL per AU in the extractor
   (`ConvertedTrackInjector`), prepared at track init so a track without an RPU stays native; only the
-  static 8.4 provider exists, so PQ stays native until DV3.1 or DV3.3; `scene_refresh_flag` on frame 0
+  static 8.4 provider existed, so PQ stayed native until DV3.1; `scene_refresh_flag` on frame 0
   only, `debug.nuvio.dv_refresh_every_start` for every start; the setting is shown on Nvidia as
   "Convert HLG to Dolby Vision", off by default.
   DV2.10 is done (PR #19): HLG signalled only in an alternative-transfer SEI (BBC broadcast HLG, an SDR
@@ -881,7 +882,8 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 #### DV3: T0, no pixels
 
-- **Status:** Open.
+- **Status:** Open. DV3.1's code is in (2026-10-29, log): HDR10+ MKV titles convert to 8.1 with the setting
+  on; its device gate is open.
 - [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
   on the owner's TV; the debug log shows an RPU in every AU and L1 equal to `dovi_tool` for the same
   frames. First write into `DESIGN.md` 2.4 the HDR10+ rules of hdr-analyze `docs/RPU_BUILDER.md`: the
