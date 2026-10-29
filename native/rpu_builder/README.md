@@ -4,7 +4,8 @@
 conversion (ROADMAP Appendix A, step DV2.2; design in `docs/dv-conversion/DESIGN.md`). It writes
 complete Profile 8.1 and 8.4 RPU NALs, byte-identical to `dovi_tool generate` 2.3.4: static 8.4
 (composer preset, bt2100 or the canary), 8.1 from given params, shot L1 → both scene-refresh
-variants of an RPU, and HDR10+ payload → L1. The Kotlin side is
+variants of an RPU, HDR10+ payload → L1, and (DV3.1) HDR10+ payload → L1 plus its scene key and
+mastering display → the 8.1 source range. The Kotlin side is
 `app/src/main/java/com/nuvio/tv/core/player/DoviRpuBuilder.kt`.
 
 - `src/api.rs`: the logic with no JNI types: argument decoding, the builder handle table, the codes.
@@ -20,7 +21,7 @@ The vendored `DV7/libdovi/*/lib/libdovi.a` is a Rust staticlib with its own copy
 staticlib in `libdovi_bridge.so` fails to link under fat LTO on the duplicate unmangled
 `rust_eh_personality`, and links without LTO only while both archives come from the same rustc
 (`DESIGN.md` 2.7). As its own `cdylib` the builder needs only `libc`, `libm` and `libdl`, exports only
-the seven `Java_*` functions, and is loaded by its own `System.loadLibrary("nuvio_rpu")`. Without it
+the nine `Java_*` functions, and is loaded by its own `System.loadLibrary("nuvio_rpu")`. Without it
 (armeabi-v7a, a build without cargo-ndk) `DoviRpuBuilder.isAvailable()` is false and playback stays
 native.
 
@@ -59,7 +60,8 @@ JAVA_HOME="$(/usr/libexec/java_home -v 17)" cargo test --features jvm-tests
 
 They start one JVM with `-Xcheck:jni` in the test process and call every `Java_*` export with a real
 `JNIEnv` and Java arrays: static 8.4 (bt2100, canary) and an 8.1 case equal the fixtures through
-JNI, `nativeHdr10PlusL1` fills its out array, wrong-length and null arrays are code 20, a released
+JNI, `nativeHdr10PlusL1` fills its out array, `nativeHdr10PlusFrame` gives one key per HDR10+ scene and
+`nativeSourceRange81` the fixtures' 7..3079, wrong-length and null arrays are code 20, a released
 handle is code 21, and no call leaves a Java exception pending. jni finds `libjvm` through
 `JAVA_HOME` (without it, macOS's default `/usr/libexec/java_home`, or the `java` on `PATH` on Linux)
 and loads `$JAVA_HOME/lib/server/libjvm.dylib` by its full path, so macOS needs no
@@ -94,6 +96,16 @@ Every call returns one of these (Kotlin: `DoviRpuBuilder.Code`). A code is never
 
 1 to 7 are `dovi_rpu_builder::Error::code`. `nativeCreate*` return a handle > 0 or the negated
 code; `nativeRenderShot` returns null and sets `codeOut[0]`.
+
+`nativeHdr10PlusFrame` (DV3.1) fills `[min, avg, max, k0, k1, k2, k3]`: the L1 of `nativeHdr10PlusL1` and
+two 64-bit hashes of the payload's `SceneKey`, the fields `dovi_tool`'s scene rule compares. The app
+compares keys between AUs in presentation order (`docs/dv-conversion/DESIGN.md` 2.4), which
+`Hdr10PlusHold`, fed in one order, cannot do. A digest is stable within one library build only.
+`fixture_tests.rs` shows that L1 from every AU's own payload, with the scene refresh where the key
+changes, writes the 16 HDR10+ fixtures byte for byte. `nativeSourceRange81` fills `[min, max]` from
+`source_range_81`, or `[-1, -1]` when the mastering display is not plausible. `nativeCreate` takes
+L9's source primaries last (0 P3-D65, 1 BT.709, 2 BT.2020; read under CM v4.0, which otherwise keeps
+`CmMetadata::mkvdovi_default`), as `mkvdovi` detects them for the title.
 
 ## Handles
 

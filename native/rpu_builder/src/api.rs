@@ -13,11 +13,13 @@
 //! | 99 | panic, caught at the JNI boundary |
 
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
 use dovi_rpu_builder::{
-    static_84_params, CmMetadata, CmVersion, HlgComposer, Level5, Level6, PeakSource, Profile,
-    RpuBuilder, RpuParams, L1, STATIC_84_L1,
+    static_84_params, CmMetadata, CmV40Config, CmVersion, Hdr10PlusFrame, HlgComposer, Level5,
+    Level6, PeakSource, Profile, RpuBuilder, RpuParams, SceneKey, DEFAULT_TRIM_TARGETS_NITS, L1,
+    STATIC_84_L1,
 };
 
 /// `nativeVersion`: this crate's version and the pinned hdr-analyze commit. One literal, so the
@@ -127,6 +129,9 @@ fn u32_field(name: &str, value: i32) -> Result<u32> {
 /// Wrong lengths, unknown values and values that do not fit the field (negative, or above
 /// 65535 for a 16-bit field) are code 20. What fits the field but not the RPU (an L6 above
 /// 10 000 nits, a source range above 4095) is the crate's code 3, from [`create`].
+///
+/// L9 is `CmV40Config::default()`'s BT.2020; `nativeCreate` calls [`params_with_primaries`].
+#[cfg(test)]
 pub fn params(
     profile: i32,
     composer_value: i32,
@@ -136,6 +141,39 @@ pub fn params(
     source_range: Option<&[i32]>,
     level5: Option<&[i32]>,
 ) -> Result<RpuParams> {
+    params_with_primaries(
+        profile,
+        composer_value,
+        cm,
+        l1_avg_cm,
+        level6,
+        source_range,
+        level5,
+        BT2020_PRIMARIES,
+    )
+}
+
+/// L9's `source_primary_index` of `CmV40Config::default()`: BT.2020.
+#[cfg(test)]
+pub const BT2020_PRIMARIES: i32 = 2;
+
+/// [`params`] with L9's `source_primary_index` (0 P3-D65, 1 BT.709, 2 BT.2020), as `mkvdovi` detects
+/// it for the title (DV3.1). Read under CM v4.0 only; any other value is code 20.
+#[allow(clippy::too_many_arguments)]
+pub fn params_with_primaries(
+    profile: i32,
+    composer_value: i32,
+    cm: i32,
+    l1_avg_cm: i32,
+    level6: Option<&[i32]>,
+    source_range: Option<&[i32]>,
+    level5: Option<&[i32]>,
+    source_primaries: i32,
+) -> Result<RpuParams> {
+    let source_primary_index = match source_primaries {
+        0..=2 => source_primaries as u8,
+        _ => return Err(bad(format!("source primaries {source_primaries}"))),
+    };
     let composer = composer(composer_value)?;
     let source_range = source_range.map(source_range_arg).transpose()?;
     let profile = match profile {
@@ -148,7 +186,13 @@ pub fn params(
     };
     let cm = match cm_version(cm)? {
         CmVersion::V29 => CmMetadata::V29,
-        CmVersion::V40 => CmMetadata::mkvdovi_default(),
+        CmVersion::V40 => CmMetadata::V40 {
+            config: CmV40Config {
+                source_primary_index,
+                ..CmV40Config::default()
+            },
+            trim_targets_nits: DEFAULT_TRIM_TARGETS_NITS.to_vec(),
+        },
     };
     let level6 = match level6 {
         Some(values) => level6_arg(values)?,
@@ -330,6 +374,41 @@ pub fn hdr10plus_l1(payload: &[u8], peak: i32, cm: i32) -> Result<[i32; 3]> {
     Ok(l1_fields(l1))
 }
 
+/// `nativeHdr10PlusFrame`: what `nativeHdr10PlusL1` gives, `[min, avg, max]`, followed by four ints
+/// that identify the payload's `SceneKey` (two 64-bit hashes, high half first). `dovi_tool`'s scene
+/// rule compares keys (hdr-analyze `docs/RPU_BUILDER.md`, "Scenes"); the fork compares them between
+/// AUs in presentation order (DV3.1, `docs/dv-conversion/DESIGN.md` 2.4), which `Hdr10PlusHold`,
+/// fed in one order, cannot do. Equal keys give equal digests; a collision of both hashes is the
+/// only way unequal keys compare equal, and it would cost one `scene_refresh_flag`, never an L1.
+pub fn hdr10plus_frame(payload: &[u8], peak: i32, cm: i32) -> Result<[i32; 7]> {
+    let (peak, cm) = (peak_source(peak)?, cm_version(cm)?);
+    let frame = Hdr10PlusFrame::parse(payload)?;
+    let [min, avg, max] = l1_fields(frame.l1(peak, cm)?);
+    let [k0, k1, k2, k3] = key_digest(&frame.scene_key());
+    Ok([min, avg, max, k0, k1, k2, k3])
+}
+
+fn key_digest(key: &SceneKey) -> [i32; 4] {
+    // `DefaultHasher::new` has fixed keys, so a digest is stable within one library build, which
+    // is all a playback compares.
+    let half = |seed: u8| {
+        let mut hasher = DefaultHasher::new();
+        seed.hash(&mut hasher);
+        key.hash(&mut hasher);
+        hasher.finish()
+    };
+    let (a, b) = (half(0), half(1));
+    [(a >> 32) as i32, a as i32, (b >> 32) as i32, b as i32]
+}
+
+/// `nativeSourceRange81`: `[min, max]` PQ codes of `source_range_81` for the mastering display
+/// (nits), as `mkvdovi` derives the 8.1 source range; `[-1, -1]` when the values are not a
+/// plausible mastering display and the generator's L6 lookup stays in charge (`P81(null)`).
+pub fn source_range_81(min_nits: f64, max_nits: f64) -> [i32; 2] {
+    dovi_rpu_builder::source_range_81(min_nits, max_nits)
+        .map_or([-1, -1], |(min, max)| [i32::from(min), i32::from(max)])
+}
+
 /// `nativeRelease`.
 pub fn release(builders: &Builders, handle: i64) -> Result<()> {
     builders.remove(handle)
@@ -492,6 +571,68 @@ mod tests {
         );
         assert_eq!(code(hdr10plus_l1(&[0xB5], 0, 40)), 4);
         assert_eq!(code(hdr10plus_l1(&[0xB5, 0, 0x3C, 0, 1, 4, 1], 0, 40)), 5);
+        // nativeHdr10PlusFrame refuses the same way, arguments first.
+        assert_eq!(code(hdr10plus_frame(&[0xB5], 4, 40)), BAD_ARGUMENT);
+        assert_eq!(code(hdr10plus_frame(&[0xB5], 0, 30)), BAD_ARGUMENT);
+        assert_eq!(code(hdr10plus_frame(&[0xB5], 0, 40)), 4);
+        assert_eq!(
+            code(hdr10plus_frame(&[0xB5, 0, 0x3C, 0, 1, 4, 1], 0, 40)),
+            5
+        );
+    }
+
+    #[test]
+    fn l9_primaries_reach_the_cm_v40_config() {
+        let default = params(81, 0, 40, 40, None, None, None).unwrap();
+        assert_eq!(default.cm, CmMetadata::mkvdovi_default());
+        let p3 = params_with_primaries(81, 0, 40, 40, None, None, None, 0).unwrap();
+        match &p3.cm {
+            CmMetadata::V40 {
+                config,
+                trim_targets_nits,
+            } => {
+                assert_eq!(config.source_primary_index, 0);
+                assert_eq!((config.content_type, config.reference_mode), (1, false));
+                assert_eq!(*trim_targets_nits, DEFAULT_TRIM_TARGETS_NITS.to_vec());
+            }
+            other => panic!("{other:?}"),
+        }
+        // A P3 RPU differs from the BT.2020 one only in L9.
+        let builders = Builders::new();
+        let [a, b] = [default, p3].map(|p| {
+            let handle = create(&builders, &p).unwrap();
+            render_shot(&builders, handle, 0, 1229, 3079).unwrap()
+        });
+        assert_ne!(a.no_refresh, b.no_refresh);
+        for value in [-1, 3] {
+            assert_eq!(
+                code(params_with_primaries(
+                    81, 0, 40, 40, None, None, None, value
+                )),
+                BAD_ARGUMENT
+            );
+        }
+    }
+
+    #[test]
+    fn the_81_source_range_is_mkvdovis() {
+        // hdr10plus.*.extra.json: 0.0001..1000 nits.
+        assert_eq!(source_range_81(0.0001, 1000.0), [7, 3079]);
+        assert_eq!(
+            source_range_81(0.005, 4000.0),
+            dovi_rpu_builder::source_range_81(0.005, 4000.0)
+                .map(|(a, b)| [i32::from(a), i32::from(b)])
+                .unwrap()
+        );
+        // Not a plausible mastering display: the generator's lookup decides.
+        for (min, max) in [
+            (0.0, 50.0),
+            (50.0, 1000.0),
+            (0.0, f64::NAN),
+            (0.0, 20_000.0),
+        ] {
+            assert_eq!(source_range_81(min, max), [-1, -1], "{min} {max}");
+        }
     }
 
     #[test]
