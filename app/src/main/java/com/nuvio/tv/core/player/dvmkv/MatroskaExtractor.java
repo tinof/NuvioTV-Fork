@@ -4144,12 +4144,11 @@ public class MatroskaExtractor implements Extractor {
                       || hevcFirstSps == null);
           boolean blocksReadable =
               !hasContentEncryption && contentCompressionAlgorithm == CONTENT_COMPRESSION_NONE;
-          // DV3.1: a PQ track the table makes 8.1 converts only from HDR10+; without it in the hvcC,
-          // the early scan reads the first AU for it.
+          // DV3.1: a PQ track the table makes 8.1 converts only from HDR10+; when the hvcC gave none the
+          // library accepts, the early scan reads the first AU for it.
           hdr10PlusScan =
               convert == null
                   && dvTableTarget == DvSignallingDecision.Target.PROFILE_8_1
-                  && hevcHdr10PlusPayloads.isEmpty()
                   && dolbyVisionSampleTransformer.convertsHdr10Plus();
           waitingForHlgSeiScan = (seiCouldMakeHlg || hdr10PlusScan) && blocksReadable;
           // DV3.2: the inputs of the decision, so a device log shows why a track is not HLG.

@@ -13,7 +13,8 @@ import com.nuvio.tv.core.player.DoviRpuBuilder.SourceRange
 /**
  * A stand-in for libnuvio_rpu.so's HDR10+ calls (ROADMAP DV3.1), which the JVM tests cannot load.
  * Payload `B5 00 3C 00 01 04 01 s l` ([fakeHdr10PlusPayload]): scene key s, L1 avg 1000 + l (so two
- * scenes can share an L1). A payload whose provider code is not 0x003C is not HDR10+; s = 0xEE fails
+ * scenes can share an L1). A payload whose provider code is not 0x003C, or whose application identifier
+ * (byte 5) is not 4, is not HDR10+, as the library's T.35 identity check says; s = 0xEE fails
  * to parse. Each shot names its L1 avg ([fakeAvgOf]).
  */
 internal class FakeHdr10PlusNative : Hdr10PlusNative {
@@ -25,7 +26,9 @@ internal class FakeHdr10PlusNative : Hdr10PlusNative {
 
     override fun frame(payload: ByteArray): Outcome<Hdr10PlusFrame> {
         frames++
-        if (payload.size < 9 || payload[2] != 0x3C.toByte()) return Outcome.Failed(Code.NOT_HDR10_PLUS)
+        if (payload.size < 9 || payload[2] != 0x3C.toByte() || payload[5] != 0x04.toByte()) {
+            return Outcome.Failed(Code.NOT_HDR10_PLUS)
+        }
         val scene = payload[7].toInt() and 0xFF
         if (scene == 0xEE) return Outcome.Failed(Code.HDR10_PLUS_PARSE)
         val l1 = L1(0, 1000 + (payload[8].toInt() and 0xFF), 3079)
