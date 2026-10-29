@@ -889,7 +889,7 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   frames. First write into `DESIGN.md` 2.4 the HDR10+ rules of hdr-analyze `docs/RPU_BUILDER.md`: the
   scene rule runs in presentation order while the extractor reads in decode order; an AU without a
   payload reuses the previous payload in decode order; non-HDR10+ T.35 messages are skipped. Needs:
-  DV2.7, DV2.8.
+  DV2.7, DV2.8. Landed: PR #30; gate pending.
 - [DV3.2][device][owner][new-build] HLG → 8.4 static provider: `DoviRpuBuilder.createStatic84(BT2100)`
   (the crate's `static_84_params`) with `static84L1()` (`STATIC_84_L1`, 0 / 1283 / 3079, V29 average
   floor). The RPU carries the default L6 and the crate's CM v4.0 L3 and
