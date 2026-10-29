@@ -4,7 +4,9 @@
 
 use std::path::PathBuf;
 
-use dovi_rpu_builder::{ExtraShot, ExtraShots, RpuParams, L1};
+use dovi_rpu_builder::{
+    CmVersion, ExtraShot, ExtraShots, Hdr10PlusFrame, Hdr10PlusHold, PeakSource, RpuParams, L1,
+};
 use serde_json::Value;
 
 use crate::api::{self, Builders};
@@ -247,6 +249,82 @@ fn hdr10plus_sequences_equal_dovi_tool_for_every_peak_source() {
                         push_record(&mut ours, &held.as_ref().unwrap().no_refresh);
                     }
                 }
+                let name = format!("{sequence}.{peak_name}.{cm_name}.RPU.bin");
+                assert!(ours == fixture(&name), "{name} differs from dovi_tool");
+                compared += 1;
+            }
+            api::release(&builders, handle).unwrap();
+        }
+    }
+    assert_eq!(compared, 16);
+}
+
+/// What DV3.1 does on the device, in presentation order: L1 from every AU's own payload (never
+/// held) and the scene refresh where the key digest of `nativeHdr10PlusFrame` changes. It finds
+/// `hdr10plus_tool`'s scene starts, agrees with `Hdr10PlusHold` frame by frame, and writes the 16
+/// `dovi_tool` outputs byte for byte: the L1 of an AU's own payload is its scene's L1.
+#[test]
+fn per_au_l1_and_key_changes_equal_dovi_tool() {
+    let builders = Builders::new();
+    let mut compared = 0;
+    for sequence in ["profile_a", "profile_b"] {
+        let scene_starts: Vec<usize> = json(&format!("{sequence}.json"))["SceneInfoSummary"]
+            ["SceneFirstFrameIndex"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|index| index.as_u64().unwrap() as usize)
+            .collect();
+        let payloads = payloads(sequence);
+        for (cm, cm_name) in [(29, "v29"), (40, "v40")] {
+            let params = api::params(
+                81,
+                0,
+                cm,
+                cm,
+                Some(&[1000, 1, 1000, 400]),
+                Some(&[7, 3079]),
+                None,
+            )
+            .unwrap();
+            let handle = api::create(&builders, &params).unwrap();
+            for (peak, peak_name) in PEAK_SOURCES {
+                let cm_version = if cm == 29 {
+                    CmVersion::V29
+                } else {
+                    CmVersion::V40
+                };
+                let peak_source = [
+                    PeakSource::Histogram,
+                    PeakSource::Histogram99,
+                    PeakSource::MaxScl,
+                    PeakSource::MaxSclLuminance,
+                ][peak as usize];
+                let mut hold = Hdr10PlusHold::new(peak_source, cm_version);
+                let mut ours = Vec::new();
+                let mut found = Vec::new();
+                let mut previous_key = None;
+                for (index, payload) in payloads.iter().enumerate() {
+                    let frame = api::hdr10plus_frame(payload, peak, cm).unwrap();
+                    let (l1, key) = ([frame[0], frame[1], frame[2]], &frame[3..]);
+                    let refresh = previous_key.as_deref() != Some(key);
+                    previous_key = Some(key.to_vec());
+                    let (held, held_refresh) =
+                        hold.next(&Hdr10PlusFrame::parse(payload).unwrap()).unwrap();
+                    assert_eq!(refresh, held_refresh, "{sequence} frame {index}");
+                    assert_eq!(l1, [held.min_pq, held.avg_pq, held.max_pq].map(i32::from));
+                    if refresh {
+                        found.push(index);
+                    }
+                    let nals = api::render_shot(&builders, handle, l1[0], l1[1], l1[2]).unwrap();
+                    let nal = if refresh {
+                        &nals.scene_refresh
+                    } else {
+                        &nals.no_refresh
+                    };
+                    push_record(&mut ours, nal);
+                }
+                assert_eq!(found, scene_starts, "{sequence}");
                 let name = format!("{sequence}.{peak_name}.{cm_name}.RPU.bin");
                 assert!(ours == fixture(&name), "{name} differs from dovi_tool");
                 compared += 1;
