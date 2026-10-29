@@ -46,6 +46,7 @@
       ".github/workflows/**",
       "app/libs/**",
       "**/*DataStore.kt",
+      "app/src/main/java/com/nuvio/tv/data/local/**",
       "**/DeviceProfile.kt"
     ],
     "benign_tier2_lines": [
