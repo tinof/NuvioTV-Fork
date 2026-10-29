@@ -132,6 +132,15 @@ class HelperTest(unittest.TestCase):
         self.assertIn("4 files conflict in a trial merge (light limit 3)", b)
         self.assertIn("conflict in a protected file (aac-to-dts): ffmpeg-decoder-downmix/src/main/jni/dcaxll/a.c", b)
 
+    def test_every_settings_store_blocks_the_light_path(self):
+        local = SKILL.parents[2] / "app/src/main/java/com/nuvio/tv/data/local"
+        stores = sorted(str(p.relative_to(SKILL.parents[2])) for p in local.glob("*.kt") if "DataStore" in p.read_text())
+        self.assertIn("app/src/main/java/com/nuvio/tv/data/local/DeviceUiPreferenceStore.kt", stores)
+        self.assertIn("app/src/main/java/com/nuvio/tv/data/local/DeviceLocalPlayerPreferences.kt", stores)
+        for path in stores:
+            b = sync.light_blockers([], {path}, set(), [], CONFIG["protected_features"], CONFIG["light"], [])
+            self.assertEqual([f"upstream changes {path}"], b, path)
+
     def test_a_version_bump_is_benign(self):
         pats = CONFIG["light"]["benign_tier2_lines"]
         self.assertTrue(sync.benign_change(['        versionCode = 1538', '        versionName = "1.1.0-nt.8.2"'], pats))
