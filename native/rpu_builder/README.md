@@ -49,6 +49,11 @@ scripts/shield_build_install.sh            # runs build_rpu_builder.sh first whe
 python3 scripts/verify_native_apk.py app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk --abi arm64-v8a
 ```
 
+Without cargo-ndk, `shield_build_install.sh` packages the library already in `jniLibs`, and stops unless
+`libnuvio_rpu.so.stamp` beside it names HEAD's `native/rpu_builder` tree. With no library it stops too.
+`NUVIO_ALLOW_NATIVE_MISMATCH=1` keeps a build that fails only on the stamp, so use it only for a library
+you know is current.
+
 Plain `cargo test` needs no JDK and does not touch `src/ffi.rs`'s JNI code. The JNI layer has its
 own host tests, behind the test-only feature `jvm-tests` (it turns on jni's `invocation`; never use
 it for the Android build):
