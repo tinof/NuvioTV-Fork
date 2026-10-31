@@ -3,6 +3,7 @@
 Commands:
   preflight [--allow-branch B ...] [--no-fetch] [--json]
   map-overlap [--upstream R] [--perf R] [--scratch DIR]
+  dry-run [--base R] [--fork R] [--onto R] [--json]
   todo-edit --drop SHA[,SHA...] <git-rebase-todo>
   stop-check
   drops --decisions classify.json --range BASE..TIP
@@ -22,13 +23,16 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # python3 -I leaves the script's directory off sys.path.
+import sync_tools
+from sync_tools import (FAIL, NOTHING, OK, USAGE, commits_with_files, feature_of, gh_json, git, lines, out,
+                        parse_merge_tree, protected_path)
+
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "sync.json"
-OK, FAIL, USAGE, NOTHING = 0, 1, 2, 3
 
 
 # ---------------------------------------------------------------- pure helpers (unit-tested)
@@ -116,14 +120,6 @@ def path_matches(path, pattern):
         else:
             rx, i = rx + re.escape(pattern[i]), i + 1
     return re.fullmatch(rx, path) is not None
-
-
-def protected_path(path, features):
-    """The key of the protected feature that owns [path] by anchor or binary, or None."""
-    for f in features:
-        if path in f.get("binaries", []) or any(re.search(p, path) for p in f["anchors"]):
-            return f["key"]
-    return None
 
 
 def benign_change(changed_lines, patterns):
@@ -227,20 +223,6 @@ def parse_range_diff(text):
     return entries
 
 
-def parse_merge_tree(stdout, rc):
-    """`git merge-tree --write-tree --name-only --no-messages` -> list of conflicted paths."""
-    if rc == 0:
-        return []
-    if rc != 1:
-        raise RuntimeError(f"git merge-tree failed with exit {rc}")
-    paths = []
-    for line in stdout.splitlines()[1:]:
-        if not line.strip():
-            break
-        paths.append(line.strip())
-    return sorted(set(paths))
-
-
 def duplicate_names(files):
     """{path: xml text} for res/values*/ files -> (problems). Duplicate (tag, name) pairs count within one
     values directory, across its files; the same name in another qualifier directory is normal."""
@@ -283,17 +265,6 @@ def decisions(classify):
     return (list(summary) if summary is not None else drops), hints
 
 
-def feature_of(files, features, subject=""):
-    """The key of the first protected feature (sync.json protected_features) whose anchors match one of [files] or
-    whose subjects pattern matches [subject]; a feature commit that touches only shared files is found by subject."""
-    for f in features:
-        if any(re.search(p, path) for p in f["anchors"] for path in files):
-            return f["key"]
-        if subject and f.get("subjects") and re.search(f["subjects"], subject):
-            return f["key"]
-    return None
-
-
 def added_lines(diff_text):
     """`git show -U0 --format= <sha>` output -> {path: [added line, stripped]}, skipping lines too short to tell
     apart (braces, blank lines, comment fences), which a merge can legitimately move."""
@@ -330,22 +301,6 @@ def sha_matches(a, b):
 
 # ---------------------------------------------------------------- git and gh
 
-def git(*args, check=True, binary=False):
-    r = subprocess.run(["git", *args], capture_output=True, text=not binary)
-    if check and r.returncode != 0:
-        err = r.stderr if not binary else r.stderr.decode(errors="replace")
-        raise RuntimeError(f"git {' '.join(args)}: {' / '.join(err.strip().splitlines()[:2])}")
-    return r
-
-
-def out(*args):
-    return git(*args).stdout.strip()
-
-
-def lines(*args):
-    return [l for l in out(*args).splitlines() if l.strip()]
-
-
 def ref_exists(ref):
     return git("rev-parse", "-q", "--verify", f"{ref}^{{commit}}", check=False).returncode == 0
 
@@ -353,26 +308,6 @@ def ref_exists(ref):
 def blob(ref, path):
     r = git("rev-parse", "-q", "--verify", f"{ref}:{path}", check=False)
     return r.stdout.strip() if r.returncode == 0 else None
-
-
-def gh_json(*args):
-    r = subprocess.run(["gh", *args], capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(f"gh {' '.join(args)}: {r.stderr.strip()}")
-    return json.loads(r.stdout or "null")
-
-
-def commits_with_files(rng):
-    """[{sha, subject, files}] oldest first for a revision range."""
-    text = out("log", "--reverse", "--no-merges", "--no-renames", "--format=@@%H\t%s", "--name-only", rng)
-    result = []
-    for line in text.splitlines():
-        if line.startswith("@@"):
-            sha, _, subject = line[2:].partition("\t")
-            result.append({"sha": sha, "subject": subject, "files": []})
-        elif line.strip() and result:
-            result[-1]["files"].append(line.strip())
-    return result
 
 
 # ---------------------------------------------------------------- commands
@@ -794,13 +729,14 @@ def main(argv):
     s.add_argument("apk")
     s = sub.add_parser("test-failures")
     s.add_argument("dir")
+    sync_tools.add_parsers(sub)
     a = p.parse_args(argv)
     cfg = load_config()
     try:
         return {"preflight": cmd_preflight, "map-overlap": cmd_map_overlap, "todo-edit": cmd_todo_edit, "drops": cmd_drops,
                 "stop-check": cmd_stop_check,
                 "verify": cmd_verify, "protected-apk": cmd_protected_apk,
-                "test-failures": cmd_test_failures}[a.cmd](a, cfg)
+                "test-failures": cmd_test_failures, **sync_tools.COMMANDS}[a.cmd](a, cfg)
     except RuntimeError as e:
         print(f"sync.py {a.cmd}: {e}", file=sys.stderr)
         return USAGE
