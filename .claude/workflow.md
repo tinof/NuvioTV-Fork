@@ -152,8 +152,8 @@ Upstream syncs (ROADMAP U1.5) run through `/upstream-sync` (`.claude/skills/upst
 One rebased branch: `perf/shield-pass`, the default branch, = `upstream/main` + the fork's CI, test and fix
 commits and `.github/workflows/upstream-drift.yml` (which only runs from the default branch) + the Shield work.
 `main` mirrors upstream at the base `perf/shield-pass` was last rebased onto and carries no fork commit. A
-sync publishes both with one atomic `--force-with-lease` push, after scripted verification, the gate against an
-upstream baseline, an independent review of the changed hunks and green CI on a pushed candidate branch. Upstream's four issue workflows (triage, labels,
+sync publishes both with one atomic `--force-with-lease` push, after scripted verification, an independent review of
+the changed hunks and green CI on a pushed candidate branch, which compares the candidate with an upstream baseline. Upstream's four issue workflows (triage, labels,
 housekeeping, release) are disabled in this fork so they leave the drift issue alone; their files stay as
 upstream has them.
 
