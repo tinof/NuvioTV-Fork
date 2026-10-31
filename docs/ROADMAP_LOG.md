@@ -10,6 +10,58 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-31: U1.5 sync onto upstream 1.1.0-nt.9 (PR #33)
+
+- [U1.5][desk] Rebased `perf/shield-pass` from `2b51aba36` onto `d9039df69`: 271 upstream commits behind, 262 fork
+  commits. The new tip is `1ef760ac3`, with 263 fork commits. Tags: `sync/2026-10-31/old-{perf,main,base}`.
+
+**Classify (tier `fanout`, 9 analysts and a critic):** 7 files conflicted in the trial merge, 81 fork commits touched
+files upstream changed. Verdicts: 0 drops, 0 protected asks, 11 keep-resolve, 5 keep-adapt, 65 keep-clean; 181 commits
+touched nothing upstream changed.
+
+**Owner's decisions:** all five adapts went into their own commits.
+
+- `9b616ffbc`: the IEC sink gets the route corrected by the idle-Bluetooth HDMI pin, or upstream's route gate refuses
+  the packer on that path. It matters with `hbr_iec=1` or System passthrough off.
+- `2f14acf40` (protected): `tunnelingRequested` also skips a USB-audio playback. One line added, none lost.
+- `13b982274`: upstream's Video Effect rebuild check waits for the A/V quiesce.
+- `ad6d7d8e8`: upstream's `noteJoined` tests `isCompleted`, because a lazy lookup that has not started is not active.
+- `9e0478852` (owner rule, keep the fork's value): `swapRoom` is a separate argument, so `mdarcy` keeps refusing and
+  other small boxes keep upstream's room.
+
+**New commit:** `4dcf97401` gives the unit test JVM 1 GB of heap (`--allow-new`).
+
+- The first gate failed with `OutOfMemoryError` in `AutoSpeedupDataSourceTest`, which passes alone. A second run failed
+  a concurrency assertion in `SpeedTestDownloadsMatchPlaybackTest` instead.
+- GC logs of the same run on both trees: live heap after a full GC reaches 488 of 512 MB on plain upstream and 503 MB
+  on the fork, with the same step at about 96 s, beside the `ParallelRange*` tests. No main file of those tests differs
+  from upstream, so the retention is upstream's. It was not traced to a single test.
+
+**Evidence**
+
+- `verify`: 241 identical, 21 changed, 0 dropped, 1 new. Protected lines: aac-to-dts 45 commits, 5970 lines, 0 lost;
+  hlg-to-dv 92 commits, 13279 lines, 0 lost. Waived: `--allow-same` on `PlayerRuntimeControllerTrackSelection.kt`
+  (upstream's `player.isTunnelingEnabled` replaces the fork's one line), `--allow-changed` on `AudioShieldPassTest.kt`.
+- Gate on `1ef760ac3`: 919 classes, 7726 tests, no failures. The baseline on plain upstream fails only the known
+  `testHttpError404`. APK: `protected-apk` passes for `libffmpegJNI.so` and `libnuvio_rpu.so`.
+- Independent review of the changed hunks: no fork hunk lost, by a line-set comparison and a three-way merge of the old
+  tip with the new base. It found one defect: the route lambda compared the pin with the url captured at build, which
+  misses a source switch on a live player. It now reads a `@Volatile currentStreamUrl`. No unit test reaches that
+  lambda.
+- CI: `Checks` run 41207331028 green on `1ef760ac3`. Not run on the Shield.
+
+**Open, for the owner**
+
+- Should growth stay off on `mdarcy` until Q5.7 reports? Upstream's growth went in as a default.
+- `BatchRangeReader` can hold 48 MB on a 384 MB heap, and the strong entry check keeps only 64 MB free. No reading yet.
+- In a Tracks-after-Clusters file the early scan starts after Tracks, so a track signalled only in SEI (HLG, HDR10+)
+  stays native. That is the safe failure, and it was found by reading the code only.
+- The `audio_tunneled_sub` text says "Fit or Fill", but upstream's aspect labels have no Fill. `values-bg` also uses
+  older labels than upstream's. Its reworded sentences had no native-speaker check.
+- 80 fork commits carry a `Co-Authored-By` trailer from before the attribution rule. The rebase left them as they are.
+
+**Resolution:** the fork is level with upstream 1.1.0-nt.9, and `main` mirrors `d9039df69`.
+
 ## 2026-10-31: DV3.1 HDR10+ → 8.1 provider, device gate (PR #30)
 
 - [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
