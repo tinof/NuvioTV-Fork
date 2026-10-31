@@ -24,6 +24,9 @@ internal class FakeHdr10PlusNative : Hdr10PlusNative {
     var frames = 0
     var failRender = false
 
+    /** The n-th create call and later ones fail. */
+    var failCreateFrom = Int.MAX_VALUE
+
     override fun frame(payload: ByteArray): Outcome<Hdr10PlusFrame> {
         frames++
         if (payload.size < 9 || payload[2] != 0x3C.toByte() || payload[5] != 0x04.toByte()) {
@@ -36,6 +39,7 @@ internal class FakeHdr10PlusNative : Hdr10PlusNative {
     }
 
     override fun create(params: Params): Outcome<Handle> {
+        if (created.size + 1 >= failCreateFrom) return Outcome.Failed(Code.RPU)
         created += params
         return Outcome.Ok(Handle(created.size.toLong()))
     }
@@ -67,6 +71,65 @@ internal fun fakeHdr10PlusSei(vararg payloads: ByteArray): ByteArray {
     for (p in payloads) nal += byteArrayOf(0x04, p.size.toByte()) + p
     return nal + byteArrayOf(0x80.toByte())
 }
+
+/** A prefix SEI NAL of raw messages (payloadType, RBSP payload), escaped as a coded NAL is (DV3.4). */
+internal fun fakeSeiNal(vararg messages: Pair<Int, ByteArray>): ByteArray {
+    val rbsp = java.io.ByteArrayOutputStream()
+    for ((type, payload) in messages) {
+        rbsp.write(type)
+        rbsp.write(payload.size)
+        rbsp.write(payload)
+    }
+    rbsp.write(0x80)
+    val out = java.io.ByteArrayOutputStream()
+    out.write(byteArrayOf(0x4E, 0x01))
+    var zeros = 0
+    for (byte in rbsp.toByteArray()) {
+        val value = byte.toInt() and 0xFF
+        if (zeros >= 2 && value <= 3) {
+            out.write(3)
+            zeros = 0
+        }
+        out.write(value)
+        zeros = if (value == 0) zeros + 1 else 0
+    }
+    return out.toByteArray()
+}
+
+/** Chromaticities of the mastering display SEI in 0.00002 units, in H.265's G, B, R order. */
+internal val SEI_P3_GBR = listOf(13250 to 34500, 7500 to 3000, 34000 to 16000)
+internal val SEI_D65 = 15635 to 16450
+
+/** A mastering display colour volume payload: three pairs as given, the white point, max and min luminance. */
+internal fun fakeMasteringPayload(
+    pairs: List<Pair<Int, Int>> = SEI_P3_GBR,
+    white: Pair<Int, Int> = SEI_D65,
+    maxUnits: Long = 10_000_000,
+    minUnits: Long = 1,
+): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    fun u16(value: Int) {
+        out.write(value ushr 8)
+        out.write(value)
+    }
+    fun u32(value: Long) {
+        for (shift in 24 downTo 0 step 8) out.write((value ushr shift).toInt() and 0xFF)
+    }
+    for ((x, y) in pairs + white) {
+        u16(x)
+        u16(y)
+    }
+    u32(maxUnits)
+    u32(minUnits)
+    return out.toByteArray()
+}
+
+internal fun fakeLightLevelPayload(maxCll: Int, maxFall: Int) =
+    byteArrayOf((maxCll ushr 8).toByte(), maxCll.toByte(), (maxFall ushr 8).toByte(), maxFall.toByte())
+
+/** The prefix SEI NAL of the DV3.1 title's S01E02 values: P3 D65, 0.0001..1000 nits, MaxCLL 108, MaxFALL 53. */
+internal fun fakeStaticSei(maxCll: Int = 108, maxFall: Int = 53) =
+    fakeSeiNal(137 to fakeMasteringPayload(), 144 to fakeLightLevelPayload(maxCll, maxFall))
 
 /** A fake RPU that names its L1 avg: `7C 01 F0|F1 avg_hi avg_lo` (F1: scene refresh). */
 internal fun fakeShotOf(l1: L1) = ShotRpu(
