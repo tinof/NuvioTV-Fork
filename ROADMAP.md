@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-31 | U1.5: rebased onto upstream 1.1.0-nt.9 with no drop; both protected features kept every line; `mdarcy` keeps refusing upstream's new small-box swap room; a new base commit gives the unit test JVM 1 GB of heap, because upstream's suite alone reaches 488 of 512 MB. | U1, Q5 | [log](docs/ROADMAP_LOG.md), PR #33 |
 | 2026-10-31 | DV3.1 closed: an HDR10+ series plays as Dolby Vision 8.1 on the owner's TV, with an RPU in every AU and L1 equal to `dovi_tool` on all 6115 compared frames; DV3.4 added for the static metadata that this title states only in its SEI. | DV3 | [log](docs/ROADMAP_LOG.md), PR #30 |
 | 2026-10-29 | DV3.1 code: a Matroska PQ track with HDR10+ in its hvcC or first AU converts to Dolby Vision 8.1, L1 from each AU's own HDR10+ SEI (`dovi_tool` parity, 16 fixtures byte for byte), the scene refresh in presentation order; plain HDR10 stays native; the setting becomes "Convert HLG and HDR10+ to Dolby Vision". Device gate open. | DV3 | [log](docs/ROADMAP_LOG.md), PR #30 |
 | 2026-10-29 | U1.8: `/upstream-sync` gains a light tier that skips classify for a sync with at most 3 conflicts and nothing protected, blocked or both-sided in Tier 2 (a version bump allowed); `stop-check` aborts a light rebase that goes past those limits. | U1 | [log](docs/ROADMAP_LOG.md), PR #28 |
@@ -360,6 +361,9 @@ because a wrong passthrough path is invisible until measured.
   - Add a `debug.nuvio.*` switch for the margin.
   - Gate: unit tests, including a pressure burst shorter than 10 s.
 - [Q5.4][desk] Nvidia default: an automatic budget of about 300 MB on 3 GB `mdarcy` (`BufferSizing.kt:17`).
+  - Since the sync of 2026-10-31 a sized-down budget grows back towards 500 MB on `mdarcy` (c5b872833,
+    `BufferMemoryKeeper.tendGrowth`), and `spareMb` lost the 32 MB arena reserve. This step and Q5.5 must cover
+    that path, and the Q5.2 baseline needs a build with it. Line references here predate that sync.
   - Count the parallel chunk window inside the budget (`BufferSizing.kt:81`). Since the sync of 2026-10-26,
     `spareMb` keeps a 28 MB margin (47d1c5834) instead of 100 + 40 MB, so measure the baseline again first.
   - Gate it by `DeviceProfile`, with a revert switch and a row in `docs/shield-todo.md`.
@@ -469,7 +473,8 @@ because a wrong passthrough path is invisible until measured.
   Needs: S2.1.
 - [S2.3][desk] Hold thumbnail work while playback is starting or an AFR hold is active (an explicit start/hold
   state: the AFR path keeps `playWhenReady` false during the hold, `PlayerRuntimeControllerAfrTrack.kt:223`),
-  and cancel non-urgent thumbnail fetches when a seek is committed (P-06). Gate: unit test.
+  and cancel non-urgent thumbnail fetches when a seek is committed (P-06). The sync of 2026-10-31 added a keyframe
+  index fetch during player open on strong hardware (e8cec44a6), so this hold must cover it too. Gate: unit test.
 - [S2.4][desk] Abort the socket when a load is cancelled, so a stalled read does not delay the seek (P-07).
   Gate: test with a stalled source.
 - [S2.5][desk] Read the MKV Cues element in bulk with a size cap; keep the audio cue points (per-track seek
@@ -613,8 +618,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### U1: upstream pull requests
 
-- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-27 (onto
-  1.1.0-nt.8.2). The open "Upstream drift" issue (label `upstream-drift`)
+- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-31 (onto
+  1.1.0-nt.9). The open "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
