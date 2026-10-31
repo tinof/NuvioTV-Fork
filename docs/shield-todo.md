@@ -46,6 +46,7 @@ lists). Restart playback, or the app for the rows marked *app*.
 | A tunneled start waits for the real first frame (only for decoders seen reporting frames) | `tunnel_real_first_frame` (`0`) | The loading screen ends with the picture |
 | Dolby Vision plays untunneled | `dv_no_tunnel` (`0`) | DV signalling on the TV, sync |
 | With "Convert HLG and HDR10+ to Dolby Vision" on, an HDR10+ MKV plays as Dolby Vision 8.1 with L1 from each AU's HDR10+ SEI (ROADMAP DV3.1) | `dv_hdr10plus` (`0` keeps PQ native) | The TV's Dolby Vision badge; logcat `DV_INJECT track N: HDR10+ 8.1`; the DV2.8 dump compared with `dovi_tool` (`scripts/rpu_dump_to_bin.py --order pts`) |
+| An HDR10+ track that converts to Dolby Vision 8.1 takes the mastering display and content light level of its SEI for what the container does not state (ROADMAP DV3.4) | `dv_sei_static` (`0` = the container and the defaults, as before) | Logcat `DV_INJECT track N: HDR10+ 8.1, … origin …, SEI states …`; dark scenes, saturated colours and highlights on the TV |
 | Hardware DV decoders are tried first on DV displays | `dv_decoder_first` (`0`) | HUD "DV decoder" and "Decoder" rows on P8.1 and converted P7 |
 | DV7 Auto converts with mode 2 (8.1 with no-op mapping; falls back per RPU to mode 1) | `dv7_manual` (`0` = mode 1) | The TV's DV info on one FEL and one MEL title |
 | HDR10 metadata injection on DV strip is on by default (a saved value wins) | Setting "Inject HDR10 metadata on strip" | The TV's HDR info screen: mastering / MaxCLL |
