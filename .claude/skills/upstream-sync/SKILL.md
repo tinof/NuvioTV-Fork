@@ -53,6 +53,13 @@ It blocks when:
 - a PR is open into `perf/shield-pass` or `main` (found through REST, which also works in cloud sessions);
 - any other local or origin branch has commits that are not in `perf/shield-pass`.
 
+Preflight also prints the `due:` line, which `python3 -I $S/sync.py due` prints alone from local refs. Its verdict is advisory: it never blocks and never changes the exit code, because an owner can always sync.
+- `due`: a settled batch waits (first-parent quiet at `upstream/main` for at least `settle_hours`), or the oldest unsynced first-parent commit is older than `max_age_days`.
+- `wait`: upstream may still be pushing. It merges official NuvioTV, then pushes themed batches, then patch versions.
+- `level`: 0 behind.
+
+Ages count first-parent commits on purpose: a "Merge official" carries side commits weeks older than the base, so counting them would say `due` the hour the merge lands.
+
 On a block, report it and stop. The owner merges, rebases or deletes such branches before a sync. `--allow-branch B` is only for a branch the owner explicitly wants carried over; it is rebased in step 8. Read the warnings too: an enabled issue workflow, rerere off, `origin/main` not at the base of `perf/shield-pass`, or a leftover `sync/`, `backup/` or `claude/` branch. Such a branch only warns while all its commits are in `perf/shield-pass` by subject; otherwise it blocks.
 
 ## 2. Workspace
