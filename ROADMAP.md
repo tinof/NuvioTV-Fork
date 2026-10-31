@@ -930,6 +930,10 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 - [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. The MaxCLL/MaxFALL heuristic is
   not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); where it lives is decided when this step
   starts. Gate: G-E A/B recorded; the default stays off unless the owner prefers it. Needs: DV2.7.
+- [DV3.5][desk] A file with Tracks behind the Clusters loses frame 0 on a seek back. Reading to the end parses Tracks
+  a second time and builds new `Track` objects, so `dvFirstAuClusterPosition` is gone; a later seek to the first
+  Cluster then gets no scene refresh on frame 0. Found by U1.14; with Tracks in front the same seek is right. Gate:
+  a real-extractor test of that seek, red first.
 
 #### DV4: T1, shot lists made on a PC
 
