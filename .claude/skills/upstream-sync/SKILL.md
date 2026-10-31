@@ -73,6 +73,8 @@ the fork is not behind: stop.
 
 Report to the owner: the counts, the scale tier and its reasons, the light blockers, the groups with their commit counts, the trial-merge conflict list, and any truncation.
 
+Then run `python3 -I $S/sync.py dry-run` and report its predicted stops. It replays each fork commit with `git merge-tree`, in rebase order, chained in a temporary object directory, so the repository gets no new objects. It continues a stopped commit on its `-X ours` result, so false alarms are expected: 54 predicted stops, 38 real, on four syncs. A clean replay says nothing about meaning. `empty` lists commits that add nothing on the new base: `rebase -i` stops on each one, and a plain rebase drops it. `protected_features` on a stop names the protected feature it touches.
+
 Scale tiers:
 - `skip`: no fork commit touches a file upstream changed, and the trial merge is clean. No agents are needed.
 - `light`: at most `light.max_conflicts` (3) files conflict and `light.blockers` is empty. No agents are needed.
