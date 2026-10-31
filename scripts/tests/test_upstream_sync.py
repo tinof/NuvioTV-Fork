@@ -719,12 +719,51 @@ class SkillDocTest(unittest.TestCase):
         self.assertRegex(classify, r"retire .*`summary\.drop` in `<scratch>/classify\.json`")
         self.assertRegex(classify, r"`sync\.py drops` and `verify --decisions`")
         self.assertNotIn("goes to the owner in item 5", classify)
-        self.assertEqual(["1", "2", "3", "4", "5", "6", "7", "8"], re.findall(r"^(\d)\. ", classify, re.M))
+        self.assertEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9"], re.findall(r"^(\d)\. ", classify, re.M))
 
     def test_step_numbers_in_the_verify_section_run_in_order(self):
         numbers = re.findall(r"^(\d)\. ", self.section("6. Verify"), re.M)
         self.assertEqual(["1", "2", "3", "4", "5", "6"], numbers)
         self.assertIn("the review in step 6.6", self.section("6. Verify"))
+
+    def test_the_ci_dispatch_passes_the_input_the_baseline_job_needs(self):
+        # A dispatch without it fails the baseline job, and with a wrong name gh refuses the dispatch.
+        doc = (SKILL / "SKILL.md").read_text()
+        workflow = (SKILL.parents[2] / ".github/workflows/checks.yml").read_text()
+        name = re.search(r"gh workflow run Checks --ref sync/<date>-perf -f (\w+)=<NEW_BASE>", doc).group(1)
+        self.assertIn(f"      {name}:\n", workflow.split("permissions:")[0])
+
+    def step(self, heading, number):
+        """The text of a numbered step under a `## ` heading of SKILL.md."""
+        section = (SKILL / "SKILL.md").read_text().split(f"\n## {heading}\n")[1].split("\n## ")[0]
+        return re.search(rf"(?ms)^{number}\. .*?(?=^\d+\. |\Z)", section).group(0)
+
+    def test_the_worktree_gets_the_stamp_with_the_library(self):
+        # Without it every local APK in the worktree fails on "no readable stamp", and the override becomes a habit.
+        self.assertIn("libnuvio_rpu.so.stamp", self.step("2. Workspace", 3))
+        self.assertIn("step 6.5 stops", self.step("2. Workspace", 3))
+        self.assertIn(".stamp", next(t for t in CONFIG["traps"] if "libnuvio_rpu.so" in t))
+
+    def test_the_local_baseline_is_diagnosis_only(self):
+        self.assertRegex(self.step("2. Workspace", 4), r"^4\. Diagnosis only")
+        self.assertIn("needs reproducing (step 6.4)", self.step("2. Workspace", 4))
+
+    def test_the_override_advice_names_what_it_covers(self):
+        step = self.step("6. Verify", 5)
+        self.assertNotIn("copies no stamp", step)
+        self.assertIn("exit 4", step)
+        self.assertIn("never a lost marker", step)
+
+    def test_a_rerun_that_retests_the_candidate_is_told_from_one_that_does_not(self):
+        section = (SKILL / "SKILL.md").read_text().split("\n## 7. CI on the pushed candidate\n")[1].split("\n## ")[0]
+        self.assertIn("only a rerun of all jobs retests the candidate", " ".join(section.split()))
+
+    def test_the_doc_names_the_jobs_that_exist(self):
+        doc = (SKILL / "SKILL.md").read_text()
+        workflow = (SKILL.parents[2] / ".github/workflows/checks.yml").read_text()
+        for job in ("Unit tests", "Upstream baseline", "Compare with upstream"):
+            self.assertIn(f"`{job}`", doc)
+            self.assertIn(f"    name: {job}\n", workflow)
 
 
 class DriftWorkflowTest(unittest.TestCase):
@@ -785,44 +824,6 @@ class DriftWorkflowTest(unittest.TestCase):
         # The issue is edited only when its first line changes, and "wait" turns into "due" with no push at all.
         self.assertIn("due=$verdict replay=$replay -->", self.step("Compare"))
         self.assertIn('sed -n 1p "$BODY"', self.step("Update the drift issue"))
-
-
-    def test_the_ci_dispatch_passes_the_input_the_baseline_job_needs(self):
-        # A dispatch without it fails the baseline job, and with a wrong name gh refuses the dispatch.
-        doc = (SKILL / "SKILL.md").read_text()
-        workflow = (SKILL.parents[2] / ".github/workflows/checks.yml").read_text()
-        name = re.search(r"gh workflow run Checks --ref sync/<date>-perf -f (\w+)=<NEW_BASE>", doc).group(1)
-        self.assertIn(f"      {name}:\n", workflow.split("permissions:")[0])
-
-    def step(self, heading, number):
-        """The text of a numbered step under a `## ` heading of SKILL.md."""
-        section = (SKILL / "SKILL.md").read_text().split(f"\n## {heading}\n")[1].split("\n## ")[0]
-        return re.search(rf"(?ms)^{number}\. .*?(?=^\d+\. |\Z)", section).group(0)
-
-    def test_the_worktree_gets_the_stamp_with_the_library(self):
-        # Without it every local APK in the worktree fails on "no readable stamp", and the override becomes a habit.
-        self.assertIn("libnuvio_rpu.so.stamp", self.step("2. Workspace", 3))
-        self.assertIn(".stamp", next(t for t in CONFIG["traps"] if "libnuvio_rpu.so" in t))
-
-    def test_the_local_baseline_is_diagnosis_only(self):
-        self.assertRegex(self.step("2. Workspace", 4), r"^4\. Diagnosis only")
-
-    def test_the_override_advice_names_what_it_covers(self):
-        step = self.step("6. Verify", 4)
-        self.assertNotIn("copies no stamp", step)
-        self.assertIn("exit 4", step)
-        self.assertIn("never a lost marker", step)
-
-    def test_a_rerun_that_retests_the_candidate_is_told_from_one_that_does_not(self):
-        section = (SKILL / "SKILL.md").read_text().split("\n## 7. CI on the pushed candidate\n")[1].split("\n## ")[0]
-        self.assertIn("only a rerun of all jobs retests the candidate", " ".join(section.split()))
-
-    def test_the_doc_names_the_jobs_that_exist(self):
-        doc = (SKILL / "SKILL.md").read_text()
-        workflow = (SKILL.parents[2] / ".github/workflows/checks.yml").read_text()
-        for job in ("Unit tests", "Upstream baseline", "Compare with upstream"):
-            self.assertIn(f"`{job}`", doc)
-            self.assertIn(f"    name: {job}\n", workflow)
 
 
 class GateSkipTest(unittest.TestCase):
@@ -928,6 +929,7 @@ class GateSkipStepTest(unittest.TestCase):
     STEP = re.search(r"- name: Detect a docs-only change\n.*?run: \|\n((?: {10}[^\n]*\n)+)",
                      (SKILL.parents[2] / ".github/workflows/checks.yml").read_text(), re.S).group(1)
     SCRIPT = ".claude/skills/upstream-sync/scripts/sync.py"
+    TOOLS = ".claude/skills/upstream-sync/scripts/sync_tools.py"
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -949,7 +951,8 @@ class GateSkipStepTest(unittest.TestCase):
     def base_with_detector(self, script=None):
         self.write({".claude/workflow.md": (SKILL.parents[1] / "workflow.md").read_text(),
                     ".claude/skills/upstream-sync/sync.json": (SKILL / "sync.json").read_text(),
-                    self.SCRIPT: script or (SKILL / "scripts/sync.py").read_text()})
+                    self.SCRIPT: script or (SKILL / "scripts/sync.py").read_text(),
+                    self.TOOLS: (SKILL / "scripts/sync_tools.py").read_text()})
 
     def detect(self, pull_request):
         """Commit the base, merge the pull request into it, and run the step: (exit code, $GITHUB_OUTPUT)."""
@@ -965,6 +968,7 @@ class GateSkipStepTest(unittest.TestCase):
         output.write_text("")
         r = subprocess.run(["bash", "-e", "-c", re.sub(r"(?m)^ {10}", "", self.STEP)], cwd=self.dir, capture_output=True,
                            text=True, env=dict(os.environ, RUNNER_TEMP=str(self.temp), GITHUB_OUTPUT=str(output)))
+        self.stderr = r.stderr
         return r.returncode, output.read_text()
 
     def test_a_docs_only_pull_request_skips(self):
@@ -977,7 +981,8 @@ class GateSkipStepTest(unittest.TestCase):
 
     def test_a_detector_replaced_by_the_pull_request_is_not_the_one_that_runs(self):
         self.base_with_detector()
-        code, output = self.detect({self.SCRIPT: "print('skip=true')\n", "app/Main.kt": "changed\n"})
+        code, output = self.detect({self.SCRIPT: "print('skip=true')\n", self.TOOLS: "print('skip=true')\n",
+                                    "app/Main.kt": "changed\n"})
         self.assertEqual((0, "skip=false\n"), (code, output))
 
     def test_a_widened_gate_skip_line_runs_the_suite(self):
@@ -992,6 +997,7 @@ class GateSkipStepTest(unittest.TestCase):
         code, output = self.detect({"README.md": "new\n"})
         self.assertNotEqual(0, code)
         self.assertEqual("", output)
+        self.assertIn("invalid choice: 'gate-skip'", self.stderr)  # Not a broken copy of the skill.
 
     def test_a_base_that_has_no_skill_leaves_the_output_empty(self):
         code, output = self.detect({"README.md": "new\n"})
@@ -1484,7 +1490,8 @@ class ShieldBuildScriptTest(unittest.TestCase):
         skill = self.dir / ".claude/skills/upstream-sync"
         (skill / "scripts").mkdir(parents=True)
         (skill / "sync.json").write_text((SKILL / "sync.json").read_text())
-        (skill / "scripts/sync.py").write_text((SKILL / "scripts/sync.py").read_text())
+        for script in ("sync.py", "sync_tools.py"):
+            (skill / "scripts" / script).write_text((SKILL / "scripts" / script).read_text())
         self.home = Path(tmp.name) / "home"
         self.home.mkdir()
         self.bin = Path(tmp.name) / "bin"
