@@ -52,6 +52,8 @@ class MatroskaRpuInjectionTest {
     private class LiveExtractor(transformer: MatroskaExtractor.DolbyVisionSampleTransformer?) :
         MatroskaExtractor(SubtitleParser.Factory.UNSUPPORTED, FLAG_EMIT_RAW_SUBTITLE_DATA, transformer) {
         var track: Track? = null
+        /** Tracks behind the Clusters are read again at the file's end, which builds a new Track. */
+        var firstTrack: Track? = null
 
         init {
             MatroskaExtractor::class.java.getDeclaredField("tracks")
@@ -62,6 +64,7 @@ class MatroskaRpuInjectionTest {
         override fun endMasterElement(id: Int) {
             val current = if (id == TRACK_ENTRY) getCurrentTrack(id) else null
             super.endMasterElement(id)
+            if (firstTrack == null) firstTrack = current
             if (current != null) track = current
         }
     }
@@ -200,6 +203,34 @@ class MatroskaRpuInjectionTest {
         extractor.seek(0, 0)
         readFrom(extractor, file, 0)
         assertEquals(listOf(true, false, false, false, false, false), refreshFlags(collector.samples))
+    }
+
+    @Test
+    fun `Tracks behind the Clusters are read first and the same samples come out`() {
+        val inFront = readFile(file(hlgColour), transformer = null)
+        val file = mkvTracksLast(trackEntry("hlg_tagged", hlgColour), *clusters.toTypedArray())
+        val extractor = LiveExtractor(null)
+        val collector = SampleCollector()
+        init(extractor, collector)
+        val seeks = readFollowingSeeks(extractor, file)
+        assertEquals(listOf(tracksPosition(file), clusterPosition(file, 0) + CLUSTER_HEADER_BYTES), seeks)
+        assertEquals(MimeTypes.VIDEO_H265, collector.format!!.sampleMimeType)
+        assertSamplesEqual(inFront.samples, collector.samples)
+        assertEquals(inFront.timesUs, collector.timesUs)
+    }
+
+    @Test
+    fun `behind the Clusters Tracks leave frame 0 on the first Cluster`() {
+        val file = mkvTracksLast(trackEntry("hlg_tagged", hlgColour), *clusters.toTypedArray())
+        val extractor = LiveExtractor(transformer())
+        val collector = SampleCollector()
+        init(extractor, collector)
+        readFollowingSeeks(extractor, file)
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, collector.format!!.sampleMimeType)
+        assertEquals(listOf(true, false, false, false, false, false), refreshFlags(collector.samples))
+        val position = MatroskaExtractor.Track::class.java.getDeclaredField("dvFirstAuClusterPosition")
+            .apply { isAccessible = true }
+        assertEquals(clusterPosition(file, 0) + CLUSTER_HEADER_BYTES, position.getLong(extractor.firstTrack))
     }
 
     @Test
@@ -417,6 +448,40 @@ class MatroskaRpuInjectionTest {
         error("the extractor did not reach the end")
     }
 
+    /**
+     * Reads [file] from its start as Media3 does: each RESULT_SEEK opens a new input at the holder's
+     * position, and extractor.seek() is not called. Returns the positions it was sent to.
+     */
+    private fun readFollowingSeeks(extractor: Extractor, file: ByteArray): List<Long> {
+        val seeks = mutableListOf<Long>()
+        val holder = PositionHolder()
+        var input = inputAt(file, 0)
+        repeat(500) {
+            when (extractor.read(input, holder)) {
+                Extractor.RESULT_END_OF_INPUT -> return seeks
+                Extractor.RESULT_SEEK -> {
+                    seeks += holder.position
+                    input = inputAt(file, holder.position.toInt())
+                }
+            }
+        }
+        error("the extractor did not reach the end")
+    }
+
+    private fun inputAt(file: ByteArray, start: Int): DefaultExtractorInput {
+        var position = start
+        val reader = object : DataReader {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (position >= file.size) return C.RESULT_END_OF_INPUT
+                val count = minOf(length, file.size - position)
+                System.arraycopy(file, position, buffer, offset, count)
+                position += count
+                return count
+            }
+        }
+        return DefaultExtractorInput(reader, start.toLong(), file.size.toLong())
+    }
+
     /** Whether each sample's last NAL is the scene-refresh RPU (the injected NAL is always last). */
     private fun refreshFlags(samples: List<ByteArray>): List<Boolean> = samples.map { sample ->
         when {
@@ -498,6 +563,36 @@ class MatroskaRpuInjectionTest {
         return header + element(0x18538067, info, tracks, *clusters)
     }
 
+    /** A Segment of SeekHead, Info, the Clusters and then Tracks; only the SeekHead says where Tracks are. */
+    private fun mkvTracksLast(entry: ByteArray, vararg clusters: ByteArray): ByteArray {
+        val header = element(
+            0x1A45DFA3,
+            element(0x4282, "matroska".toByteArray()),
+            uint(0x4287, 4),
+            uint(0x4285, 2)
+        )
+        val info = element(0x1549A966, uint(0x2AD7B1, 1_000_000))
+        val body = info + clusters.fold(ByteArray(0)) { acc, cluster -> acc + cluster }
+        val seekHead = { tracksOffset: Long ->
+            element(
+                0x114D9B74,
+                element(0x4DBB, element(0x53AB, TRACKS_ID), uint8(0x53AC, tracksOffset))
+            )
+        }
+        val tracksOffset = seekHead(0L).size + body.size.toLong()
+        return header + element(0x18538067, seekHead(tracksOffset), body, element(0x1654AE6B, entry))
+    }
+
+    private fun tracksPosition(file: ByteArray): Long {
+        for (i in file.size - TRACKS_ID.size downTo 0) {
+            if (file.copyOfRange(i, i + TRACKS_ID.size).contentEquals(TRACKS_ID)) return i.toLong()
+        }
+        error("no Tracks element")
+    }
+
+    /** A uint in eight bytes, so its size does not depend on its value. */
+    private fun uint8(id: Int, value: Long) = element(id, ByteArray(8) { i -> (value ushr (8 * (7 - i))).toByte() })
+
     private fun float(id: Int, value: Float): ByteArray {
         val bits = java.lang.Float.floatToIntBits(value)
         return element(id, ByteArray(4) { i -> (bits ushr (8 * (3 - i))).toByte() })
@@ -531,5 +626,8 @@ class MatroskaRpuInjectionTest {
 
     companion object {
         private const val TRACK_ENTRY = 0xAE
+        /** A 4-byte ID and the 8-byte size [element] always writes. */
+        private const val CLUSTER_HEADER_BYTES = 12L
+        private val TRACKS_ID = byteArrayOf(0x16, 0x54, 0xAE.toByte(), 0x6B)
     }
 }
