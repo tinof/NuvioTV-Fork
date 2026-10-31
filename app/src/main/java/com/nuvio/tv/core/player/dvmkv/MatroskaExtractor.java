@@ -65,6 +65,7 @@ import com.nuvio.tv.core.player.HevcInitNals;
 import com.nuvio.tv.core.player.HevcVuiColour;
 import com.nuvio.tv.core.player.DvSignalling;
 import com.nuvio.tv.core.player.DvSignallingDecision;
+import com.nuvio.tv.core.player.DvSeiStatic;
 import com.nuvio.tv.core.player.DvTrackFacts;
 import com.nuvio.tv.core.player.HlgContract;
 import com.nuvio.tv.core.player.HlgDecision;
@@ -254,6 +255,26 @@ public class MatroskaExtractor implements Extractor {
     default boolean convertsHdr10Plus() {
       return false;
     }
+
+    /**
+     * Fork (DV3.4): whether an HDR10+ track takes the static metadata of the stream's SEI, so a track
+     * converted at init reads its first AU for what the container and the hvcC leave open. Read at
+     * track init.
+     */
+    default boolean readsSeiStatic() {
+      return false;
+    }
+
+    /**
+     * Fork (DV3.4): the first AU gave a track converted at init more {@code facts}, before any of its
+     * samples. The track's RPU source is replaced; when the new one fails, the track keeps the source
+     * it has, as its Format is already Dolby Vision.
+     */
+    default void updateDolbyVisionConversion(
+        int trackId,
+        DvSignallingDecision.Convert decision,
+        int nalUnitLengthFieldLength,
+        DvTrackFacts facts) {}
 
     /**
      * Fork (DV2.7): rewrites an AU of a converted track with its RPU, in place of {@link
@@ -3590,7 +3611,8 @@ public class MatroskaExtractor implements Extractor {
     int result = prefix.getStatus();
     if (result == HevcInitNals.PREFIX_COMPLETE
         || prefix.getPreferredTransfer() != null
-        || !prefix.getHdr10PlusPayloads().isEmpty()) {
+        || !prefix.getHdr10PlusPayloads().isEmpty()
+        || (track.seiStaticScan && prefix.getSeiStatic() != null)) {
       track.applyFirstAu(prefix, checkNotNull(dolbyVisionSampleTransformer));
     } else if (result == HevcInitNals.PREFIX_TRUNCATED) {
       track.endHlgSeiScan(
@@ -3777,6 +3799,11 @@ public class MatroskaExtractor implements Extractor {
     @Nullable private List<byte[]> firstAuHdr10PlusPayloads;
     @Nullable private DvSignallingDecision.Target dvTableTarget;
     private boolean hdr10PlusScan;
+    // Fork (DV3.4): the static metadata SEI of the hvcC and of the first AU, and whether the early scan
+    // reads the first AU of a track that already converted at init for what they leave open.
+    @Nullable private DvSeiStatic hevcSeiStatic;
+    @Nullable private DvSeiStatic firstAuSeiStatic;
+    private boolean seiStaticScan;
 
     // Audio elements. Initially set to their default values.
     public int channelCount = 1;
@@ -3858,6 +3885,7 @@ public class MatroskaExtractor implements Extractor {
           }
           hevcPreferredTransfer = HevcInitNals.preferredTransfer(initializationData);
           hevcHdr10PlusPayloads = HevcInitNals.hdr10PlusPayloads(initializationData);
+          hevcSeiStatic = HevcInitNals.seiStatic(initializationData);
           break;
         case CODEC_ID_FOURCC:
           Pair<String, @NullableType List<byte[]>> pair =
@@ -4159,7 +4187,15 @@ public class MatroskaExtractor implements Extractor {
               convert == null
                   && dvTableTarget == DvSignallingDecision.Target.PROFILE_8_1
                   && dolbyVisionSampleTransformer.convertsHdr10Plus();
-          waitingForHlgSeiScan = (seiCouldMakeHlg || hdr10PlusScan) && blocksReadable;
+          // DV3.4: a track that converted at init reads its first AU when the container and the
+          // hvcC leave a static value open; it stays converted whatever the scan finds.
+          seiStaticScan =
+              convert != null
+                  && blocksReadable
+                  && dvTableTarget == DvSignallingDecision.Target.PROFILE_8_1
+                  && dolbyVisionSampleTransformer.readsSeiStatic()
+                  && !dvTrackFacts().staticComplete();
+          waitingForHlgSeiScan = (seiCouldMakeHlg || hdr10PlusScan) && blocksReadable || seiStaticScan;
           // DV3.2: the inputs of the decision, so a device log shows why a track is not HLG.
           android.util.Log.i(
               TAG,
@@ -4354,7 +4390,8 @@ public class MatroskaExtractor implements Extractor {
 
     /**
      * Fork (DV3.1): what the RPU source needs of the track: the HDR10+ candidates of the first AU (when
-     * the early scan read it) or of the hvcC, and the MasteringMetadata the container states.
+     * the early scan read it) or of the hvcC, the MasteringMetadata the container states and (DV3.4)
+     * the static metadata SEI of the hvcC and the first AU, in reading order.
      */
     private DvTrackFacts dvTrackFacts() {
       return new DvTrackFacts(
@@ -4364,7 +4401,13 @@ public class MatroskaExtractor implements Extractor {
           maxContentLuminanceStated ? maxContentLuminance : null,
           maxFrameAverageLuminanceStated ? maxFrameAverageLuminance : null,
           masteringPrimaries(),
-          containerColourPrimaries);
+          containerColourPrimaries,
+          seiStatic());
+    }
+
+    @Nullable
+    private DvSeiStatic seiStatic() {
+      return hevcSeiStatic != null ? hevcSeiStatic.then(firstAuSeiStatic) : firstAuSeiStatic;
     }
 
     /** Fork (DV3.1): the MasteringMetadata chromaticities, R G B W as x y pairs, or null without all. */
@@ -4386,7 +4429,7 @@ public class MatroskaExtractor implements Extractor {
 
     /** The early scan's name in log lines: it reads the first AU for HDR10+ (DV3.1) or for HLG. */
     private String scanName() {
-      return hdr10PlusScan ? "HDR10+ SEI scan" : "HLG SEI scan";
+      return seiStaticScan ? "Static SEI scan" : hdr10PlusScan ? "HDR10+ SEI scan" : "HLG SEI scan";
     }
 
     /**
@@ -4396,10 +4439,16 @@ public class MatroskaExtractor implements Extractor {
      * AU makes the track HLG, the decision table runs again and a converted track gets its Dolby Vision
      * Format now, so no sample goes out under the HEVC one; a converted track without parameter sets in
      * its hvcC gets the AU's as its initialization data. DV3.1: a PQ track whose first AU carries HDR10+
-     * converts the same way, as 8.1.
+     * converts the same way, as 8.1. DV3.4: its static metadata SEI goes with the HDR10+ payload; a track
+     * converted at init takes only that SEI.
      */
     private void applyFirstAu(
         HevcInitNals.AuPrefix prefix, DolbyVisionSampleTransformer transformer) {
+      firstAuSeiStatic = prefix.getSeiStatic();
+      if (seiStaticScan) {
+        applySeiStatic(transformer);
+        return;
+      }
       @Nullable Integer preferredTransfer = prefix.getPreferredTransfer();
       @Nullable byte[] sps = hevcFirstSps == null ? prefix.getSps() : null;
       List<byte[]> hdr10Plus = prefix.getHdr10PlusPayloads();
@@ -4472,6 +4521,26 @@ public class MatroskaExtractor implements Extractor {
       }
     }
 
+    /** Fork (DV3.4): the first AU of a track converted at init was read; its Format stays. */
+    private void applySeiStatic(DolbyVisionSampleTransformer transformer) {
+      waitingForHlgSeiScan = false;
+      if (firstAuSeiStatic == null) {
+        logSeiStaticScanEnd("no static SEI before the first slice of the first AU");
+      } else {
+        seiStaticScan = false;
+        transformer.updateDolbyVisionConversion(
+            hlgTrackId,
+            (DvSignallingDecision.Convert) checkNotNull(dvSignalling),
+            nalUnitLengthFieldLength,
+            dvTrackFacts());
+      }
+    }
+
+    private void logSeiStaticScanEnd(String reason) {
+      android.util.Log.i(TAG, scanName() + ", track " + hlgTrackId + ": " + reason + "; stays converted");
+      seiStaticScan = false;
+    }
+
     /**
      * Fork (DV2.10): the early scan ends for this track without an HLG SEI it can act on: the track
      * stays as its track init decided. {@code firstAuRead} is false when the scan never reached the
@@ -4483,6 +4552,10 @@ public class MatroskaExtractor implements Extractor {
         hlgSampleSeiPending = false;
       } else {
         hlgSeiScanMissed = true;
+      }
+      if (seiStaticScan) {
+        logSeiStaticScanEnd(reason);
+        return;
       }
       android.util.Log.i(TAG, scanName() + ", track " + hlgTrackId + ": " + reason + "; native");
     }

@@ -31,7 +31,9 @@ import java.io.ByteArrayOutputStream
  * [rpuSource] ([prepareDolbyVisionConversion] at track init, which keeps the
  * track native when there is no RPU) and [injectDolbyVisionRpu] per AU,
  * written by one [ConvertedTrackInjector] per track. DV3.1: an HDR10+ track's
- * RPUs change per scene; [onRelease] frees their native builder.
+ * RPUs change per scene; [onRelease] frees their native builder. DV3.4:
+ * [updateDolbyVisionConversion] replaces a track's RPU source when its first AU
+ * adds static metadata.
  */
 @UnstableApi
 internal class DolbyVisionMatroskaTransformer(
@@ -43,8 +45,12 @@ internal class DolbyVisionMatroskaTransformer(
     // DV3.2: the HLG composer comes from debug.nuvio.dv_hlg_canary, read once per extractor.
     // DV3.1: 8.1 from HDR10+, off with debug.nuvio.dv_hdr10plus 0 (then the first AU is not scanned).
     private val hdr10PlusEnabled: Boolean = DebugSwitches.flag(Hdr10PlusDvRpuSource.SWITCH) != false,
-    private val rpuSource: DvRpuSource =
-        DvRpuSources(StaticDvRpuSource.fromSwitches(), Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled)),
+    // DV3.4: the static metadata of the SEI, off with debug.nuvio.dv_sei_static 0.
+    private val seiStaticEnabled: Boolean = DebugSwitches.flag(Hdr10PlusDvRpuSource.SEI_STATIC_SWITCH) != false,
+    private val rpuSource: DvRpuSource = DvRpuSources(
+        StaticDvRpuSource.fromSwitches(),
+        Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled, seiStatic = seiStaticEnabled),
+    ),
     private val refreshEveryStart: Boolean = DebugSwitches.flag(REFRESH_EVERY_START_SWITCH) == true,
 ) : MatroskaExtractor.DolbyVisionSampleTransformer {
 
@@ -206,6 +212,8 @@ internal class DolbyVisionMatroskaTransformer(
 
     override fun convertsHdr10Plus(): Boolean = isDolbyVisionConversionEnabled() && hdr10PlusEnabled
 
+    override fun readsSeiStatic(): Boolean = convertsHdr10Plus() && seiStaticEnabled
+
     override fun onDolbyVisionConversionSignalled(trackId: Int, decision: DvSignallingDecision.Convert) {
         config.stats.recordConvertedTrack(decision.target)
     }
@@ -224,31 +232,57 @@ internal class DolbyVisionMatroskaTransformer(
         convertedTracks.remove(trackId)?.release()
         return when (val prepared = rpuSource.prepare(decision.target, facts)) {
             is DvRpuSource.Prepared.Ready -> {
-                val first = prepared.rpus.first
-                val reason = when {
-                    nalUnitLengthFieldLength < prepared.rpus.minNalLengthFieldLength ->
-                        "a $nalUnitLengthFieldLength-byte NAL length cannot hold every RPU of this source"
-                    !ConvertedTrackInjector.fits(first, nalUnitLengthFieldLength) ->
-                        "${first.size(true)} bytes do not fit a $nalUnitLengthFieldLength-byte NAL length"
-                    else -> null
-                }
-                if (reason != null) {
-                    // Every AU would go out without its RPU.
-                    prepared.rpus.release()
-                    DvSignallingDecision.Native("no RPU: $reason")
-                } else {
-                    convertedTracks[trackId] = ConvertedTrackInjector(prepared.rpus, refreshEveryStart)
-                    val refresh = if (refreshEveryStart) "frame 0 and every start" else "frame 0 only"
-                    android.util.Log.i(
-                        TAG,
-                        "DV_INJECT track $trackId: ${prepared.label}, RPU ${first.size(true)}/" +
-                            "${first.size(false)} bytes, scene refresh on $refresh"
-                    )
-                    decision
-                }
+                val reason = install(trackId, prepared, nalUnitLengthFieldLength)
+                if (reason == null) decision else DvSignallingDecision.Native("no RPU: $reason")
             }
             is DvRpuSource.Prepared.Unavailable -> DvSignallingDecision.Native("no RPU: ${prepared.reason}")
         }
+    }
+
+    override fun updateDolbyVisionConversion(
+        trackId: Int,
+        decision: DvSignallingDecision.Convert,
+        nalUnitLengthFieldLength: Int,
+        facts: DvTrackFacts
+    ) {
+        val current = convertedTracks[trackId] ?: return
+        val reason = when (val prepared = rpuSource.prepare(decision.target, facts)) {
+            is DvRpuSource.Prepared.Ready -> install(trackId, prepared, nalUnitLengthFieldLength)
+            is DvRpuSource.Prepared.Unavailable -> prepared.reason
+        }
+        if (reason == null) {
+            current.release()
+        } else {
+            android.util.Log.w(TAG, "DV_INJECT track $trackId: the first AU's static SEI is not used: $reason")
+        }
+    }
+
+    /**
+     * Makes [prepared] the track's injector and returns null, or the reason it cannot hold every AU's
+     * RPU; [prepared] is then released and the track keeps what it had.
+     */
+    private fun install(trackId: Int, prepared: DvRpuSource.Prepared.Ready, nalUnitLengthFieldLength: Int): String? {
+        val first = prepared.rpus.first
+        val reason = when {
+            nalUnitLengthFieldLength < prepared.rpus.minNalLengthFieldLength ->
+                "a $nalUnitLengthFieldLength-byte NAL length cannot hold every RPU of this source"
+            !ConvertedTrackInjector.fits(first, nalUnitLengthFieldLength) ->
+                "${first.size(true)} bytes do not fit a $nalUnitLengthFieldLength-byte NAL length"
+            else -> null
+        }
+        if (reason != null) {
+            // Every AU would go out without its RPU.
+            prepared.rpus.release()
+            return reason
+        }
+        convertedTracks[trackId] = ConvertedTrackInjector(prepared.rpus, refreshEveryStart)
+        val refresh = if (refreshEveryStart) "frame 0 and every start" else "frame 0 only"
+        android.util.Log.i(
+            TAG,
+            "DV_INJECT track $trackId: ${prepared.label}, RPU ${first.size(true)}/" +
+                "${first.size(false)} bytes, scene refresh on $refresh"
+        )
+        return null
     }
 
     override fun onRelease() {
