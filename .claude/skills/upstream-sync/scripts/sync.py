@@ -7,6 +7,7 @@ Commands:
   due [--upstream R] [--fork R] [--now EPOCH] [--json]
   official-preview [--url U] [--upstream R] [--fork R]
   judgement [--old R] [--new-base R] [--new R] [--declared FILE] [--diff FILE]
+  docs-entry --verify-report FILE [--classify FILE] [--date D] [--pr N]
   todo-edit --drop SHA[,SHA...] <git-rebase-todo>
   stop-check
   drops --decisions classify.json --range BASE..TIP
