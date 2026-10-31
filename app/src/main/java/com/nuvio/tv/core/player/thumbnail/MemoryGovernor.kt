@@ -281,7 +281,7 @@ internal object MemoryGovernor {
 
     internal fun pressureReason(
         lowMemory: Boolean, availMb: Long, swapTotalMb: Long, swapFreeMb: Long, floorMb: Long,
-        strongHardware: Boolean = false, swapRoom: Boolean = true,
+        strongHardware: Boolean = false, swapRoom: Boolean,
     ): String? =
         when {
             lowMemory -> "system low on memory"
@@ -293,7 +293,7 @@ internal object MemoryGovernor {
 
     /** A box with MemAvailable well above [floorMb] (after the decode's charge) is not held back by swap. */
     internal fun roomBesideSwap(
-        availAfterMb: Long, floorMb: Long, strongHardware: Boolean, swapFreeMb: Long = Long.MAX_VALUE, swapRoom: Boolean = true,
+        availAfterMb: Long, floorMb: Long, strongHardware: Boolean, swapFreeMb: Long = Long.MAX_VALUE, swapRoom: Boolean,
     ): Boolean = swapRoom && (
         if (strongHardware) availAfterMb >= floorMb + STRONG_SWAP_ROOM_MB
         else swapFreeMb >= SMALL_SWAP_ROOM_MIN_SWAP_MB && availAfterMb >= floorMb + SMALL_SWAP_ROOM_MB
@@ -370,7 +370,7 @@ internal object MemoryGovernor {
 
     /** Swap is only checked where the box has some. */
     internal fun decodeVerdict(
-        mem: Meminfo, chargeMb: Long, funded: Boolean, lowRam: Boolean, strongHardware: Boolean = false, swapRoom: Boolean = true,
+        mem: Meminfo, chargeMb: Long, funded: Boolean, lowRam: Boolean, strongHardware: Boolean = false, swapRoom: Boolean,
     ): GovernorVerdict {
         val floor = decodeFloorMb(funded, lowRam)
         val availAfter = mem.availableMb - chargeMb
@@ -398,7 +398,7 @@ internal object MemoryGovernor {
     /** The swap part of [decodeVerdict] alone: a refusal, or null. */
     internal fun swapVerdict(
         mem: Meminfo, funded: Boolean, lowRam: Boolean = true, strongHardware: Boolean = false, chargeMb: Long = 0L,
-        swapRoom: Boolean = true,
+        swapRoom: Boolean,
     ): GovernorVerdict? {
         val swapFloor = if (funded) FUNDED_SWAP_FLOOR_MB else SWAP_FLOOR_MB
         if (mem.swapTotalMb > 0 && mem.swapFreeMb < swapFloor &&
