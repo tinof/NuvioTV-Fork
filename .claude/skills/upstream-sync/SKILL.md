@@ -145,8 +145,9 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
 1. Run:
    ```
    python3 -I $S/sync.py verify --base-old OLD_BASE --old OLD_PERF --base-new NEW_BASE --new NEW_PERF \
-     --upstream NEW_BASE --decisions <scratch>/classify.json
+     --upstream NEW_BASE --decisions <scratch>/classify.json > <scratch>/verify.txt
    ```
+   On tiers `skip` and `light` there is no classify.json: leave out `--decisions`.
 2. A failure blocks. Two flags waive a single path, and only for a decision on that path:
    - `--allow-same <path>`: a fork change to the path was knowingly superseded.
    - `--allow-changed <path>`: a fork-only file was knowingly adapted.
@@ -217,6 +218,8 @@ Create a branch `fork/u1-5-sync-<date>-followups` from `origin/perf/shield-pass`
 - `docs/shield-todo.md`: new rows, and the "Upstream defaults taken with the sync of <date>" section;
 - `ROADMAP.md`: a progress-log row for U1.5 that cites the PR;
 - `docs/ROADMAP_LOG.md`: an entry with the counts, the verify report summary, the gate and CI evidence, the drops with their reasons, and the setting decisions.
+
+`python3 -I $S/sync.py docs-entry --verify-report <scratch>/verify.txt [--classify <scratch>/classify.json] --date <date> --pr <n>` prints both skeletons to stdout: the log entry, and the defaults section with each setting once. On tiers `skip` and `light` there is no classify.json: leave out `--classify`, and the verdict counts and the defaults become `TODO` lines. Facts come only from those files; a `TODO` line marks what a human must add. It groups analysts' entries by a shared setting name, so read what it merged, and clear every `TODO` before the PR.
 
 ## 10. Cleanup (after the follow-up PR merges)
 

@@ -70,6 +70,146 @@ def declared_paths(text):
     return {l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith("#")}
 
 
+def parse_verify_report(text):
+    """The facts in `sync.py verify` output. A text that is no such report raises: a log entry must not guess."""
+    head = re.search(r"^## Verify (\S+) -> (\S+)$", text, re.M)
+    marks = re.search(r"^range-diff: (\d+) identical, (\d+) changed, (\d+) dropped, (\d+) new$", text, re.M)
+    if not head or not marks:
+        raise RuntimeError("the verify report has no '## Verify' or 'range-diff:' line")
+    bullets = re.findall(r"^- (.*)$", text, re.M)
+    return {"old": head.group(1), "new": head.group(2), "identical": marks.group(1), "changed": marks.group(2),
+            "dropped": marks.group(3), "added": marks.group(4),
+            "protected": [m.groups() for m in map(re.compile(r"([\w-]+): (\d+) commits, (\d+) lines checked, (\d+) lost$").match,
+                                                  bullets) if m],
+            "waived": [b for b in bullets if b.startswith("waived by ")],
+            "new_commits": [b for b in bullets if b.startswith("new commit added on purpose")],
+            "protected_drops": [b for b in bullets if b.startswith("protected drop approved")],
+            "fails": [b[len("FAIL: "):] for b in bullets if b.startswith("FAIL: ")],
+            "passed": "all checks pass" in bullets}
+
+
+def setting_names(text):
+    """The setting-like names in an analyst's sentence, in one spelling: libass_render_mode is libassRenderMode."""
+    found = re.findall(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b[a-z]+(?:[A-Z][a-z0-9]+)+\b", text)
+    return {n for n in (w.replace("_", "").lower() for w in found) if len(n) >= 8}
+
+
+def same_setting(names, others):
+    return any(a in b or b in a for a in names for b in others)
+
+
+def prose_runs(text):
+    """Runs of three words in one spelling: "ASS render mode" can then meet the name libassrendermode."""
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return {"".join(words[i:i + 3]) for i in range(len(words) - 2)}
+
+
+def default_groups(defaults):
+    """summary.defaults -> one group per setting. Analysts write free text, so a setting is a shared name. An entry
+    that uses no name joins a group that spells the name out, or has the same text; else it stands alone. A stray
+    duplicate costs a human one line, a wrong merge would hide a default."""
+    groups, nameless = [], []
+    for e in defaults:
+        names = setting_names(f"{e.get('what', '')} {e.get('note', '')}")
+        group = next((g for g in groups if same_setting(names, g["names"])), None)
+        if not names:
+            nameless.append(e)
+        elif group:
+            group["names"] |= names
+            group["entries"].append(e)
+        else:
+            groups.append({"names": names, "entries": [e]})
+    for e in nameless:
+        runs = {r for r in prose_runs(f"{e.get('what', '')} {e.get('note', '')}") if len(r) >= 8}
+        group = next((g for g in groups if any(r in n for r in runs for n in g["names"])
+                      or any(x.get("what") == e.get("what") for x in g["entries"])), None)
+        if group:
+            group["entries"].append(e)
+        else:
+            groups.append({"names": set(), "entries": [e]})
+    return groups
+
+
+def note_text(note):
+    """An analyst's note without the location some start it with. A note that is only a location gives ""."""
+    where = re.match(r"Under '#+ [^']*':\s*", note)
+    if not where:
+        return note.strip()
+    rest = note[where.end():].strip()
+    return rest[:1].upper() + rest[1:]
+
+
+def default_bullet(group):
+    """-> (text, the entry's short SHAs, rules). A note is written for the owner, so it wins over an analyst's `what`."""
+    entries = group["entries"]
+    texts = [note_text(e.get("note") or "") for e in entries] + [e.get("what") for e in entries]
+    text = next((t for t in texts if t), "TODO: no note or description for this setting.")
+    shas = []
+    for e in entries:
+        sha = (e.get("upstream") or "")[:9]
+        if sha and sha not in shas and sha not in text:
+            shas.append(sha)
+    return text, shas, sorted({e.get("rule", "") for e in entries})
+
+
+def log_entry(report, summary, date, pr):
+    """The docs/ROADMAP_LOG.md skeleton: facts from the two inputs, TODO lines for the rest. [summary] is None when
+    there is no classify.json, so no verdict count can be stated."""
+    title = f"## {date}: U1.5 sync onto upstream TODO-version (PR #{pr})"
+    protected = "; ".join(f"{k} {c} commits, {n} lines, {l} lost" for k, c, n, l in report["protected"]) or "TODO"
+    verdicts = "TODO: no classify.json; tiers `skip` and `light` have none, so state any drop by hand"
+    if summary is not None:
+        verdicts = (f"{len(summary.get('drop', []))} drops, {len(summary.get('protectedAsk', []))} protected asks, "
+                    f"{len(summary.get('resolve', []))} keep-resolve, {len(summary.get('adapt', []))} keep-adapt or partial, "
+                    f"{len(summary.get('keepClean', []))} keep-clean")
+    drops = (summary or {}).get("drop")
+    evidence = [f"- `verify`: {report['identical']} identical, {report['changed']} changed, {report['dropped']} dropped, "
+                f"{report['added']} new. Protected lines: {protected}."]
+    evidence += [f"- {b}." for b in report["waived"] + report["new_commits"] + report["protected_drops"]]
+    evidence += [f"- `verify` FAILED: {f}" for f in report["fails"]]
+    if not report["passed"] and not report["fails"]:
+        evidence.append("- TODO: the report states no result; run `verify` to the end.")
+    return [title, "",
+            f"- [U1.5][desk] Rebased `perf/shield-pass` from `{report['old'][:9]}` onto TODO-base. "
+            f"New tip `{report['new'][:9]}`.",
+            "  TODO: commits behind upstream, fork commit counts, upstream version.", "",
+            f"**Classify:** {verdicts}.", "TODO: the tier, the analysts and the trial merge conflict count (overlap.json).", "",
+            *([f"**Drops:** {', '.join(f'`{d}`' for d in drops)}.", "TODO: the reason for each drop.", ""]
+              if drops else []),
+            "**Owner's decisions:**", "", "TODO: each decision and adapt commit, in the owner's terms.", "",
+            "**Evidence**", "", *evidence, "- TODO: the gate on the new tip and the baseline's failures.",
+            "- TODO: `protected-apk`, the judgement diff and the independent review's findings.",
+            "- TODO: the `Checks` run id on the published SHA, and whether it ran on the Shield.", "",
+            "**Open, for the owner**", "", "- TODO: anything left open.", "",
+            "**Resolution:** TODO.", ""]
+
+
+def defaults_section(summary, date):
+    """The docs/shield-todo.md section: each setting once, the upstream defaults apart from the fork's kept values.
+    [summary] is None when there is no classify.json: the frame stays and the list is a TODO."""
+    taken, kept, disputed, merged = [], [], [], []
+    for group in default_groups((summary or {}).get("defaults") or []):
+        text, shas, rules = default_bullet(group)
+        cited = f"{text} ({', '.join(shas)})" if shas else text
+        (disputed if len(rules) > 1 else kept if rules == ["keep-fork-gated"] else taken).append(cited)
+        lead = cited[:40]
+        merged += [f"- under \"{lead}\": {e.get('what', '')}" for e in group["entries"][1:]]
+    rows = [f"### Upstream defaults taken with the sync of {date}", "",
+            "TODO: name the upstream version and say which values of this pass upstream touched.",
+            ("TODO: rewrite each bullet for the owner; a bullet without a note holds the analyst's text."
+             if summary is not None else "TODO: no classify.json, so list the upstream defaults by hand."),
+            *[f"- {t}" for t in taken], "", f"Measurements taken before {date} predate these defaults.", ""]
+    if kept:
+        rows += ["TODO: a row in the plan table for each fork value kept, with its revert switch:",
+                 *[f"- {t}" for t in kept], ""]
+    if disputed:
+        rows += ["TODO: analysts disagree on the rule for these; decide by the owner rule:",
+                 *[f"- {t}" for t in disputed], ""]
+    if merged:
+        rows += ["TODO: these analyst entries were merged into one bullet; check none adds a fact:", *merged, ""]
+    return rows
+
+
 # ---------------------------------------------------------------- git and gh
 
 def git(*args, check=True, binary=False, env=None):
@@ -330,10 +470,27 @@ def cmd_judgement(a, cfg):
     return FAIL if undeclared else OK
 
 
+# ---------------------------------------------------------------- docs-entry
+
+def cmd_docs_entry(a, cfg):
+    """Prints the follow-up docs' skeletons. Facts come from the input files only; the rest is a TODO line."""
+    report = parse_verify_report(read_file(a.verify_report))
+    summary = None
+    if a.classify:
+        try:
+            summary = json.loads(read_file(a.classify)).get("summary") or {}
+        except ValueError as e:
+            raise RuntimeError(f"{a.classify} is not JSON: {e}")
+    date, pr = a.date or "TODO-date", a.pr or "TODO"
+    print("\n".join(["<!-- docs/ROADMAP_LOG.md -->", *log_entry(report, summary, date, pr),
+                     "<!-- docs/shield-todo.md -->", *defaults_section(summary, date)]).rstrip())
+    return OK
+
+
 # ---------------------------------------------------------------- registration
 
 COMMANDS = {"dry-run": cmd_dry_run, "due": cmd_due, "official-preview": cmd_official_preview,
-            "judgement": cmd_judgement}
+            "judgement": cmd_judgement, "docs-entry": cmd_docs_entry}
 
 
 def add_parsers(sub):
@@ -357,3 +514,8 @@ def add_parsers(sub):
     s.add_argument("--new", help="default: HEAD")
     s.add_argument("--declared", help="a text file of paths; a differing path that is not listed fails")
     s.add_argument("--diff", help="write the full diff here, for the reviewer")
+    s = sub.add_parser("docs-entry", help="print the log entry skeleton and the upstream defaults section")
+    s.add_argument("--verify-report", required=True, help="the saved output of sync.py verify")
+    s.add_argument("--classify", help="classify.json; tiers skip and light have none (default: TODO lines)")
+    s.add_argument("--date", help="YYYY-MM-DD (default: a TODO)")
+    s.add_argument("--pr", help="the follow-up PR number (default: a TODO)")
