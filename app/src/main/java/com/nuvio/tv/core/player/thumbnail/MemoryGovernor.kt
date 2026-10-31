@@ -220,6 +220,10 @@ internal object MemoryGovernor {
      * Whether a strong box's MemAvailable may outweigh full swap for a single decode ([roomBesideSwap]). Off on the
      * Shield TV Pro 2019, for the same device data as [swapRuleOn]. [switch] (debug.nuvio.thumb_swap_room): true
      * allows it there, false turns it off on every box.
+     *
+     * The result reaches the four rule functions ([pressureReason], [roomBesideSwap], [decodeVerdict], [swapVerdict])
+     * through [pressure], [allow] and [swapAllows]. [afterHardwareClose] is the fifth place: it lifts a swap refusal
+     * without those rules, so it checks the field itself.
      */
     internal fun swapRoomOn(
         switch: Boolean?,
@@ -281,7 +285,7 @@ internal object MemoryGovernor {
 
     internal fun pressureReason(
         lowMemory: Boolean, availMb: Long, swapTotalMb: Long, swapFreeMb: Long, floorMb: Long,
-        strongHardware: Boolean = false, swapRoom: Boolean = true,
+        strongHardware: Boolean = false, swapRoom: Boolean,
     ): String? =
         when {
             lowMemory -> "system low on memory"
@@ -293,7 +297,7 @@ internal object MemoryGovernor {
 
     /** A box with MemAvailable well above [floorMb] (after the decode's charge) is not held back by swap. */
     internal fun roomBesideSwap(
-        availAfterMb: Long, floorMb: Long, strongHardware: Boolean, swapFreeMb: Long = Long.MAX_VALUE, swapRoom: Boolean = true,
+        availAfterMb: Long, floorMb: Long, strongHardware: Boolean, swapFreeMb: Long = Long.MAX_VALUE, swapRoom: Boolean,
     ): Boolean = swapRoom && (
         if (strongHardware) availAfterMb >= floorMb + STRONG_SWAP_ROOM_MB
         else swapFreeMb >= SMALL_SWAP_ROOM_MIN_SWAP_MB && availAfterMb >= floorMb + SMALL_SWAP_ROOM_MB
@@ -370,7 +374,7 @@ internal object MemoryGovernor {
 
     /** Swap is only checked where the box has some. */
     internal fun decodeVerdict(
-        mem: Meminfo, chargeMb: Long, funded: Boolean, lowRam: Boolean, strongHardware: Boolean = false, swapRoom: Boolean = true,
+        mem: Meminfo, chargeMb: Long, funded: Boolean, lowRam: Boolean, strongHardware: Boolean = false, swapRoom: Boolean,
     ): GovernorVerdict {
         val floor = decodeFloorMb(funded, lowRam)
         val availAfter = mem.availableMb - chargeMb
@@ -398,7 +402,7 @@ internal object MemoryGovernor {
     /** The swap part of [decodeVerdict] alone: a refusal, or null. */
     internal fun swapVerdict(
         mem: Meminfo, funded: Boolean, lowRam: Boolean = true, strongHardware: Boolean = false, chargeMb: Long = 0L,
-        swapRoom: Boolean = true,
+        swapRoom: Boolean,
     ): GovernorVerdict? {
         val swapFloor = if (funded) FUNDED_SWAP_FLOOR_MB else SWAP_FLOOR_MB
         if (mem.swapTotalMb > 0 && mem.swapFreeMb < swapFloor &&
@@ -429,6 +433,7 @@ internal object MemoryGovernor {
     /** A swap refusal after the 4K hardware decoder closed is lifted while the box has [AFTER_HARDWARE_CLOSE_ROOM_MB] of room. */
     fun afterHardwareClose(verdict: GovernorVerdict, tier: DecodeTier): GovernorVerdict {
         if (!verdict.swapLow) return verdict
+        if (!swapRoomHardware) return verdict
         val mem = readMeminfo() ?: return verdict
         return afterHardwareClose(verdict, mem, tier, lowRam)
     }
