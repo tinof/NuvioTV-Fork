@@ -755,6 +755,161 @@ class RenameRepoTest(unittest.TestCase):
         self.assertNotIn("fork change lost", report)
 
 
+class OfficialPreviewRepoTest(RepoFixture, unittest.TestCase):
+    """official-preview against a local repository that stands in for NuvioMedia/NuvioTV."""
+
+    def setUp(self):
+        super().setUp()
+        self.new_branch(self.FAITHFUL)
+        run("git", "update-ref", "refs/remotes/upstream/main", self.sha("U"), cwd=self.dir)
+        run("git", "update-ref", "refs/remotes/origin/perf/shield-pass", self.sha("new"), cwd=self.dir)
+        self.official = tempfile.TemporaryDirectory()
+        self.url = str(Path(self.official.name) / "official")
+        run("git", "clone", "-q", "--no-hardlinks", "-b", "main", str(self.dir), self.url, cwd=self.dir)
+        for setting in (("user.email", "o@example.com"), ("user.name", "o")):
+            run("git", "config", *setting, cwd=self.url)
+        run("git", "checkout", "-q", "-b", "dev", "U", cwd=self.url)
+        self.gh = tools.gh_json
+        tools.gh_json = lambda *a: [{"number": 7, "title": "feat: merged", "merged_at": "2026-10-30T10:00:00Z"},
+                                    {"number": 8, "title": "wip: closed unmerged", "merged_at": None}]
+
+    def tearDown(self):
+        tools.gh_json = self.gh
+        self.official.cleanup()
+        super().tearDown()
+
+    def official_commit(self, subject, name="fork-only.txt", text="official\n"):
+        (Path(self.url) / name).write_text(text)
+        run("git", "add", "-A", cwd=self.url)
+        run("git", "commit", "-q", "-m", subject, cwd=self.url)
+
+    def preview(self, url=None):
+        a = argparse.Namespace(url=url or self.url, upstream=None, fork=None)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = tools.cmd_official_preview(a, self.cfg)
+        return code, buf.getvalue()
+
+    def test_it_reports_the_tag_the_count_and_the_conflicts(self):
+        self.official_commit("feat: official only")
+        run("git", "tag", "1.1.0-beta.9", cwd=self.url)
+        run("git", "tag", "1.1.0-beta.10", cwd=self.url)
+        self.official_commit("fix: upstream has this subject", "extra.txt")
+        code, report = self.preview()
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("latest tag 1.1.0-beta.10", report)
+        self.assertIn("2 of its commits are not in upstream/main by subject", report)
+        self.assertIn("trial merge with origin/perf/shield-pass: 1 conflicting files\n  fork-only.txt\n", report)
+        self.assertIn("#7 feat: merged", report)
+        self.assertNotIn("closed unmerged", report)
+
+    def test_a_subject_upstream_already_has_does_not_count(self):
+        self.official_commit("upstream change", "extra.txt")
+        self.official_commit("feat: official only", "extra2.txt")
+        _, report = self.preview()
+        self.assertIn("1 of its commits are not in upstream/main by subject (2 outside its history)", report)
+
+    def test_a_release_sorts_after_its_prerelease(self):
+        run("git", "tag", "1.1.0-beta.9", cwd=self.url)
+        run("git", "tag", "1.1.0", cwd=self.url)
+        self.assertEqual("1.1.0", tools.latest_tag(self.url))
+
+    def test_it_leaves_no_remote_no_ref_and_no_new_tag(self):
+        run("git", "tag", "1.1.0-beta.9", cwd=self.url)
+        remotes = subprocess.run(["git", "config", "--get-regexp", "^remote\\."], cwd=self.dir, capture_output=True,
+                                 text=True).stdout
+        self.preview()
+        self.assertEqual(remotes, subprocess.run(["git", "config", "--get-regexp", "^remote\\."], cwd=self.dir,
+                                                 capture_output=True, text=True).stdout)
+        self.assertEqual([], sync.lines("for-each-ref", "refs/remotes/official/", tools.OFFICIAL_REF))
+        self.assertEqual([], sync.lines("tag", "--list", "1.1.0*"))
+
+    def test_the_ref_is_private_and_nothing_else_is_deleted(self):
+        # A user's remote named official owns refs/remotes/official/*.
+        self.assertTrue(tools.OFFICIAL_REF.startswith("refs/upstream-sync/"))
+        run("git", "update-ref", "refs/remotes/official/dev", self.sha("U"), cwd=self.dir)
+        run("git", "update-ref", "refs/remotes/official/other", self.sha("U"), cwd=self.dir)
+        code, report = self.preview()
+        self.assertEqual(sync.OK, code, report)
+        self.assertEqual(["refs/remotes/official/dev", "refs/remotes/official/other"],
+                         sync.lines("for-each-ref", "--format=%(refname)", "refs/remotes/official/"))
+        self.assertEqual(self.sha("U"), self.sha("refs/remotes/official/dev"))
+        self.assertEqual([], sync.lines("for-each-ref", "refs/upstream-sync/"))
+
+    def test_a_cleanup_that_fails_is_a_line_and_exit_zero(self):
+        real = tools.git
+
+        def broken(*args, **kw):
+            if args[0] in ("update-ref", "for-each-ref"):
+                raise RuntimeError("cannot lock ref")
+            return real(*args, **kw)
+        tools.git = broken
+        try:
+            code, report = self.preview()
+        finally:
+            tools.git = real
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("official: ref not removed", report)
+        self.assertIn("#7 feat: merged", report)
+
+    def test_a_cleanup_after_a_failed_fetch_says_nothing(self):
+        _, report = self.preview(url=str(self.dir / "no-such-repository"))
+        self.assertNotIn("not removed", report)
+
+    def test_an_error_that_is_no_git_failure_is_a_line_and_exit_zero(self):
+        real = tools.scratch_objects
+
+        def broken():
+            raise OSError("no space left on device")
+        tools.scratch_objects = broken
+        try:
+            code, report = self.preview()
+        finally:
+            tools.scratch_objects = real
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("official: not available (no space left on device)", report)
+        self.assertEqual([], sync.lines("for-each-ref", tools.OFFICIAL_REF))
+
+    def test_the_trial_merge_writes_no_object_to_the_repository(self):
+        # The fetched objects stay until git prunes them. The merged tree and its conflicted blob must not join them.
+        self.official_commit("feat: official only")
+        self.preview()
+        fetched = subprocess.run(["git", "rev-list", "--objects", "dev", "^U"], cwd=self.url, capture_output=True,
+                                 text=True).stdout
+        dangling = [l.split()[2] for l in sync.lines("fsck", "--no-progress", "--unreachable", "--no-reflogs")
+                    if l.startswith("unreachable")]
+        self.assertEqual(sorted(l.split()[0] for l in fetched.splitlines()), sorted(dangling))
+
+    def test_a_failed_fetch_never_blocks(self):
+        code, report = self.preview(url=str(self.dir / "no-such-repository"))
+        self.assertEqual(sync.OK, code)
+        self.assertIn("official: not available", report)
+        self.assertIn("#7 feat: merged", report)
+
+    def test_no_gh_is_a_note(self):
+        def missing(*a):
+            raise FileNotFoundError("gh")
+        tools.gh_json = missing
+        code, report = self.preview()
+        self.assertEqual(sync.OK, code)
+        self.assertIn("recent merged PRs: skipped, gh is not available", report)
+        self.assertIn("latest tag", report)
+
+    def test_a_gh_answer_of_another_shape_is_a_note(self):
+        tools.gh_json = lambda *a: {"message": "API rate limit exceeded"}
+        code, report = self.preview()
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("recent merged PRs: skipped", report)
+
+    def test_the_skill_names_the_private_ref(self):
+        text = (SKILL / "SKILL.md").read_text()
+        self.assertIn(f"`{tools.OFFICIAL_REF}`", text)
+        self.assertNotIn("refs/remotes/official", text)
+
+    def test_the_config_names_official(self):
+        self.assertEqual(("NuvioMedia/NuvioTV", "dev"), (CONFIG["official_repo"], CONFIG["official_branch"]))
+
+
 class DueVerdictTest(unittest.TestCase):
     def verdict(self, behind=3, quiet=1.0, age=1.0):
         return tools.due_verdict(behind, quiet, age, 24, 7)[0]
