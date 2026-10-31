@@ -721,6 +721,66 @@ class SkillDocTest(unittest.TestCase):
         self.assertIn("the review in step 6.6", self.section("6. Verify"))
 
 
+class DriftWorkflowTest(unittest.TestCase):
+    """The prediction in .github/workflows/upstream-drift.yml, which no local test can run as a job."""
+
+    TEXT = (SKILL.parents[2] / ".github/workflows/upstream-drift.yml").read_text()
+
+    def step(self, name):
+        return self.TEXT.split(f"- name: {name}\n")[1].split("\n      - name: ")[0]
+
+    def test_a_failure_in_the_prediction_cannot_fail_the_job(self):
+        step = self.step("Predict the sync")
+        self.assertIn("continue-on-error: true", step)
+        self.assertNotIn("set -e", step)
+
+    def test_the_prediction_stays_under_the_job_timeout(self):
+        job = int(re.search(r"^    timeout-minutes: (\d+)$", self.TEXT, re.M).group(1))
+        step = int(re.search(r"timeout-minutes: (\d+)", self.step("Predict the sync")).group(1))
+        self.assertLess(step, job - 5, "the comparison and the issue update need time after it")
+        seconds = sum(int(n) for n in re.findall(r"timeout (\d+) python3", self.step("Predict the sync")))
+        self.assertLessEqual(seconds, step * 60)
+
+    def test_the_commands_exist(self):
+        for command in re.findall(r'python3 -I "\$S" ([a-z-]+)', self.step("Predict the sync")):
+            self.assertIn(command, tools.COMMANDS)
+
+    def test_a_missing_result_reads_not_available(self):
+        compare = self.step("Compare")
+        self.assertIn('echo "not available"', compare)
+        self.assertRegex(compare, r'block "\$RUNNER_TEMP/due\.txt"')
+        self.assertRegex(compare, r'block "\$RUNNER_TEMP/dry-run\.txt"')
+
+    def test_the_ages_in_the_issue_state_when_they_were_measured(self):
+        # Hours pass with no edit, so the body must say which moment "quiet" and "oldest" belong to.
+        step = self.step("Predict the sync")
+        self.assertRegex(step, r"""date -u '\+%Y-%m-%d %H:%M UTC'""")
+        self.assertRegex(step, r"measured at .* >> \"\$RUNNER_TEMP/due\.txt\"")
+        script = step.split("run: |\n")[1]
+        with tempfile.TemporaryDirectory() as d:
+            bin_dir = Path(d) / "bin"
+            bin_dir.mkdir()
+            fake = bin_dir / "python3"
+            fake.write_text('#!/bin/sh\ncase "$*" in *" due "*) echo "due: wait: a reason";; esac\n')
+            fake.chmod(0o755)
+            git_fake = bin_dir / "git"
+            git_fake.write_text("#!/bin/sh\necho 0\n")
+            git_fake.chmod(0o755)
+            timeout = bin_dir / "timeout"
+            timeout.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+            timeout.chmod(0o755)
+            env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "RUNNER_TEMP": d, "FORK_REF": "x"}
+            subprocess.run(["bash", "-c", script], env=env, check=True)
+            first, second = (Path(d) / "due.txt").read_text().splitlines()
+        self.assertEqual("due: wait: a reason", first)  # The Compare step reads the verdict from the first line.
+        self.assertRegex(second, r"^measured at \d{4}-\d\d-\d\d \d\d:\d\d UTC")
+
+    def test_a_verdict_alone_can_edit_the_issue(self):
+        # The issue is edited only when its first line changes, and "wait" turns into "due" with no push at all.
+        self.assertIn("due=$verdict replay=$replay -->", self.step("Compare"))
+        self.assertIn('sed -n 1p "$BODY"', self.step("Update the drift issue"))
+
+
 class MapOverlapRepoTest(RepoFixture, unittest.TestCase):
     """map-overlap on the fixture: the old fork on B edits shared.txt, which U also changed."""
 
