@@ -1208,6 +1208,16 @@ class CiUnitTestsScriptTest(unittest.TestCase):
         self.assertTrue(any("crashed" in p for p in problems), problems)
         self.assertTrue(any("no JUnit XML" in p for p in problems), problems)
 
+    def test_a_crash_cannot_pass_off_an_older_runs_xml_as_its_own(self):
+        # Seen on a real run: 919 files of the previous run, in a directory the crash never touched.
+        old = self.dir / "app/build/test-results/testFullDebugUnitTest"
+        old.mkdir(parents=True)
+        (old / "TEST-a.xml").write_text(self.XML)
+        _, (classes, _, problems) = self.gate(
+            "echo \"> Process 'Gradle Test Executor 1' finished with non-zero exit value 3\"\nexit 1\n")
+        self.assertEqual(set(), classes)
+        self.assertTrue(any("no JUnit XML" in p for p in problems), problems)
+
     def test_a_build_error_is_incomplete(self):
         code, (_, _, problems) = self.gate("echo 'Compilation error'\nexit 1\n")
         self.assertEqual(1, code)
