@@ -138,6 +138,16 @@ none
 
 ## Notes
 
+Attaching to upstream code. Conflicts come from nearness to upstream's edits, not from the size of a change
+(study of 2026-10-31, `docs/ROADMAP_LOG.md`):
+
+- A fork argument never goes last in a call in an upstream-owned file. Six of the twelve conflict regions in
+  `PlayerRuntimeControllerInitialization.kt` sat at argument tails.
+- New fork logic lives in a fork-owned file, with one wiring line in upstream's. Do not refactor existing hunks for
+  this: the history replays them anyway.
+- Before a new fork feature, check `upstream/main` and official NuvioTV (`sync.py official-preview`).
+- When upstream covers a fork change, prefer dropping the fork's version, except for the protected features.
+
 Upstream syncs (ROADMAP U1.5) run through `/upstream-sync` (`.claude/skills/upstream-sync/`), not `/ship`.
 One rebased branch: `perf/shield-pass`, the default branch, = `upstream/main` + the fork's CI, test and fix
 commits and `.github/workflows/upstream-drift.yml` (which only runs from the default branch) + the Shield work.
