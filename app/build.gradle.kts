@@ -376,6 +376,7 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.all { it.maxHeapSize = "1g" }
     }
 }
 
