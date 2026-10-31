@@ -112,7 +112,6 @@ jobs:
         with:
           # In this repository because it is an ancestor of the pushed candidate.
           ref: ${{ inputs.upstream_sha }}
-          persist-credentials: false
 
       - name: Checkout the runner script
         # Upstream's tree does not have it. After the upstream checkout, which cleans the workspace.
@@ -121,7 +120,6 @@ jobs:
         with:
           path: gate
           sparse-checkout: scripts
-          persist-credentials: false
 
       - name: Set up Java
         if: steps.cached.outputs.cache-hit != 'true'
@@ -165,7 +163,6 @@ jobs:
           # History only, for the ancestor check.
           fetch-depth: 0
           filter: blob:none
-          persist-credentials: false
 
       - name: Download the candidate's results
         # A missing artifact is the compare step's verdict, with the reason it prints.
