@@ -10,6 +10,64 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-10-31: DV3.1 HDR10+ → 8.1 provider, device gate (PR #30)
+
+- [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
+  on the owner's TV; the debug log shows an RPU in every AU and L1 equal to `dovi_tool` for the same
+  frames. First write into `DESIGN.md` 2.4 the HDR10+ rules of hdr-analyze `docs/RPU_BUILDER.md`: the
+  scene rule runs in presentation order while the extractor reads in decode order; an AU without a
+  payload reuses the previous payload in decode order; non-HDR10+ T.35 messages are skipped. Needs:
+  DV2.7, DV2.8.
+
+Resolution: passed on 2026-10-30 on build `36e0e192a`, Shield to the owner's LG C9, one 4K 23.976 fps
+HDR10+ web series in Matroska. L1 equals `dovi_tool` on all 6115 compared frames.
+
+**Dolby Vision on the TV.** The owner read Dolby Vision on the TV while playing S01E03 of the series. For
+the compared playback, S01E02, the log shows the same path: `HDR10+ SEI scan, track 1: 1 HDR10+ SEI in the
+first AU`, `DV_INJECT track 1: HDR10+ 8.1`, `Dolby Vision 8.1 as dvhe.08.06`, the decoder
+`OMX.Nvidia.DOVI.decode`.
+
+**An RPU in every AU.** `debug.nuvio.rpu_dump` 100000 from 0:00, 255 s of playback, then seeks. The dump's
+`au` counter counts every AU the renderer queues, and with N above the AUs played every AU with an RPU
+leaves a record. AU ordinals have no gap: 0..6116 in the playback from the start and in each of the five
+generations after the seeks. `rpu_dump_to_bin.py --strict` reports 0 problems. `dovi_tool info` 2.3.4 reads
+6115 frames of Profile 8, CM v4.0. The dump's last two AUs are left out: playback stopped before their
+B-frames were queued.
+
+**L1 equal to `dovi_tool`.** The reference ran on the owner's Oracle host, which has the file:
+`hdr10plus_tool extract` (1.7.1, not the 1.7.2 of the handoff; a re-extraction is identical),
+`dovi_tool generate --hdr10plus-json` 2.3.4 with the app's params, `rpu_l1_compare.py`:
+
+| Reference | Frames | L1 differences | Other differences | `scene_refresh_flag` differences |
+|---|---|---|---|---|
+| S01E02, the episode played | 6115 | **0** | 0 | 88 |
+| S01E03 | 6115 | 4918 | 0 | 189 |
+| S01E04 | 6115 | 4723 | 0 | 175 |
+
+- The run first failed on S01E03. The handoff named that file from the log of an earlier playback, and the
+  owner had moved on: `PLAYER_START_REQUEST` shows S1E3 at 11:17:12, S1E4 at 11:17:43 and S1E2 at 11:18:51
+  (`startPositionMs=0`), one second before the dumped generation. The durations differ too (3472800 ms
+  and 3296608 ms). An offset search matches 100 % only at offset 0 on S01E02. The other episodes agree on
+  the shared 9.7 s opening and then diverge, first at frame 232; the best offset match on S01E03 is
+  27.8 %. Next time, name the file from the dumped playback's own `PLAYER_START_REQUEST`.
+- All 88 flag differences are extra flags in the app, 1 to 4 frames after a reference scene start, with L1
+  unchanged. None of the 73 reference starts lacks a flag. A simulation of the 2.4 rule in decode order from
+  the slice POCs reproduces all 161 of the app's flags. Every L1 change carries a flag (61 of 61).
+
+**Limits of this evidence.**
+
+- "0 other differences" compares against a config with the app's params, not against what `mkvdovi` writes
+  for this title. The title states no MasteringMetadata in the container. The SEI of S01E02 has P3,
+  0.0001/1000 nits, MaxCLL 108, MaxFALL 53 (MaxFALL 81 on S01E03); the app's RPUs carry 0.005/1000 nits, MaxCLL 1000, MaxFALL 400, source range
+  62..3079 and L9 BT.2020. `mkvdovi` did not run. New step DV3.4.
+- One playback from 0:00 was compared. Seeks show an RPU on every AU but were not compared with
+  `dovi_tool`; a missing payload and the A-B-A case did not occur. `debug.nuvio.dv_refresh_every_start` 1
+  did not run; DV3.2's seek session tests the same switch.
+
+The session followed M2: snapshot `20261030-1106-dv31-gate`, restored clean with 0 drift. The snapshot does
+not cover the logcat prune list, which the session cleared; it was put back by hand, and `adb logcat -p`
+read `~! ~1000/!` afterwards.
+
 ## 2026-10-29: DV3.1 HDR10+ → Dolby Vision 8.1, code (PR #30, step stays open)
 
 - [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
@@ -27,7 +85,7 @@ done:
 
 1. The L1-from-the-key claim holds (`hdr10plus.rs` `l1()`, `peak_brightness_nits` in hdr10plus 2.1.5).
    Kept.
-2. The refresh rule is a heuristic: it misses a flag only for keys A, B, A within the reorder depth, and
+2. The refresh rule is a heuristic: it misses a flag only for keys A, B, A within an anchor's display lead, and
    adds flags with an unchanged L1. Codex proposed a flag on every AU whose predecessor is not known to be
    read. Not taken: with x265's default B-pyramid that flags most frames of every scene. Both cases are
    written into 2.4.
