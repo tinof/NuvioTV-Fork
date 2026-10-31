@@ -102,6 +102,23 @@ Report, for each row: hit or miss, which agent found it, and whether the fix is 
 - predicted stops marked `false-alarm`, and any real stop the resolver's text would not resolve;
 - agents, tokens and minutes, against one analyst per theme on the same sync (65 of 81 verdicts changed nothing).
 
+## Result of 2026-11-01: fail, 4 of 5
+
+Run from an existing session, the weaker form of section 3. The memory index named no adapt.
+
+| Row | Result | Found by |
+| --- | --- | --- |
+| route gate | hit | reader-1, reader-3 (resolver too) |
+| USB tunnelling seed | hit | reader-1, under the neighbouring `dcc321f3c` (resolver too) |
+| needsVideoEffectRebuild during quiesce | **miss** | no agent named it |
+| strongHardware meaning | hit | reader-2 |
+| lazy deferred isActive | hit | reader-3 |
+
+- `summary.complete` was false, with 6 critic issues: 3 gaps and 3 contradictions. One contradiction stopped a reader's fix that would lose a protected line.
+- 7 adapts beyond the sheet, none judged false by reading: the HDR fallback a two-argument call drops silently, the `ID_CLUSTER` order, the early scan after Tracks behind Clusters (two rows), the bg label, and two duplicates of sheet rows under other commits. These were not run.
+- Cost: 5 agents, 1,085,378 tokens, 29.9 min. Per-commit classify took 10 agents, 1,382,704 tokens, 25.1 min. So 21 % fewer tokens and no time saved, against an estimate of 0.5M and 12 min.
+- Leak check: 9 calls read an agent's own saved tool output under `.claude/projects`, and 2 wrote a scratch script. A leak can only raise a score, so the fail stands either way.
+
 ## 5. After the run
 
 A fail is a result: report it and leave the default alone. A prompt changed after reading the misses is no longer
