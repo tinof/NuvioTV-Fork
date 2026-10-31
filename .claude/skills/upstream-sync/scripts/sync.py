@@ -5,6 +5,7 @@ Commands:
   map-overlap [--upstream R] [--perf R] [--scratch DIR]
   dry-run [--base R] [--fork R] [--onto R] [--json]
   due [--upstream R] [--fork R] [--now EPOCH] [--json]
+  official-preview [--url U] [--upstream R] [--fork R]
   todo-edit --drop SHA[,SHA...] <git-rebase-todo>
   stop-check
   drops --decisions classify.json --range BASE..TIP
