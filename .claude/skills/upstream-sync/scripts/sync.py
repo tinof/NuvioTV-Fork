@@ -4,6 +4,7 @@ Commands:
   preflight [--allow-branch B ...] [--no-fetch] [--json]
   map-overlap [--upstream R] [--perf R] [--scratch DIR]
   dry-run [--base R] [--fork R] [--onto R] [--json]
+  due [--upstream R] [--fork R] [--now EPOCH] [--json]
   todo-edit --drop SHA[,SHA...] <git-rebase-todo>
   stop-check
   drops --decisions classify.json --range BASE..TIP
@@ -376,10 +377,17 @@ def cmd_preflight(a, cfg):
     counts = {
         perf_b: (int(out("rev-list", "--count", f"{fperf}..{umain}")), int(out("rev-list", "--count", f"{umain}..{fperf}"))),
     }
-    report = {"blocks": blocks, "warnings": warns, "behind_ahead": counts, "upstream": out("rev-parse", umain)}
+    # Advisory: neither a verdict nor a failure to reach one changes the exit code.
+    try:
+        due = sync_tools.due_report(cfg, umain, fperf)
+        due_text = sync_tools.due_line(due)
+    except RuntimeError as e:
+        due, due_text = {"verdict": "not available", "reason": str(e)}, f"due: not available ({e})"
+    report = {"blocks": blocks, "warnings": warns, "behind_ahead": counts, "upstream": out("rev-parse", umain), "due": due}
     if a.json:
         print(json.dumps(report, indent=1))
     else:
+        print(due_text)
         for b, (behind, ahead) in counts.items():
             print(f"{b}: {behind} behind {umain}, {ahead} ahead")
         for w in warns:
