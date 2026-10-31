@@ -239,8 +239,8 @@ class HelperTest(unittest.TestCase):
         self.assertIn("--allow-changed", hints[1])
 
 
-def run(*args, cwd):
-    subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True)
+def run(*args, cwd, env=None):
+    subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True, env=env)
 
 
 class ProtectedHelperTest(unittest.TestCase):
@@ -561,6 +561,29 @@ class PreflightRepoTest(RepoFixture, unittest.TestCase):
         self.assertEqual(sync.OK, code, report)
         self.assertIn("perf/shield-pass: 1 behind upstream/main", report)
 
+    def test_the_due_line_is_printed_and_a_wait_does_not_block(self):
+        self.refs(main="B", perf="old")
+        code, report = self.preflight()
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("due: wait:", report)
+
+    def test_a_level_fork_prints_level_and_keeps_its_exit_code(self):
+        self.refs(main="U", perf="new")
+        code, report = self.preflight()
+        self.assertEqual(sync.NOTHING, code, report)
+        self.assertIn("due: level:", report)
+
+    def test_a_failure_to_judge_does_not_block(self):
+        self.refs(main="B", perf="old")
+        real = tools.due_report
+        tools.due_report = lambda *a: (_ for _ in ()).throw(RuntimeError("no dates"))
+        try:
+            code, report = self.preflight()
+        finally:
+            tools.due_report = real
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("due: not available (no dates)", report)
+
 
 class SkillDocTest(unittest.TestCase):
     """The publish command in SKILL.md, which no script runs."""
@@ -730,6 +753,124 @@ class RenameRepoTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn("upstream removed x.txt", report)
         self.assertNotIn("fork change lost", report)
+
+
+class DueVerdictTest(unittest.TestCase):
+    def verdict(self, behind=3, quiet=1.0, age=1.0):
+        return tools.due_verdict(behind, quiet, age, 24, 7)[0]
+
+    def test_level_beats_everything(self):
+        self.assertEqual("level", self.verdict(behind=0, quiet=500, age=50))
+
+    def test_a_settled_batch_is_due_from_the_exact_hour(self):
+        self.assertEqual("due", self.verdict(quiet=24.0))
+        self.assertEqual("wait", self.verdict(quiet=23.9))
+
+    def test_the_weekly_floor_is_due_while_upstream_keeps_pushing(self):
+        self.assertEqual("due", self.verdict(quiet=0.1, age=7.1))
+        self.assertEqual("wait", self.verdict(quiet=0.1, age=7.0))
+
+
+class DueRepoTest(unittest.TestCase):
+    """Base commit at T, a fork commit, and an upstream that merges an old side branch. Times are in hours after T."""
+
+    T = 1_790_000_000
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.cwd = os.getcwd()
+        os.chdir(self.dir)
+        run("git", "init", "-q", "-b", "main", cwd=self.dir)
+        run("git", "config", "user.email", "t@example.com", cwd=self.dir)
+        run("git", "config", "user.name", "t", cwd=self.dir)
+        self.commit("base", 0)
+        run("git", "tag", "B", cwd=self.dir)
+        run("git", "checkout", "-q", "-b", "fork", cwd=self.dir)
+        self.commit("fork commit", 1)
+        run("git", "checkout", "-q", "main", cwd=self.dir)
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        self.tmp.cleanup()
+
+    def env(self, hours):
+        stamp = f"{self.T + int(hours * 3600)} +0000"
+        return {**os.environ, "GIT_COMMITTER_DATE": stamp, "GIT_AUTHOR_DATE": stamp}
+
+    def commit(self, subject, hours):
+        run("git", "commit", "-q", "--allow-empty", "-m", subject, cwd=self.dir, env=self.env(hours))
+
+    def merge_official(self, hours, side_hours):
+        run("git", "checkout", "-q", "-b", "side", "B", cwd=self.dir)
+        self.commit("official: an old commit", side_hours)
+        run("git", "checkout", "-q", "main", cwd=self.dir)
+        run("git", "merge", "-q", "--no-ff", "-m", "Merge official NuvioTV abc123", "side", cwd=self.dir, env=self.env(hours))
+
+    def due(self, now_hours, cfg=None):
+        return tools.due_report(cfg or {}, "main", "fork", now=self.T + now_hours * 3600)
+
+    def test_level_at_zero_behind(self):
+        run("git", "checkout", "-q", "fork", cwd=self.dir)
+        self.commit("more fork", 2)
+        run("git", "branch", "-f", "main", "B", cwd=self.dir)
+        report = self.due(500)
+        self.assertEqual(("level", 0), (report["verdict"], report["behind"]))
+        self.assertIsNone(report["newest_official_merge"])
+
+    def test_a_batch_that_just_landed_waits_and_settles_later(self):
+        self.merge_official(100, side_hours=-500)
+        self.commit("feat: a themed batch", 100.1)
+        self.assertEqual("wait", self.due(101)["verdict"])
+        report = self.due(124.1)
+        self.assertEqual("due", report["verdict"])
+        self.assertEqual(24.0, report["quiet_hours"])
+
+    def test_an_old_side_commit_does_not_make_a_fresh_merge_overdue(self):
+        # The side commit is three weeks old; the sync of 2026-10-31 had exactly this shape.
+        self.merge_official(100, side_hours=-500)
+        report = self.due(101)
+        self.assertEqual("wait", report["verdict"])
+        self.assertEqual(0.0, report["age_days"])
+
+    def test_the_weekly_floor_counts_from_the_oldest_first_parent_commit(self):
+        self.commit("fix: first unsynced", 10)
+        self.commit("fix: still pushing", 7 * 24 + 11)
+        report = self.due(7 * 24 + 11.5)
+        self.assertEqual("due", report["verdict"])
+        self.assertEqual(7.1, report["age_days"])
+        self.assertIn("older than 7 days", report["reason"])
+
+    def test_the_newest_official_merge_since_the_base_is_named(self):
+        self.commit("fix: no merge yet", 2)
+        self.assertIsNone(self.due(3)["newest_official_merge"])
+        self.merge_official(5, side_hours=-100)
+        self.commit("fix: after it", 6)
+        merge = self.due(7)["newest_official_merge"]
+        self.assertEqual("Merge official NuvioTV abc123", merge["subject"])
+        self.assertEqual(2.0, merge["hours_ago"])
+
+    def test_settings_come_from_the_config(self):
+        self.commit("fix: one", 2)
+        self.assertEqual("wait", self.due(4)["verdict"])
+        self.assertEqual("due", self.due(4, {"settle_hours": 1})["verdict"])
+        self.commit("fix: two", 49)
+        self.assertEqual("due", self.due(50, {"max_age_days": 1})["verdict"])
+        self.assertEqual((24, 7), (CONFIG["settle_hours"], CONFIG["max_age_days"]))
+
+    def test_the_command_is_injectable_and_prints_one_line_or_json(self):
+        self.commit("fix: one", 2)
+        now = str(self.T + 3 * 3600)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = sync.main(["due", "--upstream", "main", "--fork", "fork", "--now", now, "--json"])
+        self.assertEqual(sync.OK, code)
+        self.assertEqual("wait", json.loads(buf.getvalue())["verdict"])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            sync.main(["due", "--upstream", "main", "--fork", "fork", "--now", now])
+        self.assertEqual(1, len(buf.getvalue().strip().splitlines()))
+        self.assertTrue(buf.getvalue().startswith("due: wait: "), buf.getvalue())
 
 
 class DryRunRepoTest(RepoFixture, unittest.TestCase):

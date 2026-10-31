@@ -23,6 +23,8 @@
   "pinned_binaries": {
     "app/libs/lib-datasource-release.aar": "692cae00f2eadf35dc53e25107c464c5648ef39d2bf74adcb2756b8c51a7e502"
   },
+  "settle_hours": 24,
+  "max_age_days": 7,
   "baseline_known_failures": [
     "androidx.media3.datasource.LocalhostZeroCopyDataSourceTest.testHttpError404"
   ],
