@@ -8,6 +8,17 @@ import com.nuvio.tv.core.player.dvmkv.MatroskaExtractor
 import com.nuvio.tv.core.util.DebugSwitches
 import java.io.ByteArrayOutputStream
 
+/** The sources a real extractor uses: [DolbyVisionMatroskaTransformer]'s switches reach them here. */
+@UnstableApi
+internal fun defaultRpuSource(
+    hdr10PlusEnabled: Boolean,
+    seiStaticEnabled: Boolean,
+    native: Hdr10PlusNative = Hdr10PlusNative.Library,
+): DvRpuSource = DvRpuSources(
+    StaticDvRpuSource.fromSwitches(),
+    Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled, native = native, seiStatic = seiStaticEnabled),
+)
+
 /**
  * App-level (AAR mode) implementation of the vendored Matroska extractor's
  * [MatroskaExtractor.DolbyVisionSampleTransformer] seam.
@@ -47,10 +58,7 @@ internal class DolbyVisionMatroskaTransformer(
     private val hdr10PlusEnabled: Boolean = DebugSwitches.flag(Hdr10PlusDvRpuSource.SWITCH) != false,
     // DV3.4: the static metadata of the SEI, off with debug.nuvio.dv_sei_static 0.
     private val seiStaticEnabled: Boolean = DebugSwitches.flag(Hdr10PlusDvRpuSource.SEI_STATIC_SWITCH) != false,
-    private val rpuSource: DvRpuSource = DvRpuSources(
-        StaticDvRpuSource.fromSwitches(),
-        Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled, seiStatic = seiStaticEnabled),
-    ),
+    private val rpuSource: DvRpuSource = defaultRpuSource(hdr10PlusEnabled, seiStaticEnabled),
     private val refreshEveryStart: Boolean = DebugSwitches.flag(REFRESH_EVERY_START_SWITCH) == true,
 ) : MatroskaExtractor.DolbyVisionSampleTransformer {
 
