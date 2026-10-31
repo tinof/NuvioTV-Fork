@@ -478,6 +478,20 @@ class VerifyRepoTest(RepoFixture, unittest.TestCase):
         self.assertIn("fork-only.txt: sha256", report)
 
 
+    def test_docs_entry_reads_what_verify_prints(self):
+        # Producer and parser side by side: a changed verify line must fail here, not in a follow-up PR.
+        self.cfg["protected_features"] = self.PROTECTED
+        self.new_branch(self.FAITHFUL + [("test: a fix", {"upstream.txt": {2: "fix"}})])
+        code, report = self.verify(allow_new=self.sha("new")[:9], allow_same=["shared.txt"])
+        self.assertEqual(0, code, report)
+        facts = tools.parse_verify_report(report)
+        self.assertEqual(("old", "new"), (facts["old"], facts["new"]))
+        self.assertEqual(("1", "1", "0", "1"), (facts["identical"], facts["changed"], facts["dropped"], facts["added"]))
+        self.assertEqual([("feat", "1", "1", "0")], facts["protected"])
+        self.assertEqual(1, len(facts["waived"]))
+        self.assertEqual(1, len(facts["new_commits"]))
+        self.assertTrue(facts["passed"])
+
     def test_a_decided_drop_outside_the_range_is_only_a_note(self):
         self.new_branch(self.FAITHFUL)
         path = self.dir / "classify.json"
@@ -798,6 +812,165 @@ class RenameRepoTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn("upstream removed x.txt", report)
         self.assertNotIn("fork change lost", report)
+
+
+class DocsEntryTest(unittest.TestCase):
+    DEFAULTS = [
+        {"upstream": "d5da6bcaaaae", "rule": "take-upstream", "what": "New setting libassRenderMode, default OVERLAY.", "note": ""},
+        {"upstream": "cc9bdb19eea9", "rule": "take-upstream", "what": "New setting libass_render_mode, default OVERLAY.",
+         "note": "Under '### Upstream defaults taken with the sync of <date>': ASS render mode defaults to Overlay."},
+        {"upstream": "d5da6bcaa", "rule": "take-upstream", "what": "New setting ASS render mode (Store.kt:645).", "note": ""},
+        {"upstream": "e8cec44a6167", "rule": "take-upstream", "what": "Lanes go to 2.", "note": ""},
+        {"upstream": "e8cec44a6167", "rule": "take-upstream", "what": "Batches hold 48 MB.", "note": ""},
+        {"upstream": "1ad519b85e37", "rule": "keep-fork-gated", "what": "Upstream keeps useSystemPassthrough off.", "note": ""},
+        {"upstream": "aaaaaaaaaaaa", "rule": "take-upstream", "what": "New key tunnelMode, default on.", "note": ""},
+        {"upstream": "bbbbbbbbbbbb", "rule": "keep-fork-gated", "what": "Upstream moves tunnelMode to a store.", "note": ""},
+    ]
+    REPORT = ("## Verify oldoldold1234 -> newnewnew5678\n\nrange-diff: 5 identical, 2 changed, 1 dropped, 0 new\n\n"
+              "### Protected features\n\n- aac-to-dts: 45 commits, 5970 lines checked, 0 lost\n\n### Notes\n\n"
+              "- waived by --allow-same: a.kt may equal abc\n\n### Result\n\n- all checks pass\n")
+
+    def section(self, defaults=None):
+        return "\n".join(tools.defaults_section({"defaults": self.DEFAULTS if defaults is None else defaults}, "2026-11-07"))
+
+    def test_one_bullet_per_setting_with_every_commit_cited_once(self):
+        text = self.section()
+        self.assertIn("- ASS render mode defaults to Overlay. (d5da6bcaa, cc9bdb19e)", text)
+        bullets = text.split("Measurements taken")[0]
+        self.assertEqual(1, bullets.count("render mode"), text)
+
+    def test_a_shared_commit_alone_does_not_merge(self):
+        # One upstream commit often changes several settings.
+        text = self.section()
+        self.assertIn("- Lanes go to 2. (e8cec44a6)", text)
+        self.assertIn("- Batches hold 48 MB. (e8cec44a6)", text)
+
+    def test_a_word_run_that_merely_holds_a_name_does_not_merge(self):
+        # "a strong box" holds strongBox, but says nothing about that setting.
+        lanes = {"upstream": "e8cec44a6", "rule": "take-upstream", "what": "Two lanes when strongBox is false.", "note": ""}
+        batch = {"upstream": "e8cec44a6", "rule": "take-upstream", "what": "Batches hold 48 MB on a strong box.", "note": ""}
+        text = self.section([lanes, batch])
+        self.assertIn("- Batches hold 48 MB on a strong box. (e8cec44a6)", text)
+
+    def test_every_merged_entry_stays_visible_to_the_human(self):
+        text = self.section()
+        check = text.split("TODO: these analyst entries were merged")[1]
+        self.assertIn("New setting libass_render_mode, default OVERLAY.", check)
+        self.assertIn("New setting ASS render mode (Store.kt:645).", check)
+
+    def test_identical_text_is_one_entry(self):
+        same = {"upstream": "e8cec44a6167", "rule": "take-upstream", "what": "Lanes go to 2.", "note": ""}
+        text = self.section([same, dict(same, upstream="c5b872833")])
+        self.assertEqual(1, text.split("TODO: these analyst")[0].count("Lanes go to 2."))
+
+    def test_fork_values_and_upstream_defaults_are_apart(self):
+        text = self.section()
+        taken, kept = text.split("TODO: a row in the plan table")
+        self.assertNotIn("useSystemPassthrough", taken)
+        self.assertIn("useSystemPassthrough", kept)
+
+    def test_a_disagreement_on_the_rule_goes_to_a_human(self):
+        text = self.section()
+        self.assertIn("TODO: analysts disagree", text)
+        self.assertIn("tunnelMode", text.split("TODO: analysts disagree")[1])
+
+    def test_an_empty_list_still_gives_the_frame(self):
+        text = self.section([])
+        self.assertIn("### Upstream defaults taken with the sync of 2026-11-07", text)
+        self.assertIn("Measurements taken before 2026-11-07 predate these defaults.", text)
+
+    def test_a_note_that_is_only_a_location_falls_back_to_the_description(self):
+        where = "Under '### Upstream defaults taken with the sync of <date>':"
+        entry = {"upstream": "e8cec44a6167", "rule": "take-upstream", "what": "Lanes go to 2.", "note": where}
+        for note in (where, where + "  \n"):
+            self.assertIn("- Lanes go to 2. (e8cec44a6)", self.section([dict(entry, note=note)]))
+
+    def test_a_later_note_with_text_wins_over_a_location_alone(self):
+        first = {"upstream": "aaaaaaaaaaaa", "rule": "take-upstream", "what": "New key tunnelMode.", "note": "Under '### X':"}
+        second = dict(first, upstream="bbbbbbbbbbbb", note="Under '### X': tunnel mode is on.")
+        self.assertIn("- Tunnel mode is on. (aaaaaaaaa, bbbbbbbbb)", self.section([first, second]))
+
+    def test_an_entry_with_no_text_is_a_todo_line(self):
+        entry = {"upstream": "e8cec44a6167", "rule": "take-upstream", "what": "", "note": "Under '### X':"}
+        self.assertIn("- TODO: no note or description for this setting. (e8cec44a6)", self.section([entry]))
+
+    def test_the_log_entry_takes_facts_from_the_report(self):
+        entry = "\n".join(tools.log_entry(tools.parse_verify_report(self.REPORT), {"drop": ["abc1234"], "adapt": ["d"]},
+                                          "2026-11-07", "40"))
+        self.assertIn("## 2026-11-07: U1.5 sync onto upstream TODO-version (PR #40)", entry)
+        self.assertIn("from `oldoldold` onto TODO-base. New tip `newnewnew`.", entry)
+        self.assertIn("`verify`: 5 identical, 2 changed, 1 dropped, 0 new. Protected lines: aac-to-dts 45 commits, 5970 lines, 0 lost.", entry)
+        self.assertIn("waived by --allow-same: a.kt may equal abc", entry)
+        self.assertIn("**Classify:** 1 drops, 0 protected asks, 0 keep-resolve, 1 keep-adapt or partial, 0 keep-clean.", entry)
+        self.assertIn("**Drops:** `abc1234`.", entry)
+        self.assertIn("TODO: the reason for each drop.", entry)
+        self.assertIn("TODO: each decision and adapt commit", entry)
+
+    def test_a_failed_verify_is_stated(self):
+        failed = self.REPORT.replace("- all checks pass", "- FAIL: fork change lost: x.kt")
+        entry = "\n".join(tools.log_entry(tools.parse_verify_report(failed), {}, "d", "1"))
+        self.assertIn("`verify` FAILED: fork change lost: x.kt", entry)
+
+    def test_a_report_cut_short_is_a_todo(self):
+        cut = self.REPORT.replace("- all checks pass", "")
+        self.assertIn("TODO: the report states no result", "\n".join(tools.log_entry(tools.parse_verify_report(cut), {}, "d", "1")))
+
+    def test_a_text_that_is_no_report_raises(self):
+        with self.assertRaises(RuntimeError):
+            tools.parse_verify_report("hello\n")
+
+    def command(self, *extra):
+        with tempfile.TemporaryDirectory() as d:
+            report, classify = Path(d) / "verify.txt", Path(d) / "classify.json"
+            report.write_text(self.REPORT)
+            classify.write_text(json.dumps({"summary": {"defaults": self.DEFAULTS[:1]}}))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = sync.main(["docs-entry", "--verify-report", str(report), "--classify", str(classify), *extra])
+        return code, buf.getvalue()
+
+    def test_no_date_or_pr_is_a_todo_not_a_guess(self):
+        code, text = self.command()
+        self.assertEqual(sync.OK, code)
+        self.assertIn("## TODO-date: U1.5 sync", text)
+        self.assertIn("(PR #TODO)", text)
+        self.assertIn("### Upstream defaults taken with the sync of TODO-date", text)
+
+    def test_the_command_prints_both_parts(self):
+        code, text = self.command("--date", "2026-11-07", "--pr", "40")
+        self.assertEqual(sync.OK, code)
+        self.assertIn("<!-- docs/ROADMAP_LOG.md -->", text)
+        self.assertIn("<!-- docs/shield-todo.md -->", text)
+
+    def test_tiers_without_classify_get_a_skeleton_with_todos(self):
+        # Tiers skip and light run no classify step, so no count may read as a fact.
+        with tempfile.TemporaryDirectory() as d:
+            report = Path(d) / "verify.txt"
+            report.write_text(self.REPORT)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = sync.main(["docs-entry", "--verify-report", str(report), "--date", "2026-11-07"])
+        text = buf.getvalue()
+        self.assertEqual(sync.OK, code)
+        self.assertIn("`verify`: 5 identical, 2 changed, 1 dropped, 0 new.", text)
+        self.assertIn("**Classify:** TODO: no classify.json", text)
+        self.assertNotIn("0 drops", text)
+        self.assertIn("### Upstream defaults taken with the sync of 2026-11-07", text)
+        self.assertIn("TODO: no classify.json, so list the upstream defaults by hand.", text)
+        self.assertNotIn("TODO: rewrite each bullet", text)
+
+    def test_the_skill_leaves_out_the_flags_on_tiers_without_classify(self):
+        text = (SKILL / "SKILL.md").read_text()
+        verify = text.split("## 6. Verify")[1].split("2. A failure blocks.")[0]
+        self.assertRegex(verify, r"[Oo]n tiers `skip` and `light`.*leave out `--decisions`")
+        followups = text.split("## 9. Follow-ups")[1].split("\n## ")[0]
+        self.assertIn("[--classify <scratch>/classify.json]", followups)
+        self.assertRegex(followups, r"[Oo]n tiers `skip` and `light`.*leave out `--classify`")
+
+    def test_a_missing_input_is_a_usage_error(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = sync.main(["docs-entry", "--verify-report", "/nonexistent", "--classify", "/nonexistent"])
+        self.assertEqual(sync.USAGE, code)
 
 
 class JudgementRepoTest(RepoFixture, unittest.TestCase):
