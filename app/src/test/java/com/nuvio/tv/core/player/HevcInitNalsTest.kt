@@ -312,7 +312,7 @@ class HevcInitNalsTest {
 
     @Test
     fun `luminance is unsigned 32 bits`() {
-        val sei = staticOf(fakeSeiNal(137 to fakeMasteringPayload(maxUnits = 0xFFFF_FFFFL, minUnits = 0x8000_0000L)))!!
+        val sei = staticOf(fakeSeiNal(137 to fakeMasteringPayload(maxUnits = 0xFFFF_FFFEL, minUnits = 0x8000_0000L)))!!
         assertEquals(429_496.72f, sei.masteringMaxNits!!, 0.1f)
         assertEquals(214_748.36f, sei.masteringMinNits!!, 0.1f)
     }
@@ -370,6 +370,81 @@ class HevcInitNalsTest {
         val twoNals = HevcInitNals.readAuPrefix(au, au.size, au.size, 4).seiStatic!!
         assertEquals(1000f, twoNals.masteringMaxNits!!, 0f)
         assertEquals(300, twoNals.maxFrameAverageLightLevel)
+    }
+
+    @Test
+    fun `the first mastering display stays whole, never mixed with a later one`() {
+        val bt2020 = listOf(8500 to 39850, 6550 to 2300, 35400 to 14600)
+        val first = HevcInitNals.seiStaticInSei(fakeSeiNal(137 to fakeMasteringPayload()))!!
+        val second = HevcInitNals.seiStaticInSei(
+            fakeSeiNal(137 to fakeMasteringPayload(bt2020, maxUnits = 40_000_000, minUnits = 50))
+        )!!
+        val merged = first.then(second)
+        assertRgbw(r + g + b + d65, merged.masteringPrimaries)
+        assertEquals(1000f, merged.masteringMaxNits!!, 0f)
+        assertEquals(0.0001f, merged.masteringMinNits!!, 0.00000001f)
+    }
+
+    @Test
+    fun `all-ones values are not stated, as MediaInfo treats them`() {
+        val ones = 0xFFFF_FFFFL
+        for ((max, min) in listOf(ones to ones, ones to 1L, 10_000_000L to ones)) {
+            val sei = staticOf(fakeSeiNal(137 to fakeMasteringPayload(maxUnits = max, minUnits = min)))!!
+            assertNull(sei.masteringMaxNits)
+            assertNull(sei.masteringMinNits)
+            assertRgbw(r + g + b + d65, sei.masteringPrimaries)
+        }
+        val (green, blue, red) = SEI_P3_GBR
+        for (payload in listOf(
+            fakeMasteringPayload(listOf(0xFFFF to green.second, blue, red)),
+            fakeMasteringPayload(listOf(green, blue, red.first to 0xFFFF)),
+            fakeMasteringPayload(white = 0xFFFF to SEI_D65.second),
+        )) {
+            val sei = staticOf(fakeSeiNal(137 to payload))!!
+            assertNull(sei.masteringPrimaries)
+            assertEquals(1000f, sei.masteringMaxNits!!, 0f)
+        }
+    }
+
+    @Test
+    fun `a later message fills in only until there are primaries`() {
+        val ones = 0xFFFF_FFFFL
+        val noLuminance = HevcInitNals.seiStaticInSei(fakeSeiNal(137 to fakeMasteringPayload(maxUnits = ones)))!!
+        val valid = HevcInitNals.seiStaticInSei(fakeSeiNal(137 to fakeMasteringPayload(maxUnits = 40_000_000, minUnits = 50)))!!
+        // Primaries stated: the first message stays, without luminance.
+        assertNull(noLuminance.then(valid).masteringMaxNits)
+        // No primaries: the later message replaces both.
+        val noPrimaries = HevcInitNals.seiStaticInSei(fakeSeiNal(137 to fakeMasteringPayload(white = 0xFFFF to 1)))!!
+        val merged = noPrimaries.then(valid)
+        assertEquals(4000f, merged.masteringMaxNits!!, 0f)
+        assertEquals(0.005f, merged.masteringMinNits!!, 0.0000001f)
+        assertRgbw(r + g + b + d65, merged.masteringPrimaries)
+        // A later message without primaries still replaces the luminance.
+        val laterNoPrimaries = HevcInitNals.seiStaticInSei(
+            fakeSeiNal(137 to fakeMasteringPayload(white = 0xFFFF to 1, maxUnits = 40_000_000))
+        )!!
+        assertEquals(4000f, noPrimaries.then(laterNoPrimaries).masteringMaxNits!!, 0f)
+        // A message that states only light levels leaves the mastering display alone.
+        val light = HevcInitNals.seiStaticInSei(fakeSeiNal(144 to fakeLightLevelPayload(108, 53)))!!
+        assertEquals(1000f, noPrimaries.then(light).masteringMaxNits!!, 0f)
+    }
+
+    @Test
+    fun `several SEI NALs of an hvcC are read in order`() {
+        val hvcC = HevcColourFixtures.hvcC(
+            32 to listOf(HevcColourFixtures.vps("pq")),
+            33 to listOf(HevcColourFixtures.sps("pq")),
+            34 to listOf(HevcColourFixtures.pps("pq")),
+            39 to listOf(
+                fakeSeiNal(137 to fakeMasteringPayload()),
+                fakeSeiNal(144 to fakeLightLevelPayload(108, 53)),
+                fakeSeiNal(137 to fakeMasteringPayload(maxUnits = 40_000_000)),
+                fakeSeiNal(144 to fakeLightLevelPayload(500, 300)),
+            ),
+        )
+        val sei = HevcInitNals.seiStatic(initData(hvcC))!!
+        assertEquals(1000f, sei.masteringMaxNits!!, 0f)
+        assertEquals(500, sei.maxContentLightLevel)
     }
 
     @Test

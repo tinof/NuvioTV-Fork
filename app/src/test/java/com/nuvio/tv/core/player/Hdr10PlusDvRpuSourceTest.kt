@@ -5,6 +5,10 @@ import com.nuvio.tv.core.player.DoviRpuBuilder.L1
 import com.nuvio.tv.core.player.DoviRpuBuilder.Level6
 import com.nuvio.tv.core.player.DoviRpuBuilder.ShotRpu
 import com.nuvio.tv.core.player.DoviRpuBuilder.SourceRange
+import com.nuvio.tv.core.util.DebugSwitches
+import io.mockk.every
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -335,11 +339,46 @@ class Hdr10PlusDvRpuSourceTest {
         assertEquals(Level6(1000, 10_000, 1000, 400), level6(DvTrackFacts(seiStatic = DvSeiStatic(p3, 1000f, 5f))))
         // At the edge of the plausible range.
         assertEquals(DoviRpuBuilder.Profile.P81(SourceRange(10_000, 10_000)), range(10_000f, 1f))
+        // Rounded, this peak would look plausible: 100 nits.
+        assertEquals(DoviRpuBuilder.Profile.P81(null), range(99.6f, 0.005f))
     }
 
     @Test
-    fun `an implausible container value is guarded the same way`() {
-        assertEquals(DoviRpuBuilder.Profile.P81(null), Hdr10PlusDvRpuSource.params(DvTrackFacts(emptyList(), 20_000f, 5f), fake).profile)
+    fun `a container pair keeps DV3_1's range, of the capped values, in both switch states`() {
+        val container = DvTrackFacts(listOf(payload(1)), 20_000f, 5f)
+        for (seiStatic in listOf(true, false)) {
+            Hdr10PlusDvRpuSource(native = fake, seiStatic = seiStatic).prepare(P81, container)
+            assertEquals(DoviRpuBuilder.Profile.P81(SourceRange(10_000, 10_000)), fake.created.last().profile)
+        }
+    }
+
+    @Test
+    fun `a set of 8 container chromaticities wins even when it names no gamut`() {
+        val odd = floatArrayOf(0.5f, 0.3f, 0.3f, 0.5f, 0.2f, 0.2f, 0.3f, 0.3f)
+        val filled = DvTrackFacts(masteringPrimaries = odd, containerPrimaries = 9, seiStatic = title).filledFromSei()
+        assertTrue(DvStaticField.MASTERING_PRIMARIES !in filled.fromSei)
+        assertEquals(DoviRpuBuilder.PRIMARIES_BT2020, Hdr10PlusDvRpuSource.sourcePrimaryIndex(filled))
+    }
+
+    @Test
+    fun `the two switches reach the source and the extractor`() {
+        val facts = DvTrackFacts(listOf(payload(1)), seiStatic = title)
+        defaultRpuSource(hdr10PlusEnabled = true, seiStaticEnabled = false, native = fake).prepare(P81, facts)
+        assertEquals(Level6(1000, 50, 1000, 400), fake.created.last().level6)
+        defaultRpuSource(hdr10PlusEnabled = true, seiStaticEnabled = true, native = fake).prepare(P81, facts)
+        assertEquals(Level6(1000, 1, 108, 53), fake.created.last().level6)
+
+        val config = DolbyVisionConversionConfig(active = false, convertNonDolbyVision = true, stats = DolbyVisionStatsSession())
+        mockkObject(DebugSwitches)
+        try {
+            every { DebugSwitches.flag(any()) } returns null
+            assertTrue(DolbyVisionMatroskaTransformer(config).readsSeiStatic())
+            every { DebugSwitches.flag(Hdr10PlusDvRpuSource.SEI_STATIC_SWITCH) } returns false
+            assertFalse(DolbyVisionMatroskaTransformer(config).readsSeiStatic())
+            assertTrue(DolbyVisionMatroskaTransformer(config).convertsHdr10Plus())
+        } finally {
+            unmockkObject(DebugSwitches)
+        }
     }
 
     @Test
@@ -398,7 +437,7 @@ class Hdr10PlusDvRpuSourceTest {
 
         val none = label(DvTrackFacts(listOf(payload(1))))
         assertTrue(none, "origin mastering max default, mastering min default, MaxCLL default, MaxFALL default, L9 default" in none)
-        assertTrue(none, "no static SEI" in none)
+        assertTrue(none, "no static SEI read" in none)
 
         val colourOnly = label(DvTrackFacts(listOf(payload(1)), containerPrimaries = 9))
         assertTrue(colourOnly, "L9 container" in colourOnly)
@@ -409,6 +448,11 @@ class Hdr10PlusDvRpuSourceTest {
 
         val lowered = label(DvTrackFacts(listOf(payload(1)), seiStatic = DvSeiStatic(maxContentLightLevel = 50, maxFrameAverageLightLevel = 108)))
         assertTrue(lowered, "MaxFALL lowered to MaxCLL" in lowered)
+
+        val raised = label(DvTrackFacts(listOf(payload(1)), seiStatic = DvSeiStatic(maxFrameAverageLightLevel = 1200)))
+        assertTrue(raised, "MaxCLL from MaxFALL, MaxFALL SEI" in raised)
+        val followed = label(DvTrackFacts(listOf(payload(1)), seiStatic = DvSeiStatic(maxContentLightLevel = 300)))
+        assertTrue(followed, "MaxCLL SEI, MaxFALL from MaxCLL" in followed)
     }
 
     private fun au(timeMs: Int, scene: Int?, l1: Int = scene ?: 0) = au(timeMs.toLong(), scene, l1)

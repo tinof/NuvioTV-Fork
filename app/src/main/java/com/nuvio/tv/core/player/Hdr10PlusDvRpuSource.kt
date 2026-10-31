@@ -122,19 +122,26 @@ internal class Hdr10PlusDvRpuSource(
          * `mkvdovi`'s 8.1 params for an HDR10+ title (DESIGN.md 2.4): CM v4.0 and its average floor, L6 from
          * the container with `mkvdovi`'s defaults for what it does not state (a zero MaxCLL or MaxFALL is
          * not stated, a zero mastering minimum is), each field capped at 10 000, and the source range of
-         * the mastering values before that cap: a capped value must not turn plausible (DV3.4).
+         * the final mastering values. A pair from the SEI is judged as stated, before the cap and the
+         * rounding, as `mkvdovi` judges it: neither may turn an implausible value plausible (DV3.4).
          */
         internal fun params(facts: DvTrackFacts, native: Hdr10PlusNative): DoviRpuBuilder.Params {
             val uncapped = uncappedLevel6(facts)
-            val range = native.sourceRange81(
-                uncapped.minDisplayMasteringLuminance / 10_000.0,
-                uncapped.maxDisplayMasteringLuminance.toDouble(),
-            )
+            val level6 = capped(uncapped)
+            val seiPeak = facts.masteringMaxNits?.takeIf { DvStaticField.MASTERING_LUMINANCE in facts.fromSei }
+            val range = if (seiPeak != null) {
+                native.sourceRange81(uncapped.minDisplayMasteringLuminance / 10_000.0, seiPeak.toDouble())
+            } else {
+                native.sourceRange81(
+                    level6.minDisplayMasteringLuminance / 10_000.0,
+                    level6.maxDisplayMasteringLuminance.toDouble(),
+                )
+            }
             return DoviRpuBuilder.Params(
                 profile = DoviRpuBuilder.Profile.P81(range),
                 cmVersion = CM_VERSION,
                 l1AvgCmVersion = CM_VERSION,
-                level6 = capped(uncapped),
+                level6 = level6,
                 sourcePrimaryIndex = sourcePrimaryIndex(facts),
             )
         }
@@ -225,11 +232,15 @@ internal class Hdr10PlusDvRpuSource(
                 named || facts.containerPrimaries in setOf(1, 9, 11, 12) -> "container"
                 else -> "default"
             }
+            // A default that gave way to the other light level is that level's value.
+            val level6 = uncappedLevel6(facts)
+            val maxCll = origin(facts, DvStaticField.MAX_CLL, (facts.maxContentLightLevel ?: 0) > 0)
+                .takeUnless { it == "default" && level6.maxContentLightLevel != DEFAULT_MAX_CLL } ?: "from MaxFALL"
+            val maxFall = origin(facts, DvStaticField.MAX_FALL, (facts.maxFrameAverageLightLevel ?: 0) > 0)
+                .takeUnless { it == "default" && level6.maxFrameAverageLightLevel != DEFAULT_MAX_FALL } ?: "from MaxCLL"
             return "mastering max " + origin(facts, luminance, DvTrackFacts.isLuminance(facts.masteringMaxNits)) +
                 ", mastering min " + origin(facts, luminance, DvTrackFacts.isLuminance(facts.masteringMinNits)) +
-                ", MaxCLL " + origin(facts, DvStaticField.MAX_CLL, (facts.maxContentLightLevel ?: 0) > 0) +
-                ", MaxFALL " + origin(facts, DvStaticField.MAX_FALL, (facts.maxFrameAverageLightLevel ?: 0) > 0) +
-                ", L9 " + primaries
+                ", MaxCLL " + maxCll + ", MaxFALL " + maxFall + ", L9 " + primaries
         }
 
         // What the SEI states, whether or not it was used, so both sides of an A/B show the same inputs.
@@ -242,7 +253,7 @@ internal class Hdr10PlusDvRpuSource(
                 sei?.maxFrameAverageLightLevel?.let { "MaxFALL $it" },
                 sei?.masteringPrimaries?.let { "primaries L9 ${gamutOf(it) ?: "none"}" },
             )
-            if (parts.isEmpty()) return "no static SEI"
+            if (parts.isEmpty()) return "no static SEI read"
             return "SEI states " + parts.joinToString(", ") + if (used) "" else " (ignored: $SEI_STATIC_SWITCH 0)"
         }
 
