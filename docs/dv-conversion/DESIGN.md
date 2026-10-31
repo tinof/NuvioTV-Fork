@@ -304,10 +304,8 @@ L1"), and what the extractor's decode order changes in them:
   gamut (P3 0, BT.709 1, BT.2020 2, matched on the red, green and blue chromaticities within 0.002),
   then the container's Primaries (1, 9, 11 and 12), BT.2020 otherwise. The mastering minimum
   is rounded to 0.0001 nits, and each field is capped at 10 000 (`Level6::clamped`), where `mkvdovi`
-  would refuse the title. A mastering display stated only in the stream's SEI is not read, so such a
-  title gets the defaults where `mkvdovi` (through MediaInfo) gets the SEI's values. That reaches L6, the
-  source range and L9, and it is common: the DV3.1 title has no MasteringMetadata in the container
-  (DV3.4). A shot is rendered
+  would refuse the title. What the container does not state comes from the stream's SEI when it has
+  it (DV3.4, below). A shot is rendered
   when an L1 is new, and the last few are cached (scenes can alternate). The handle lives until the
   extractor is released: `release()` now reaches the transformer, and preparing a track again releases
   the injector it had.
@@ -347,6 +345,77 @@ now records whether MaxCLL and MaxFALL are stated, as Media3 fills in 1000 and 2
 - Device check: `scripts/rpu_dump_to_bin.py --order pts` writes the DV2.8 dump in presentation order,
   and `scripts/rpu_l1_compare.py` compares it with `dovi_tool generate --hdr10plus-json`'s RPUs frame by
   frame: L1 and the rest of the RPU must be equal, `scene_refresh_flag` differences are reported.
+
+**HDR10+ static metadata from the SEI, the rules (DV3.4, Matroska).** `mkvdovi` reads its static metadata
+from MediaInfo, so these rules follow what MediaInfo 26.10 reports for encoded and hand-muxed Matroska
+files with differing container and SEI values. They change L6, the source range and L9, never L1 or the
+scene refresh.
+
+- **Which messages.** Mastering display colour volume (payloadType 137) and content light level (144) in
+  the prefix SEI NALs of the hvcC and of the first AU before its first slice. No later AU is read. A
+  message of at least 24 or 4 bytes counts, because MediaInfo accepts a longer payload too; a shorter one
+  is ignored and the walk goes on.
+- **Layout.** Three x, y pairs as u16 in 0.00002 units, the white point the same way, then maximum and
+  minimum luminance as u32 in 0.0001 nits. H.265 orders the pairs G, B, R. `DvTrackFacts.masteringPrimaries`
+  is R, G, B, W. MediaInfo also accepts other orders: it reports P3 for R, G, B and for B, G, R. So
+  each pair is sorted by its chromaticity (blue: x and y below 0.35; green: y >= x; red: the rest), and
+  the spec's order is used when that does not give one of each.
+- **Several messages.** In reading order, hvcC first, the first mastering display message wins and the
+  last content light level message wins. MediaInfo does both, across the hvcC and the AU as well as
+  inside one AU.
+- **Precedence, one rule per MediaInfo field.** The container's value wins over the SEI, then the default
+  applies, for each of four fields.
+
+| Field | Container wins when | Otherwise |
+|---|---|---|
+| Mastering luminance | it states both LuminanceMax and LuminanceMin, a zero included | the SEI's pair, then DV3.1's rule |
+| Mastering primaries | it states all 8 chromaticities | the SEI's, then the Colour element, then BT.2020 |
+| MaxCLL | it states a value above 0 | the SEI's value above 0, then the default |
+| MaxFALL | it states a value above 0 | the SEI's value above 0, then the default |
+
+  Mastering luminance is one field because MediaInfo reports it as one. A lone LuminanceMax or LuminanceMin
+  beside an SEI loses to the SEI's pair, so one RPU never mixes the two sources. Without an SEI, a lone
+  value stays as DV3.1 uses it, with the default for the other; there MediaInfo reports nothing and
+  `mkvdovi` writes both defaults. A container MaxCLL of 0 counts as not stated: MediaInfo then gives the
+  stream's value as `MaxCLL_Original`, which `mkvdovi` reads.
+- **Values that are not stated.** An SEI MaxCLL or MaxFALL of 0 or 65535 is not stated. MediaInfo drops
+  0. It passes 65535 on and `dovi_tool` then refuses the RPU; hdr-analyze's `Level6::clamped` notes that
+  65535 often means "not measured". Any other value above 10 000 is capped as in DV3.1.
+- **Implausible mastering values** stay in L6, capped, as `mkvdovi` keeps them. `source_range_81` judges
+  the values before the cap: a 50 000-nit peak or a 5-nit minimum must not turn plausible by being capped
+  to 10 000 nits or 1 nit. This also holds for a container value. Without a source range the
+  generator's L6 lookup decides, as in DV3.1.
+- **MaxFALL <= MaxCLL.** The rule of `resolve_light_levels` stays for a filled default, and a value from
+  the SEI counts as stated. When both are stated and at least one comes from the SEI, a MaxFALL above
+  MaxCLL is lowered to MaxCLL. This departs from `mkvdovi`, which keeps both when both are stated; its
+  ROADMAP C3 lists that as a gap. Two container values stay as DV3.1 keeps them.
+- **A wrong MaxCLL is passed on.** The SEI of the DV3.1 title, S01E02, says MaxCLL 108, while its HDR10+ L1
+  reaches 351 nits in the first 255 s. `mkvdovi` writes the stated value and at most warns. `dovi_tool
+  generate` with MaxCLL 108, 351 or 1000 changes only the two L6 fields and the CRC, on all 9 fixture
+  frames: no L1, trim or source range. Dolby describes L6 as HDR10 cross-compatibility data, but nothing
+  found states that an LG panel ignores it. A truer value is not available at track init, and L6 is
+  static, so a running maximum would change L6 during playback. The app keeps `mkvdovi` parity, and the
+  owner's A/B is the check.
+- **Both conversion paths.** A track that the first-AU scan converts reads the SEI from the hvcC and from
+  that AU. A track that converts at init from an hvcC HDR10+ payload was not scanned before. When the
+  container and the hvcC leave a field open, the scan now reads its first AU too, and the track's RPU
+  source is prepared again before any sample. The Format does not change. When the scan ends without the
+  AU, or the new source fails, the track keeps the source it has: such a track never falls back to
+  native. HLG tracks, native tracks and conversion off read nothing new, and their samples stay
+  byte-identical.
+- **Revert.** `debug.nuvio.dv_sei_static` = 0 gives today's RPUs and adds no scan, read once per extractor.
+- **Log.** The `DV_INJECT` line names the origin of each value (container, SEI or default) and prints what
+  the SEI stated, marked as ignored when the switch is 0, so both sides of an A/B show the same inputs.
+
+**Known differences from `mkvdovi` (DV3.4).**
+- An SEI that first appears after the first AU is not read, and a later MaxCLL does not replace the first
+  AU's. MediaInfo reads ahead. A track with the hvcC's values complete does not read the first AU either.
+- The primaries tolerance stays 0.002. MediaInfo names a gamut only up to about 0.0004, so between the two
+  the app writes the nearest gamut's L9 where `mkvdovi` falls back to the Colour element. It also ignores
+  the white point, where MediaInfo prints the raw values for one it does not know.
+- `mkvdovi` truncates `minimum * 10000`, so a printed 0.0003 becomes 2 and 573 of the codes up to 10 000
+  drop by one. The app keeps the SEI's own code. Codes 1, 5, 10, 50, 100 and 500 are equal.
+- A 3-byte content light level message gives MediaInfo its MaxCLL. The app ignores it as truncated.
 
 ### 2.5 Signalling decision table
 
