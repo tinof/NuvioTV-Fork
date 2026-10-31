@@ -177,7 +177,7 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
    It computes `merge-tree -X theirs OLD_PERF NEW_BASE` and diffs that tree with `NEW_PERF`. The old tip is ours, so upstream wins a conflicting hunk, and the diff shows every place the rebase kept something upstream rewrote. A differing path that is not declared fails: find out what changed it. The diff goes to the reviewer below.
 
    It says nothing inside a declared file, and it cannot see a fork hunk the rebase gave up to upstream, because the mechanical tree has the same text there. The independent review stays.
-4. Run the full gate in the worktree. Compare `sync.py test-failures` with the baseline: any new failure blocks.
+4. Run the full gate in the worktree. Compare `sync.py test-failures` with the baseline: any new failure blocks. Its stdout holds only test names; a heap hint goes to stderr.
 5. Build the APK in the worktree (`./gradlew :app:assembleFullDebug`, JDK 17): it is the only check that runs aapt
    (the locale trap) and the native builds. Then `python3 -I $S/sync.py protected-apk
    app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk` must pass: the DTS-HD MA writer in
