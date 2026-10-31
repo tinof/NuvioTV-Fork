@@ -17,6 +17,8 @@
 # else AGP's ~/.android/debug.keystore. The .shield package on the Shield is signed with the CI
 # key; installing a build with another key over it fails, so this script refuses that up front.
 # It never uninstalls and never clears app data.
+#
+# Every build runs sync.py protected-apk on the APK and stops when it fails.
 set -euo pipefail
 
 suffix=".shield"
@@ -31,7 +33,7 @@ while [ $# -gt 0 ]; do
     --debuggable) debuggable=true; shift ;;
     --install) install=true; shift ;;
     --allow-empty-config) allow_empty_config=true; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -86,6 +88,8 @@ echo "== building ${gradle_args[*]} at ${head_sha:0:9}${dirty}, key: ${key_desc}
 lower="$(echo "$variant" | tr '[:upper:]' '[:lower:]')"
 apk="app/build/outputs/apk/full/${lower}/app-full-arm64-v8a-${lower}.apk"
 [ -f "$apk" ] || { echo "no arm64 APK at $apk" >&2; ls "app/build/outputs/apk/full/${lower}" >&2; exit 1; }
+# Before the build log and the install: an APK without the protected features is not a build.
+python3 -I .claude/skills/upstream-sync/scripts/sync.py protected-apk "$apk"
 
 tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
 pkg="$("$tools/aapt2" dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"

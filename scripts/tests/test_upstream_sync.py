@@ -1179,6 +1179,74 @@ class CiUnitTestsScriptTest(unittest.TestCase):
         self.assertIn("from-gradle", (self.dir / "out/gradle.log").read_text())
 
 
+@unittest.skipUnless(Path("/usr/libexec/java_home").exists(), "the script finds JDK 17 through macOS java_home")
+class ShieldBuildScriptTest(unittest.TestCase):
+    """shield_build_install.sh in a throwaway tree, over a fake gradlew and Android tools. Never --install."""
+
+    GOOD = {"lib/arm64-v8a/libffmpegJNI.so": b"..dcaxll..", "lib/arm64-v8a/libnuvio_rpu.so": b"..Java_.."}
+    REPO = SKILL.parents[1].parent
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name) / "tree"
+        (self.dir / "scripts").mkdir(parents=True)
+        (self.dir / "scripts/shield_build_install.sh").write_bytes((self.REPO / "scripts/shield_build_install.sh").read_bytes())
+        (self.dir / "scripts/shield_build_install.sh").chmod(0o755)
+        skill = self.dir / ".claude/skills/upstream-sync"
+        (skill / "scripts").mkdir(parents=True)
+        (skill / "sync.json").write_text((SKILL / "sync.json").read_text())
+        (skill / "scripts/sync.py").write_text((SKILL / "scripts/sync.py").read_text())
+        self.home = Path(tmp.name) / "home"
+        self.home.mkdir()
+        self.bin = Path(tmp.name) / "bin"
+        self.bin.mkdir()
+        self.tool(self.bin / "cargo", "exit 1\n")      # no cargo-ndk
+        tools = Path(tmp.name) / "sdk/build-tools/35.0.0"
+        tools.mkdir(parents=True)
+        self.tool(tools / "aapt2", "echo \"package: name='com.example.exp' versionCode='1'\"\n")
+        self.tool(tools / "apksigner", "echo 'Signer #1 certificate SHA-256 digest: abc'\n")
+        self.apk = self.dir.parent / "fixture.apk"
+        target = "app/build/outputs/apk/full/debug"
+        self.tool(self.dir / "gradlew", f"mkdir -p {target}\ncp {self.apk} {target}/app-full-arm64-v8a-debug.apk\n")
+        self.env = dict(os.environ, HOME=str(self.home), ANDROID_HOME=str(tools.parents[1]),
+                        PATH=f"{self.bin}:{os.environ['PATH']}")
+        self.env.pop("NUVIO_DEBUG_STORE_FILE", None)
+        run("git", "init", "-q", "-b", "main", cwd=self.dir)
+        run("git", "config", "user.email", "t@example.com", cwd=self.dir)
+        run("git", "config", "user.name", "t", cwd=self.dir)
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "c", cwd=self.dir)
+
+    def tool(self, path, body):
+        path.write_text("#!/bin/sh\n" + body)
+        path.chmod(0o755)
+
+    def build(self, members, **env):
+        import zipfile
+        with zipfile.ZipFile(self.apk, "w") as z:
+            for name, data in members.items():
+                z.writestr(name, data)
+        return subprocess.run(["scripts/shield_build_install.sh", "--suffix", ".exp", "--allow-empty-config"],
+                              cwd=self.dir, env={**self.env, **env}, capture_output=True, text=True)
+
+    def logged(self):
+        log = self.dir / ".local/shield-builds.tsv"
+        return log.read_text() if log.exists() else ""
+
+    def test_a_good_apk_is_built_and_logged(self):
+        r = self.build(self.GOOD)
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        self.assertIn("hlg-to-dv: lib/arm64-v8a/libnuvio_rpu.so", r.stdout)
+        self.assertIn("com.example.exp", self.logged())
+
+    def test_an_apk_without_a_protected_library_stops_before_the_log(self):
+        r = self.build({"lib/arm64-v8a/libffmpegJNI.so": b"..dcaxll.."})
+        self.assertEqual(1, r.returncode, r.stdout + r.stderr)
+        self.assertIn("FAIL: hlg-to-dv: lib/arm64-v8a/libnuvio_rpu.so is not in the APK", r.stdout)
+        self.assertEqual("", self.logged())
+
+
 class MapOverlapRepoTest(RepoFixture, unittest.TestCase):
     """map-overlap on the fixture: the old fork on B edits shared.txt, which U also changed."""
 
