@@ -112,8 +112,12 @@ judge who reproduced the numbers, and a Codex critique.
 **Rejected on the numbers:** squash, theme regrouping, merge instead of rebase, patch queues, large Init and Matroska
 seams, a fork Gradle module, retuned light rules, tracking official directly.
 
-**Open:** the 30 to 45 min sync target is an estimate until a pilot sync measures it. Reader recall rests on one sync
-with 5 positives.
+**Open:** the 30 to 45 min sync target is an estimate until a pilot sync measures it.
+
+**Blind eval of classify by exception (2026-11-01):** fail, 4 of 5 known adapts. It missed the Video Effect rebuild
+during the A/V quiesce, and the critic did not catch it. It found 7 further adapts, and one critic contradiction stopped a
+fix that would lose a protected line. Cost 1,085,378 tokens and 29.9 min against 1,382,704 and 25.1 min, far from the
+study's estimate of 0.5M and 12 min. Per-commit classify stays the default.
 
 ## 2026-10-31: U1.5 sync onto upstream 1.1.0-nt.9 (PR #33)
 
