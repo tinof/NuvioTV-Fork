@@ -18,7 +18,10 @@
 # key; installing a build with another key over it fails, so this script refuses that up front.
 # It never uninstalls and never clears app data.
 #
-# Every build runs sync.py protected-apk on the APK and stops when it fails.
+# Every build runs sync.py protected-apk on the APK and stops when it fails. It also checks where the
+# native code came from: libnuvio_rpu.so against the stamp build_rpu_builder.sh wrote, and whether
+# libffmpegJNI.so is the prebuilt AAR's or the local module's. NUVIO_ALLOW_NATIVE_MISMATCH=1 keeps a
+# build that fails only on that origin (exit 4). Nothing keeps a lost marker or a missing library.
 set -euo pipefail
 
 suffix=".shield"
@@ -33,7 +36,7 @@ while [ $# -gt 0 ]; do
     --debuggable) debuggable=true; shift ;;
     --install) install=true; shift ;;
     --allow-empty-config) allow_empty_config=true; shift ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -73,6 +76,7 @@ dirty=""
 rpu_lib="app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so"
 if cargo ndk --version >/dev/null 2>&1; then
   scripts/build_rpu_builder.sh
+  echo "== libnuvio_rpu.so rebuilt by cargo-ndk"
 elif [ -f "$rpu_lib" ]; then
   echo "warning: cargo-ndk not found; packaging the existing $rpu_lib without rebuilding it" \
     "(sha256 $(shasum -a 256 "$rpu_lib" | cut -d' ' -f1), modified $(date -r "$rpu_lib" '+%Y-%m-%d %H:%M:%S'))" >&2
@@ -89,7 +93,17 @@ lower="$(echo "$variant" | tr '[:upper:]' '[:lower:]')"
 apk="app/build/outputs/apk/full/${lower}/app-full-arm64-v8a-${lower}.apk"
 [ -f "$apk" ] || { echo "no arm64 APK at $apk" >&2; ls "app/build/outputs/apk/full/${lower}" >&2; exit 1; }
 # Before the build log and the install: an APK without the protected features is not a build.
-python3 -I .claude/skills/upstream-sync/scripts/sync.py protected-apk "$apk"
+code=0
+python3 -I .claude/skills/upstream-sync/scripts/sync.py protected-apk "$apk" --stamp "$rpu_lib.stamp" || code=$?
+if [ "$code" -eq 4 ] && [ "${NUVIO_ALLOW_NATIVE_MISMATCH:-}" = "1" ]; then
+  echo "warning: the native origin check failed; keeping this build because NUVIO_ALLOW_NATIVE_MISMATCH=1" >&2
+elif [ "$code" -eq 4 ]; then
+  echo "the native origin check failed on $apk; fix the FAIL lines above, or keep this build with NUVIO_ALLOW_NATIVE_MISMATCH=1" >&2
+  exit 1
+elif [ "$code" -ne 0 ]; then
+  echo "protected-apk failed on $apk with exit $code; no override keeps this build" >&2
+  exit 1
+fi
 
 tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
 pkg="$("$tools/aapt2" dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"

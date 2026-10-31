@@ -82,3 +82,4 @@ sentry.properties
 # Cargo output of native/rpu_builder, and the library scripts/build_rpu_builder.sh copies for Gradle
 /native/rpu_builder/target/
 /app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so
+/app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so.stamp
