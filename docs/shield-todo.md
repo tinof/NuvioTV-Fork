@@ -52,7 +52,7 @@ lists). Restart playback, or the app for the rows marked *app*.
 | HDR video ignores the view-scaling aspect modes and plays at Fit (ExoPlayer) | `hdr_zoom` (`1` = allow) | `dumpsys SurfaceFlinger` keeps the video on an overlay plane |
 | mpv decodes with direct MediaCodec (`mediacodec,mediacodec-copy`; a saved mode wins) | Setting "Hardware decoding (MPV-only)" | HUD `hwdec` row shows `mediacodec` |
 | mpv tone mapping `bt.2446a` with no peak detection | `mpv_tonemap` (`0`) | HDR on an SDR TV through mpv |
-| Full swap refuses a single thumbnail decode even with MemAvailable 200 MB above the decode floor (`mdarcy` only). NuvioTV 1.1.0-nt.7.1 (4f7c16200) allows that on 3 GB boxes; the fork's device data from round 3 says no on this box. | `thumb_swap_room` (`1` = allow; `0` turns it off on every box) *app* | Logcat `ThumbMem init … swapRoom=false`, refusals `SwapFree … MB < 64` |
+| Full swap refuses a single thumbnail decode even with MemAvailable 200 MB above the decode floor (`mdarcy` only). NuvioTV 1.1.0-nt.7.1 (4f7c16200) allows that on 3 GB boxes; the fork's device data from round 3 says no on this box. The refusal also covers the small-box room of upstream's e8cec44a6 (SwapFree 48 MB or more, floor + 300 MB). Other boxes now log `swapRoom=true`. | `thumb_swap_room` (`1` = allow; `0` turns it off on every box) *app* | Logcat `ThumbMem init … swapRoom=false`, refusals `SwapFree … MB < 64` |
 | AV1 trailers need a hardware decoder, so the Shield takes H.264 or VP9, or the HLS or progressive source when YouTube offers only AV1. NuvioTV 1.1.0-beta.7 accepts any decoder that claims the format, Android's software AV1 one included. | `trailer_av1_hw` (`0`) *app* | Logcat `Trailer adaptive: …/<height>p/<codec>` never shows AV1 |
 | The image disk cache keeps 300 MB with 4 GB or more free, where upstream's rule (126b4b389, sync of 2026-10-26) gives a box under 3.3 GB of RAM 200 MB. The Shield TV Pro 2019 reports 2946 MB. | `image_cache_tier` (`0` = upstream's rule; `1` gives the tier to any box) *app* | `du -sh /data/data/<package>/cache/image_cache` stays under 300 MB; posters reload less after a reboot |
 | Low-RAM tier comes from device RAM when buffers are off-heap | `lowram_from_ram` (`0`) *app* | Logcat `BACK_BUFFER_RESOLVED: … lowRam=` |
@@ -151,6 +151,36 @@ so there is no new Nvidia gate. Upstream's new defaults apply on the Shield too,
 - 4K seek thumbnails try the lighter copies first (d2901bd5e).
 
 Measurements taken before 2026-10-27 predate these defaults.
+
+### Upstream defaults taken with the sync of 2026-10-31
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.1.0-nt.9. The one value this pass sets that upstream touched is the
+`thumb_swap_room` row above, kept on `mdarcy`. These apply on the Shield too, with no fork switch unless a row says so:
+- A film's buffer grows back after it was sized down: 32 MB steps after 60 s of quiet, towards the unsized budget
+  (c5b872833). On `mdarcy` that is about 500 MB, the opposite direction to the open Q5.4. Near-full swap blocks growth
+  unless 300 MB of room remains. Sizing no longer keeps the 32 MB arena reserve, and the first start of a heavy film
+  can wait up to 6 s for a cushion, on top of the AFR settle hold.
+- The player build waits up to 500 ms, not 100 ms, for Home to release pictures (c5b872833).
+- Leaving the app with the player open releases the decoder; playback rebuilds paused at the saved position on
+  return (0b9269276). It does not switch the display mode back.
+- Tunnelled playback is skipped while a USB audio output is listed; below API 33 any listed USB output counts
+  (2a32c1532).
+- ASS render mode defaults to Overlay (d5da6bcaa). The new Video Effect mode tone-maps HDR to SDR and is refused on
+  Dolby Vision, native FEL and tunnelled playback.
+- Dimming the player controls on HDR video is off by default (0d08672f5).
+- Night mode: Strong is stronger, and a toggle returns to the last level, Medium by default (3d619c993, 95c39db81).
+  It is PCM only. A new remote job has no default button.
+- Seek thumbnails read keyframes in multi-range batches, holding up to 48 MB on a strong box and 16 MB otherwise
+  (e8cec44a6). `mdarcy` has a 384 MB heap and no heap reading of this yet.
+- 4K strip decodes run on 2 lanes outside playback on a session that is not strong, which includes the Shield when
+  swap is full at start. Every decode still passes the swap and floor checks (e8cec44a6).
+- On strong hardware the keyframe index is fetched while the player opens (e8cec44a6); see S2.3.
+- The 1080p-only thumbnail mode is gone; a stored choice reads as All (e8cec44a6).
+- Home posters download 8 at a time, at most 2 of them for prefetch (cc1c72fcb).
+- Extra downloads remember a server that refused a second connection, and TorBox stays within its request limit
+  (9495cb83e).
+
+Measurements taken before 2026-10-31 predate these defaults.
 
 ## History
 
