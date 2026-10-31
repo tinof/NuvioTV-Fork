@@ -354,15 +354,17 @@ scene refresh.
 - **Which messages.** Mastering display colour volume (payloadType 137) and content light level (144) in
   the prefix SEI NALs of the hvcC and of the first AU before its first slice. No later AU is read. A
   message of at least 24 or 4 bytes counts, because MediaInfo accepts a longer payload too; a shorter one
-  is ignored and the walk goes on.
+  is ignored and the walk goes on. MediaInfo reads the SEI suffix NALs and later slices too (known
+  differences, below).
 - **Layout.** Three x, y pairs as u16 in 0.00002 units, the white point the same way, then maximum and
   minimum luminance as u32 in 0.0001 nits. H.265 orders the pairs G, B, R. `DvTrackFacts.masteringPrimaries`
   is R, G, B, W. MediaInfo also accepts other orders: it reports P3 for R, G, B and for B, G, R. So
   each pair is sorted by its chromaticity (blue: x and y below 0.35; green: y >= x; red: the rest), and
   the spec's order is used when that does not give one of each.
-- **Several messages.** In reading order, hvcC first, the first mastering display message wins and the
-  last content light level message wins. MediaInfo does both, across the hvcC and the AU as well as
-  inside one AU.
+- **Several messages.** In reading order, hvcC first, the first mastering display message with usable
+  primaries stays whole, and the last stated content light level wins. Until a message has usable
+  primaries, a later message's luminance pair replaces an earlier one. MediaInfo does all of this, across
+  the hvcC and the AU as well as inside one AU.
 - **Precedence, one rule per MediaInfo field.** The container's value wins over the SEI, then the default
   applies, for each of four fields.
 
@@ -380,11 +382,14 @@ scene refresh.
   stream's value as `MaxCLL_Original`, which `mkvdovi` reads.
 - **Values that are not stated.** An SEI MaxCLL or MaxFALL of 0 or 65535 is not stated. MediaInfo drops
   0. It passes 65535 on and `dovi_tool` then refuses the RPU; hdr-analyze's `Level6::clamped` notes that
-  65535 often means "not measured". Any other value above 10 000 is capped as in DV3.1.
-- **Implausible mastering values** stay in L6, capped, as `mkvdovi` keeps them. `source_range_81` judges
-  the values before the cap: a 50 000-nit peak or a 5-nit minimum must not turn plausible by being capped
-  to 10 000 nits or 1 nit. This also holds for a container value. Without a source range the
-  generator's L6 lookup decides, as in DV3.1.
+  65535 often means "not measured". Any other value above 10 000 is capped as in DV3.1. One chromaticity
+  of 0xFFFF leaves the primaries unstated, and a luminance of 0xFFFFFFFF, either one, leaves the pair
+  unstated. MediaInfo drops both, and 0xFFFFFFFE is not treated that way.
+- **Implausible mastering values** from the SEI stay in L6, capped, as `mkvdovi` keeps them.
+  `source_range_81` judges the SEI's pair as stated, before the cap and the rounding of the peak. A 5-nit
+  minimum capped to 1 nit, or a 99.6-nit peak rounded to 100, would pass otherwise. Without a source range
+  the generator's L6 lookup decides. For a peak above 10 000 nits that lookup gives 4095, the same as the
+  cap would. Container values keep DV3.1's rule, with the capped values, so switch 0 changes nothing.
 - **MaxFALL <= MaxCLL.** The rule of `resolve_light_levels` stays for a filled default, and a value from
   the SEI counts as stated. When both are stated and at least one comes from the SEI, a MaxFALL above
   MaxCLL is lowered to MaxCLL. This departs from `mkvdovi`, which keeps both when both are stated; its
@@ -410,12 +415,17 @@ scene refresh.
 **Known differences from `mkvdovi` (DV3.4).**
 - An SEI that first appears after the first AU is not read, and a later MaxCLL does not replace the first
   AU's. MediaInfo reads ahead. A track with the hvcC's values complete does not read the first AU either.
+- Static metadata in a suffix SEI, or in a prefix SEI after the first slice, is not read. MediaInfo reads
+  both, so such a title gets the defaults here.
 - The primaries tolerance stays 0.002. MediaInfo names a gamut only up to about 0.0004, so between the two
   the app writes the nearest gamut's L9 where `mkvdovi` falls back to the Colour element. It also ignores
   the white point, where MediaInfo prints the raw values for one it does not know.
 - `mkvdovi` truncates `minimum * 10000`, so a printed 0.0003 becomes 2 and 573 of the codes up to 10 000
   drop by one. The app keeps the SEI's own code. Codes 1, 5, 10, 50, 100 and 500 are equal.
-- A 3-byte content light level message gives MediaInfo its MaxCLL. The app ignores it as truncated.
+- A 2- or 3-byte content light level message gives MediaInfo its MaxCLL. The app ignores it as truncated.
+- After a short message, MediaInfo loses a following mastering display of the same NAL. The app reads it.
+- `mkvdovi` truncates a fractional peak in L6 where the app rounds it: 999.6 nits gives 999 and 1000. The
+  source range is the same for both.
 
 ### 2.5 Signalling decision table
 

@@ -429,8 +429,54 @@ class MatroskaHdr10PlusTest {
         )
         val out = readFile(file, transformer())
         assertEquals(listOf(defaultLevel6), fake.created.map { it.level6 })
+        assertTrue(fake.released.isEmpty())
         assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
         assertEveryAuHasAnRpu(out)
+    }
+
+    @Test
+    fun `a track that converts at init stays on one path when its first AU has HDR10+ and static SEI`() {
+        val file = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1))),
+            cluster(0, block(0, true, fakeStaticSei(), sei(1), idr), block(40, false, sei(1), trail)),
+        )
+        val out = readFile(file, transformer())
+        assertEquals(listOf(defaultLevel6, titleLevel6), fake.created.map { it.level6 })
+        assertEveryAuHasAnRpu(out)
+    }
+
+    @Test
+    fun `each field left open sends a track converted at init to its first AU`() {
+        val mastering = element(0x55D0, float(0x55D9, 4000f), float(0x55DA, 0.005f))
+        fun pq(vararg more: ByteArray) = colour(uint(0x55BB, 9), uint(0x55BA, 16), uint(0x55B1, 9), uint(0x55B9, 1), *more)
+        val mdcvNal = fakeSeiNal(137 to fakeMasteringPayload())
+        val bothLevels = arrayOf(uint(0x55BC, 500), uint(0x55BD, 300))
+        val auSei = fakeStaticSei()
+        // (the colour, the hvcC's static SEI, the Level6 of the second source)
+        val cases = listOf(
+            Triple(pq(uint(0x55BC, 500), mastering), mdcvNal, DoviRpuBuilder.Level6(4000, 50, 500, 53)),
+            Triple(pq(uint(0x55BD, 90), mastering), mdcvNal, DoviRpuBuilder.Level6(4000, 50, 108, 90)),
+            Triple(pq(*bothLevels), fakeSeiNal(137 to fakeMasteringPayload(maxUnits = 0xFFFF_FFFFL)), DoviRpuBuilder.Level6(1000, 50, 500, 300)),
+        )
+        for ((colour, hvcCSei, expected) in cases) {
+            fake.created.clear()
+            val file = mkv(
+                trackEntry(colour, hvcC = hvcCWith(sei(1), hvcCSei)),
+                cluster(0, block(0, true, auSei, idr), block(40, false, trail)),
+            )
+            readFile(file, transformer())
+            assertEquals(2, fake.created.size)
+            // The first AU's mastering display cannot replace the hvcC's, which has primaries.
+            assertEquals(expected, fake.created.last().level6)
+        }
+        // Luminance stated, primaries open.
+        fake.created.clear()
+        val noPrimaries = mkv(
+            trackEntry(pq(*bothLevels, mastering), hvcC = hvcCWith(sei(1))),
+            cluster(0, block(0, true, auSei, idr), block(40, false, trail)),
+        )
+        readFile(noPrimaries, transformer())
+        assertEquals(listOf(DoviRpuBuilder.PRIMARIES_BT2020, DoviRpuBuilder.PRIMARIES_P3_D65), fake.created.map { it.sourcePrimaryIndex })
     }
 
     @Test
@@ -454,10 +500,16 @@ class MatroskaHdr10PlusTest {
         )
         for (file in listOf(scanned, atInit)) {
             fake.created.clear()
+            val native = readFile(file, transformer = null)
             val out = readFile(file, transformer(seiStatic = false))
             assertEquals(listOf(defaultLevel6), fake.created.map { it.level6 })
+            assertEquals(DoviRpuBuilder.Profile.P81(DoviRpuBuilder.SourceRange(50, 1000)), fake.created.single().profile)
             assertEquals(DoviRpuBuilder.PRIMARIES_BT2020, fake.created.single().sourcePrimaryIndex)
             assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+            assertEveryAuHasAnRpu(out)
+            for (i in native.samples.indices) {
+                assertArrayEquals(native.samples[i], out.samples[i].copyOfRange(0, native.samples[i].size))
+            }
         }
     }
 

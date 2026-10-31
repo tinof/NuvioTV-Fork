@@ -4550,13 +4550,12 @@ public class MatroskaExtractor implements Extractor {
       waitingForHlgSeiScan = false;
       if (firstAuRead) {
         hlgSampleSeiPending = false;
-      } else {
-        hlgSeiScanMissed = true;
       }
       if (seiStaticScan) {
         logSeiStaticScanEnd(reason);
         return;
       }
+      hlgSeiScanMissed = !firstAuRead;
       android.util.Log.i(TAG, scanName() + ", track " + hlgTrackId + ": " + reason + "; native");
     }
 
