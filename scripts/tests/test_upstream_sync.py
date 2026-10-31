@@ -10,8 +10,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-SKILL = Path(__file__).resolve().parents[2] / ".claude/skills/upstream-sync"
+ROOT = Path(__file__).resolve().parents[2]
+SKILL = ROOT / ".claude/skills/upstream-sync"
 
 
 def load(name):
@@ -24,6 +26,7 @@ def load(name):
 sync = load("sync")
 tools = sys.modules["sync_tools"]
 both = load("both")
+triage = load("triage_sets")
 CONFIG = sync.load_config(SKILL / "sync.json")
 
 
@@ -794,6 +797,217 @@ class MapOverlapRepoTest(RepoFixture, unittest.TestCase):
         self.assertEqual(["all"], [g["key"] for g in result["groups"]],
                          "a stop-check abort classifies from this output, so the light tier must keep its group")
         self.assertEqual(2, len(result["groups"][0]["commits"]))
+
+
+class TriageSetsHelperTest(unittest.TestCase):
+    THEMES = [{"key": "audio", "paths": ["audio/"]}, {"key": "video", "paths": ["video/"]},
+              {"key": "app-other", "paths": ["."]}]
+
+    def test_main_code_leaves_out_tests_resources_and_docs(self):
+        for path in ("app/src/main/java/A.kt", "app/src/main/java/B.java", "native/x.cpp", "app/build.gradle.kts",
+                     "ffmpeg/CMakeLists.txt", "app/src/main/AndroidManifest.xml"):
+            self.assertTrue(triage.is_main_code(path), path)
+        for path in ("app/src/test/java/A.kt", "app/src/androidTest/java/A.kt", "app/src/main/res/values/strings.xml",
+                     "docs/x.md", "scripts/tests/x.py", "app/libs/x.aar"):
+            self.assertFalse(triage.is_main_code(path), path)
+
+    def test_a_theme_stays_whole_and_the_sets_balance(self):
+        weights = {"audio/a.kt": 50, "audio/b.kt": 50, "video/c.kt": 60, "ui/d.kt": 30}
+        sets = triage.partition(weights, self.THEMES, 2)
+        self.assertEqual([["audio/a.kt", "audio/b.kt"], ["video/c.kt", "ui/d.kt"]], [s["paths"] for s in sets])
+        self.assertEqual([100, 90], [s["lines"] for s in sets])
+
+    def test_partition_is_deterministic_and_exclusive(self):
+        weights = {f"{d}/{n}.kt": 10 for d in ("audio", "video", "ui") for n in range(4)}
+        first = triage.partition(weights, self.THEMES, 3)
+        self.assertEqual(first, triage.partition(dict(reversed(list(weights.items()))), self.THEMES, 3))
+        paths = [p for s in first for p in s["paths"]]
+        self.assertEqual(sorted(weights), sorted(paths))
+
+    def test_no_empty_set_when_there_are_fewer_themes_than_readers(self):
+        self.assertEqual(1, len(triage.partition({"audio/a.kt": 5, "audio/b.kt": 5}, self.THEMES, 3)))
+
+    def test_reader_count_grows_with_the_lines(self):
+        self.assertEqual(1, triage.reader_count(0))
+        self.assertEqual(1, triage.reader_count(triage.READER_LINES))
+        self.assertEqual(2, triage.reader_count(triage.READER_LINES + 1))
+
+    def test_numstat_counts_a_binary_file(self):
+        self.assertEqual({"a.kt": 5, "b.aar": 1}, triage.parse_numstat("3\t2\ta.kt\n-\t-\tb.aar\n"))
+
+    def test_protected_by_file_or_subject(self):
+        features = [{"key": "dts", "anchors": ["DtsTranscode"], "subjects": "AAC.to.DTS"}]
+        self.assertEqual("dts", triage.feature_of(["x/DtsTranscode.kt"], "fix: y", features))
+        self.assertEqual("dts", triage.feature_of(["x/Other.kt"], "fix: AAC to DTS start", features))
+        self.assertIsNone(triage.feature_of(["x/Other.kt"], "fix: y", features))
+
+
+class TriageSetsRepoTest(unittest.TestCase):
+    """A small repository: upstream and the fork both change a.kt and b.kt, and they collide on b.kt."""
+
+    CFG = {"owner_rule": "rule", "traps": ["trap"], "themes": TriageSetsHelperTest.THEMES,
+           "protected_features": [{"key": "dts", "anchors": ["DtsTranscode"], "subjects": "AAC.to.DTS"}]}
+    TEXT = "".join(f"line {n}\n" for n in range(1, 31))
+    PATHS = ("audio/a.kt", "video/b.kt", "app/src/test/T.kt", "app/src/main/res/values/strings.xml")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.cwd = os.getcwd()
+        os.chdir(self.dir)
+        run("git", "init", "-q", "-b", "main", cwd=self.dir)
+        run("git", "config", "user.email", "t@example.com", cwd=self.dir)
+        run("git", "config", "user.name", "t", cwd=self.dir)
+        for path in self.PATHS:
+            self.write(path, self.TEXT)
+        self.commit("base")
+        run("git", "tag", "B", cwd=self.dir)
+        for path in self.PATHS:
+            self.write(path, self.TEXT.replace("line 25\n", "upstream 25\n"))
+        self.commit("feat: upstream")
+        run("git", "tag", "U", cwd=self.dir)
+        run("git", "checkout", "-q", "-b", "fork", "B", cwd=self.dir)
+        self.write("audio/a.kt", self.TEXT.replace("line 2\n", "fork 2\n"))
+        self.commit("fix: clean edit of a shared file")
+        self.write("video/b.kt", self.TEXT.replace("line 25\n", "fork 25\n"))
+        self.commit("fix: collides with upstream")
+        self.write("video/DtsTranscode.kt", "new\n")
+        self.commit("feat: a file upstream never saw")
+        for path in self.PATHS[2:]:
+            self.write(path, self.TEXT.replace("line 2\n", "fork 2\n"))
+        self.commit("test: fork edits a test and a string")
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        self.tmp.cleanup()
+
+    def write(self, path, text):
+        (self.dir / path).parent.mkdir(parents=True, exist_ok=True)
+        (self.dir / path).write_text(text)
+
+    def commit(self, message):
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", message, cwd=self.dir)
+
+    def build(self):
+        return triage.build("B", "fork", "U", self.CFG, self.dir / "scratch/map.json")
+
+    def test_sets_hold_only_main_code_both_sides_changed(self):
+        result, args = self.build()
+        self.assertEqual(["audio/a.kt", "video/b.kt"], sorted(p for s in args["sets"] for p in s))
+        self.assertEqual(["app/src/main/res/values/strings.xml", "app/src/test/T.kt"], result["excluded"])
+        self.assertEqual({"fork": 4, "bothChanged": 4, "mainCode": 2}, args["counts"])
+
+    def test_only_the_colliding_commit_is_a_stop(self):
+        result, args = self.build()
+        self.assertEqual(["fix: collides with upstream"], [s["subject"] for s in result["stops"]])
+        stop = result["stops"][0]
+        self.assertEqual(["video/b.kt"], stop["files"])
+        self.assertEqual([{"sha": stop["sha"], "files": ["video/b.kt"]}], args["stops"])
+        self.assertTrue(stop["alsoInTheirsReplay"])
+        self.assertEqual(["video/b.kt"], result["conflictFiles"])
+
+    def test_a_stop_head_reproduces_the_conflict(self):
+        result, _ = self.build()
+        stop = result["stops"][0]
+        r = subprocess.run(["git", "merge-tree", "--write-tree", "--name-only", "--no-messages",
+                            f"--merge-base={stop['sha']}^", stop["head"], stop["sha"]],
+                           cwd=self.dir, capture_output=True, text=True)
+        self.assertEqual(1, r.returncode)
+        self.assertEqual(["video/b.kt"], r.stdout.split()[1:])
+
+    def test_a_rerun_gives_the_same_map(self):
+        # Fixed replay dates: the same heads, and no new objects in the shared store on each run.
+        self.assertEqual(self.build()[0], self.build()[0])
+
+    def test_a_later_commit_on_the_stopped_file_does_not_stop_after_the_replay_continues(self):
+        self.write("video/b.kt", self.TEXT.replace("line 25\n", "fork 25\n").replace("line 5\n", "fork 5\n"))
+        self.commit("fix: touches the stopped file elsewhere")
+        result, _ = self.build()
+        self.assertEqual(["fix: collides with upstream"], [s["subject"] for s in result["stops"]])
+
+    def test_a_commit_that_edits_its_own_collision_stops_only_on_one_strategy(self):
+        self.write("video/b.kt", self.TEXT.replace("line 25\n", "fork 25 again\n"))
+        self.commit("fix: edits the collided line again")
+        result, _ = self.build()
+        rows = {s["subject"]: s["alsoInTheirsReplay"] for s in result["stops"]}
+        self.assertEqual({"fix: collides with upstream": True, "fix: edits the collided line again": False}, rows)
+
+    def test_protected_commits_are_in_the_args(self):
+        _, args = self.build()
+        sha = subprocess.run(["git", "log", "-1", "--format=%H", "--grep=upstream never saw"], cwd=self.dir,
+                             capture_output=True, text=True).stdout.strip()
+        self.assertEqual([sha[:12]], args["protected"])
+
+    def test_the_cap_lines_name_what_was_limited(self):
+        _, args = self.build()
+        self.assertEqual(1, len(args["caps"]), args["caps"])
+        self.assertIn("2 files both sides changed are not main code", args["caps"][0])
+        with mock.patch.object(triage, "READER_LINES", 1), mock.patch.object(triage, "HEAVY_READER_LINES", 0):
+            _, heavy = self.build()
+        self.assertIn("readers capped at 3", " ".join(heavy["caps"]))
+        with mock.patch.object(triage, "HEAVY_READER_LINES", 0):
+            _, heavy = self.build()
+        self.assertIn("reader 1 carries", " ".join(heavy["caps"]))
+
+    def test_cli_writes_the_map_and_prints_small_args(self):
+        out = self.dir / "scratch/map.json"
+        config = self.dir / "c.json"
+        config.write_text(json.dumps(self.CFG))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = triage.main(["--base", "B", "--fork", "fork", "--upstream", "U", "--out", str(out),
+                                "--config", str(config), "--pr-titles", "/x/titles.txt"])
+        self.assertEqual(0, code)
+        args = json.loads(buf.getvalue())
+        self.assertEqual(str(out.resolve()), args["mapPath"])
+        self.assertEqual("/x/titles.txt", args["prTitlesPath"])
+        result = json.loads(out.read_text())
+        self.assertEqual(["rule", "trap"], result["rules"])
+        self.assertNotIn("rules", args)
+
+    def test_a_bad_ref_exits_2(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(2, triage.main(["--base", "B", "--fork", "nope", "--upstream", "U", "--out", "m.json"]))
+
+
+@unittest.skipUnless(subprocess.run(["git", "rev-parse", "-q", "--verify", "sync/2026-10-31/old-perf^{commit}"],
+                                    cwd=ROOT, capture_output=True).returncode == 0
+                     and subprocess.run(["git", "cat-file", "-e", "d9039df69^{commit}"],
+                                        cwd=ROOT, capture_output=True).returncode == 0,
+                     "needs the local tags of the sync of 2026-10-31")
+class TriageSetsFrozenSyncTest(unittest.TestCase):
+    """The helper on the frozen state of a past sync: tags and the upstream commit, nothing else."""
+
+    @classmethod
+    def setUpClass(cls):
+        cwd = os.getcwd()
+        os.chdir(ROOT)
+        try:
+            config = json.loads(subprocess.run(
+                ["git", "show", "sync/2026-10-31/old-perf:.claude/skills/upstream-sync/sync.json"],
+                capture_output=True, text=True, check=True).stdout)
+            cls.map, cls.args = triage.build("sync/2026-10-31/old-base", "sync/2026-10-31/old-perf", "d9039df69",
+                                             config, Path("/nonexistent/map.json"))
+        finally:
+            os.chdir(cwd)
+
+    def test_args_name_the_files_of_every_stop(self):
+        self.assertEqual(14, len(self.args["stops"]))
+        self.assertEqual([{"sha": s["sha"], "files": s["files"]} for s in self.map["stops"]], self.args["stops"])
+        self.assertTrue(all(s["files"] for s in self.args["stops"]))
+
+    def test_three_exclusive_readers_cover_the_main_code(self):
+        paths = [p for s in self.args["sets"] for p in s]
+        self.assertEqual(3, len(self.args["sets"]))
+        self.assertEqual(len(paths), len(set(paths)))
+        self.assertEqual(self.args["counts"]["mainCode"], len(paths))
+        self.assertGreaterEqual(len(paths), 30)
+
+    def test_every_trial_conflict_is_a_predicted_stop(self):
+        stopped = {f for s in self.map["stops"] for f in s["files"]}
+        self.assertEqual(7, len(self.map["conflictFiles"]))
+        self.assertLessEqual(set(self.map["conflictFiles"]), stopped)
 
 
 class StopCheckRepoTest(RepoFixture, unittest.TestCase):
