@@ -297,6 +297,17 @@ def junit_failures(paths):
     return sorted(set(out))
 
 
+def junit_out_of_memory(paths):
+    """How many result files hold an OutOfMemoryError in a failure, an error or the test JVM's stderr."""
+    hits = 0
+    for p in paths:
+        root = ET.parse(p).getroot()
+        nodes = [*root.iter("failure"), *root.iter("error"), *root.iter("system-err")]
+        hits += any("OutOfMemoryError" in " ".join([n.get("type") or "", n.get("message") or "", n.text or ""])
+                    for n in nodes)
+    return hits
+
+
 def sha_matches(a, b):
     n = min(len(a), len(b))
     return n >= 7 and a[:n] == b[:n]
@@ -704,6 +715,11 @@ def cmd_test_failures(a, cfg):
         print(f"no JUnit XML in {a.dir}", file=sys.stderr)
         return USAGE
     print("\n".join(junit_failures(paths)))
+    oom = junit_out_of_memory(paths)
+    if oom:  # On stderr: stdout is compared with the baseline's list of failures.
+        print(f"hint: OutOfMemoryError in {oom} result file(s): this is the test JVM's heap, maxHeapSize in "
+              "app/build.gradle.kts. Read the trap in sync.json that starts 'The unit test JVM' before raising it.",
+              file=sys.stderr)
     return OK
 
 
