@@ -2,9 +2,9 @@ name: Upstream drift
 
 # Compares the fork with ysosrs123/NuvioTV-Fork main once a day and keeps one open issue
 # (label upstream-drift) up to date while the fork is behind: the commit counts, whether main still mirrors the base,
-# the Tier 2 paths upstream changed, the files a trial merge conflicts on and upstream's
-# first-parent log. It closes the issue once the fork has caught up. /upstream-sync does
-# the sync itself.
+# the Tier 2 paths upstream changed, the files a trial merge conflicts on, whether a sync is
+# due, the rebase's predicted stops and upstream's first-parent log. It closes the issue once
+# the fork has caught up. /upstream-sync does the sync itself.
 
 on:
   schedule:
@@ -87,6 +87,26 @@ jobs:
           fi
           echo "$(wc -l < "$RUNNER_TEMP/tier2.txt") Tier 2 globs from $POLICY_REF"
 
+      # Advice for the issue. A failure or a timeout here leaves "not available" in the body, never a failed job.
+      # Blobs load on demand from both promisor remotes, into the replay's temporary object directory: 57 s for the
+      # 262 commits of the sync of 2026-10-31 in a blobless clone.
+      - name: Predict the sync
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          S=.claude/skills/upstream-sync/scripts/sync.py
+          F="origin/$FORK_REF"; U="upstream/main"
+          # The issue is edited only when its first line changes, so the hours in this text age until then.
+          if timeout 30 python3 -I "$S" due --upstream "$U" --fork "$F" > "$RUNNER_TEMP/due.txt"; then
+            echo "measured at $(date -u '+%Y-%m-%d %H:%M UTC'); these hours are not updated until a SHA, the verdict or the replay changes" >> "$RUNNER_TEMP/due.txt"
+          else
+            rm -f "$RUNNER_TEMP/due.txt"
+          fi
+          if [ "$(git rev-list --count "$F..$U")" != 0 ]; then
+            timeout 300 python3 -I "$S" dry-run --fork "$F" --onto "$U" > "$RUNNER_TEMP/dry-run.txt" ||
+              rm -f "$RUNNER_TEMP/dry-run.txt"
+          fi
+
       - name: Compare
         run: |
           set -euo pipefail
@@ -126,12 +146,17 @@ jobs:
           text = re.sub(r"@(?=[A-Za-z0-9-])", "@\u200b", text)
           open(path, "w", encoding="utf-8").write(text)
           PY
+          # A verdict or a replay that changes must edit the issue even when no SHA moved: quiet hours pass with no push.
+          verdict=none; replay=none
+          if [ -s "$RUNNER_TEMP/due.txt" ]; then verdict=$(sed -nE '1s/^due: ([a-z]+):.*/\1/p' "$RUNNER_TEMP/due.txt"); fi
+          if [ -s "$RUNNER_TEMP/dry-run.txt" ]; then replay=$(sed -n 1p "$RUNNER_TEMP/dry-run.txt" | cksum | cut -d' ' -f1); fi
+          block() { if [ -s "$1" ]; then echo '```text'; head -n 200 "$1"; echo '```'; else echo "not available"; fi; }
           count() { if [ -z "$1" ]; then echo 0; else printf '%s\n' "$1" | wc -l | tr -d ' '; fi; }
           list() { if [ -z "$1" ]; then echo "None."; else printf '%s\n' "$1" | sed 's/^/- `/; s/$/`/'; fi; }
 
           body="$RUNNER_TEMP/body.md"
           {
-            echo "<!-- upstream-drift upstream=$u_sha fork=$f_sha main=$m_sha -->"
+            echo "<!-- upstream-drift upstream=$u_sha fork=$f_sha main=$m_sha due=$verdict replay=$replay -->"
             echo "## $FORK_REF is $behind commits behind upstream main"
             echo
             echo "| Branch | Behind upstream/main | Ahead |"
@@ -152,6 +177,14 @@ jobs:
             echo "A 3-way merge of upstream/main and \`$FORK_REF\`; the rebase replays commit by commit and can conflict differently."
             echo
             list "$conflicts"
+            echo
+            echo "### Is a sync due?"
+            echo
+            block "$RUNNER_TEMP/due.txt"
+            echo
+            echo "### Predicted rebase stops"
+            echo
+            block "$RUNNER_TEMP/dry-run.txt"
             echo
             echo "### Upstream first-parent commits since the merge base ($fp_total)"
             echo
