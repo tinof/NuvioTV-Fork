@@ -259,6 +259,158 @@ class Hdr10PlusDvRpuSourceTest {
     private fun au(timeMs: Long, scene: Int?, l1: Int = scene ?: 0) =
         Au(timeMs * 1000, if (scene == null) emptyList() else listOf(payload(scene, l1)))
 
+    // ROADMAP DV3.4: the SEI fills what the container does not state (docs/dv-conversion/DESIGN.md 2.4).
+
+    private val p3 = floatArrayOf(0.680f, 0.320f, 0.265f, 0.690f, 0.150f, 0.060f, 0.3127f, 0.3290f)
+    private val bt2020 = floatArrayOf(0.708f, 0.292f, 0.170f, 0.797f, 0.131f, 0.046f, 0.3127f, 0.3290f)
+    private val title = DvSeiStatic(p3, 1000f, 0.0001f, 108, 53)
+
+    private fun filled(facts: DvTrackFacts) = Hdr10PlusDvRpuSource.params(facts.filledFromSei(), fake)
+
+    private fun level6(facts: DvTrackFacts) = filled(facts).level6
+
+    private fun label(facts: DvTrackFacts, seiStatic: Boolean = true) =
+        (Hdr10PlusDvRpuSource(native = fake, seiStatic = seiStatic).prepare(P81, facts) as DvRpuSource.Prepared.Ready).label
+
+    @Test
+    fun `the DV3_1 title's SEI replaces all the defaults`() {
+        val params = filled(DvTrackFacts(seiStatic = title))
+        assertEquals(Level6(1000, 1, 108, 53), params.level6)
+        assertEquals(DoviRpuBuilder.Profile.P81(SourceRange(1, 1000)), params.profile)
+        assertEquals(DoviRpuBuilder.PRIMARIES_P3_D65, params.sourcePrimaryIndex)
+    }
+
+    @Test
+    fun `every value the container states wins over the SEI`() {
+        val params = filled(DvTrackFacts(emptyList(), 4000f, 0.005f, 500, 300, bt2020, 9, title))
+        assertEquals(Level6(4000, 50, 500, 300), params.level6)
+        assertEquals(DoviRpuBuilder.PRIMARIES_BT2020, params.sourcePrimaryIndex)
+    }
+
+    @Test
+    fun `MaxCLL and MaxFALL fill one by one, a container zero counting as not stated`() {
+        assertEquals(Level6(1000, 1, 500, 53), level6(DvTrackFacts(maxContentLightLevel = 500, seiStatic = title)))
+        assertEquals(Level6(1000, 1, 108, 90), level6(DvTrackFacts(maxFrameAverageLightLevel = 90, seiStatic = title)))
+        assertEquals(
+            Level6(1000, 1, 108, 53),
+            level6(DvTrackFacts(maxContentLightLevel = 0, maxFrameAverageLightLevel = 0, seiStatic = title)),
+        )
+    }
+
+    @Test
+    fun `the mastering luminance is one field and only the container's pair wins`() {
+        // A lone value loses to the SEI's pair, as MediaInfo reports it.
+        assertEquals(Level6(1000, 1, 108, 53), level6(DvTrackFacts(masteringMaxNits = 4000f, seiStatic = title)))
+        assertEquals(Level6(1000, 1, 108, 53), level6(DvTrackFacts(masteringMinNits = 0.005f, seiStatic = title)))
+        assertEquals(Level6(1000, 1, 108, 53), level6(DvTrackFacts(masteringMaxNits = Float.NaN, masteringMinNits = 0f, seiStatic = title)))
+        // Both win, a zero included.
+        assertEquals(Level6(4000, 0, 108, 53), level6(DvTrackFacts(masteringMaxNits = 4000f, masteringMinNits = 0f, seiStatic = title)))
+        assertEquals(Level6(0, 50, 108, 53), level6(DvTrackFacts(masteringMaxNits = 0f, masteringMinNits = 0.005f, seiStatic = title)))
+        // Without an SEI pair a lone value stays as DV3.1 uses it.
+        val lightOnly = DvSeiStatic(maxContentLightLevel = 108, maxFrameAverageLightLevel = 53)
+        assertEquals(Level6(4000, 50, 108, 53), level6(DvTrackFacts(masteringMaxNits = 4000f, seiStatic = lightOnly)))
+    }
+
+    @Test
+    fun `primaries are one field too, and an SEI gamut nobody names falls back to the Colour element`() {
+        assertEquals(DoviRpuBuilder.PRIMARIES_BT2020, filled(DvTrackFacts(masteringPrimaries = bt2020, seiStatic = title)).sourcePrimaryIndex)
+        assertEquals(DoviRpuBuilder.PRIMARIES_P3_D65, filled(DvTrackFacts(containerPrimaries = 9, seiStatic = title)).sourcePrimaryIndex)
+        val odd = DvSeiStatic(masteringPrimaries = floatArrayOf(0.5f, 0.3f, 0.3f, 0.5f, 0.2f, 0.2f, 0.3f, 0.3f))
+        assertEquals(DoviRpuBuilder.PRIMARIES_BT709, filled(DvTrackFacts(containerPrimaries = 1, seiStatic = odd)).sourcePrimaryIndex)
+        assertEquals(DoviRpuBuilder.PRIMARIES_BT2020, filled(DvTrackFacts(seiStatic = odd)).sourcePrimaryIndex)
+    }
+
+    @Test
+    fun `source_range_81 guards implausible SEI values before the cap`() {
+        fun range(max: Float, min: Float) = filled(DvTrackFacts(seiStatic = DvSeiStatic(p3, max, min))).profile
+        // Written in the wrong units: 1 nit, 0 nits.
+        assertEquals(DoviRpuBuilder.Profile.P81(null), range(1f, 0.0001f))
+        assertEquals(DoviRpuBuilder.Profile.P81(null), range(0f, 0f))
+        // Capped, these two would look plausible: 10 000 nits, 1 nit.
+        assertEquals(DoviRpuBuilder.Profile.P81(null), range(50_000f, 0.0001f))
+        assertEquals(DoviRpuBuilder.Profile.P81(null), range(1000f, 5f))
+        assertEquals(DoviRpuBuilder.Profile.P81(null), range(429_496.72f, 214_748.36f))
+        // The values stay in L6, capped, as the library needs them.
+        assertEquals(Level6(10_000, 1, 1000, 400), level6(DvTrackFacts(seiStatic = DvSeiStatic(p3, 50_000f, 0.0001f))))
+        assertEquals(Level6(1000, 10_000, 1000, 400), level6(DvTrackFacts(seiStatic = DvSeiStatic(p3, 1000f, 5f))))
+        // At the edge of the plausible range.
+        assertEquals(DoviRpuBuilder.Profile.P81(SourceRange(10_000, 10_000)), range(10_000f, 1f))
+    }
+
+    @Test
+    fun `an implausible container value is guarded the same way`() {
+        assertEquals(DoviRpuBuilder.Profile.P81(null), Hdr10PlusDvRpuSource.params(DvTrackFacts(emptyList(), 20_000f, 5f), fake).profile)
+    }
+
+    @Test
+    fun `MaxFALL stays at or below MaxCLL when the SEI is involved`() {
+        // A default gives way to a value from the SEI.
+        assertEquals(1000 to 300, light(DvSeiStatic(maxContentLightLevel = 1000, maxFrameAverageLightLevel = 300)))
+        assertEquals(108 to 108, light(DvSeiStatic(maxContentLightLevel = 108)))
+        assertEquals(1200 to 1200, light(DvSeiStatic(maxFrameAverageLightLevel = 1200)))
+        // Both stated, one or both from the SEI: lowered, a departure from mkvdovi.
+        assertEquals(50 to 50, light(DvSeiStatic(maxContentLightLevel = 50, maxFrameAverageLightLevel = 108)))
+        assertEquals(Level6(1000, 50, 50, 50), level6(DvTrackFacts(maxContentLightLevel = 50, seiStatic = DvSeiStatic(maxFrameAverageLightLevel = 108))))
+        assertEquals(Level6(1000, 50, 50, 50), level6(DvTrackFacts(maxFrameAverageLightLevel = 108, seiStatic = DvSeiStatic(maxContentLightLevel = 50))))
+        // Two container values stay as DV3.1 keeps them.
+        assertEquals(Level6(1000, 1, 50, 108), level6(DvTrackFacts(maxContentLightLevel = 50, maxFrameAverageLightLevel = 108, seiStatic = title)))
+    }
+
+    private fun light(sei: DvSeiStatic): Pair<Int, Int> {
+        val l6 = level6(DvTrackFacts(seiStatic = sei))!!
+        return l6.maxContentLightLevel to l6.maxFrameAverageLightLevel
+    }
+
+    @Test
+    fun `values above the L6 limit are capped`() {
+        assertEquals(Level6(1000, 50, 10_000, 10_000), level6(DvTrackFacts(seiStatic = DvSeiStatic(maxContentLightLevel = 12_000, maxFrameAverageLightLevel = 11_000))))
+    }
+
+    @Test
+    fun `every 16-bit minimum code survives the float`() {
+        for (code in 0..65_535) {
+            val nits = (code / 10_000.0).toFloat()
+            val level6 = Hdr10PlusDvRpuSource.level6(DvTrackFacts(emptyList(), 1000f, nits))
+            assertEquals(minOf(code, 10_000), level6.minDisplayMasteringLuminance)
+        }
+    }
+
+    @Test
+    fun `the switch off gives today's params and ignores the SEI`() {
+        val on = fake.created.size
+        Hdr10PlusDvRpuSource(native = fake, seiStatic = false).prepare(P81, DvTrackFacts(listOf(payload(1)), seiStatic = title))
+        Hdr10PlusDvRpuSource(native = fake).prepare(P81, DvTrackFacts(listOf(payload(1))))
+        val (off, today) = fake.created.drop(on)
+        assertEquals(today, off)
+        assertEquals(Level6(1000, 50, 1000, 400), off.level6)
+        assertEquals(DoviRpuBuilder.PRIMARIES_BT2020, off.sourcePrimaryIndex)
+    }
+
+    @Test
+    fun `the log line names where each value came from`() {
+        val sei = label(DvTrackFacts(listOf(payload(1)), seiStatic = title))
+        assertTrue(sei, "L6 1000/1/108/53, source range 1..1000" in sei)
+        assertTrue(sei, "origin mastering max SEI, mastering min SEI, MaxCLL SEI, MaxFALL SEI, L9 SEI" in sei)
+        assertTrue(sei, "SEI states 0.0001..1000 nits, MaxCLL 108, MaxFALL 53, primaries L9 0" in sei)
+
+        val mixed = label(DvTrackFacts(listOf(payload(1)), 4000f, 0.005f, 500, null, null, 9, title))
+        assertTrue(mixed, "origin mastering max container, mastering min container, MaxCLL container, MaxFALL SEI, L9 SEI" in mixed)
+
+        val none = label(DvTrackFacts(listOf(payload(1))))
+        assertTrue(none, "origin mastering max default, mastering min default, MaxCLL default, MaxFALL default, L9 default" in none)
+        assertTrue(none, "no static SEI" in none)
+
+        val colourOnly = label(DvTrackFacts(listOf(payload(1)), containerPrimaries = 9))
+        assertTrue(colourOnly, "L9 container" in colourOnly)
+
+        val off = label(DvTrackFacts(listOf(payload(1)), seiStatic = title), seiStatic = false)
+        assertTrue(off, "origin mastering max default" in off)
+        assertTrue(off, "SEI states 0.0001..1000 nits, MaxCLL 108, MaxFALL 53, primaries L9 0 (ignored: debug.nuvio.dv_sei_static 0)" in off)
+
+        val lowered = label(DvTrackFacts(listOf(payload(1)), seiStatic = DvSeiStatic(maxContentLightLevel = 50, maxFrameAverageLightLevel = 108)))
+        assertTrue(lowered, "MaxFALL lowered to MaxCLL" in lowered)
+    }
+
     private fun au(timeMs: Int, scene: Int?, l1: Int = scene ?: 0) = au(timeMs.toLong(), scene, l1)
 
     private fun read(rpus: TrackRpus, vararg aus: Au): List<Written> = aus.map { au ->

@@ -26,6 +26,10 @@ import com.nuvio.tv.core.player.fakeAvgOfNal
 import com.nuvio.tv.core.player.fakeHdr10PlusPayload
 import com.nuvio.tv.core.player.fakeHdr10PlusSei
 import com.nuvio.tv.core.player.fakeIsRefresh
+import com.nuvio.tv.core.player.fakeLightLevelPayload
+import com.nuvio.tv.core.player.fakeMasteringPayload
+import com.nuvio.tv.core.player.fakeSeiNal
+import com.nuvio.tv.core.player.fakeStaticSei
 import io.mockk.every
 import io.mockk.mockk
 import java.io.ByteArrayOutputStream
@@ -284,12 +288,210 @@ class MatroskaHdr10PlusTest {
         val rpus: List<ByteArray> get() = samples.map(::lastNal)
     }
 
-    private fun transformer(convert: Boolean = true, hdr10Plus: Boolean = true) = DolbyVisionMatroskaTransformer(
+    // ROADMAP DV3.4: the static metadata of the SEI, through the extractor (DESIGN.md 2.4).
+
+    private val titleLevel6 = DoviRpuBuilder.Level6(1000, 1, 108, 53)
+    private val defaultLevel6 = DoviRpuBuilder.Level6(1000, 50, 1000, 400)
+
+    private fun hvcCWith(vararg seis: ByteArray) = HevcColourFixtures.hvcC(
+        32 to listOf(HevcColourFixtures.vps("pq")),
+        33 to listOf(HevcColourFixtures.sps("pq")),
+        34 to listOf(HevcColourFixtures.pps("pq")),
+        39 to seis.toList(),
+    )
+
+    /** One Cluster of two AUs, the first with [first] before its slice, both with HDR10+ scene 1. */
+    private fun staticFile(hvcC: ByteArray, vararg first: ByteArray, colour: ByteArray = pqColour) = mkv(
+        trackEntry(colour, hvcC = hvcC),
+        cluster(0, block(0, true, *first, sei(1), idr), block(40, false, sei(1), trail)),
+    )
+
+    private fun assertEveryAuHasAnRpu(read: Read) {
+        assertEquals(read.samples.size, read.rpus.size)
+        assertTrue(read.rpus.all { fakeAvgOfNal(it) == 1001 })
+    }
+
+    @Test
+    fun `a track the first-AU scan converts takes the SEI of that AU`() {
+        val out = readFile(staticFile(HevcColourFixtures.hvcCOf("pq"), fakeStaticSei()), transformer())
+        val params = fake.created.single()
+        assertEquals(titleLevel6, params.level6)
+        assertEquals(DoviRpuBuilder.Profile.P81(DoviRpuBuilder.SourceRange(1, 1000)), params.profile)
+        assertEquals(DoviRpuBuilder.PRIMARIES_P3_D65, params.sourcePrimaryIndex)
+        assertEveryAuHasAnRpu(out)
+    }
+
+    @Test
+    fun `the first-AU scan also takes the SEI of the hvcC, the hvcC's mastering display first`() {
+        val hvcC = hvcCWith(fakeSeiNal(137 to fakeMasteringPayload()))
+        val au = fakeSeiNal(137 to fakeMasteringPayload(maxUnits = 40_000_000), 144 to fakeLightLevelPayload(108, 53))
+        readFile(staticFile(hvcC, au), transformer())
+        assertEquals(titleLevel6, fake.created.single().level6)
+    }
+
+    @Test
+    fun `the SEI stays in the AU`() {
+        val sei = fakeStaticSei()
+        val file = staticFile(HevcColourFixtures.hvcCOf("pq"), sei)
+        val native = readFile(file, transformer = null)
+        val out = readFile(file, transformer())
+        for (i in native.samples.indices) {
+            assertArrayEquals(native.samples[i], out.samples[i].copyOfRange(0, native.samples[i].size))
+        }
+    }
+
+    @Test
+    fun `the container's values win, one MediaInfo field at a time`() {
+        val mastering = element(0x55D0, float(0x55D9, 4000f), float(0x55DA, 0.005f))
+        val colour = colour(uint(0x55BB, 9), uint(0x55BA, 16), uint(0x55B1, 9), uint(0x55B9, 1), uint(0x55BC, 500), mastering)
+        readFile(staticFile(HevcColourFixtures.hvcCOf("pq"), fakeStaticSei(), colour = colour), transformer())
+        assertEquals(DoviRpuBuilder.Level6(4000, 50, 500, 53), fake.created.single().level6)
+        assertEquals(DoviRpuBuilder.PRIMARIES_P3_D65, fake.created.single().sourcePrimaryIndex)
+    }
+
+    @Test
+    fun `a lone container LuminanceMax loses to the SEI's pair`() {
+        val colour = colour(uint(0x55BB, 9), uint(0x55BA, 16), uint(0x55B1, 9), uint(0x55B9, 1), element(0x55D0, float(0x55D9, 4000f)))
+        readFile(staticFile(HevcColourFixtures.hvcCOf("pq"), fakeStaticSei(), colour = colour), transformer())
+        assertEquals(titleLevel6, fake.created.single().level6)
+    }
+
+    @Test
+    fun `a track that converts at init takes the hvcC's SEI without a scan`() {
+        val file = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1), fakeStaticSei())),
+            cluster(0, block(0, true, idr), block(40, false, trail)),
+        )
+        val out = readFile(file, transformer())
+        assertEquals(titleLevel6, fake.created.single().level6)
+        assertTrue(out.formats.all { it.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION })
+        assertEveryAuHasAnRpu(out)
+    }
+
+    @Test
+    fun `a track that converts at init reads the first AU for what the hvcC leaves open`() {
+        val file = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1))),
+            cluster(0, block(0, true, fakeStaticSei(), idr), block(40, false, trail)),
+        )
+        val out = readFile(file, transformer())
+        assertEquals(listOf(defaultLevel6, titleLevel6), fake.created.map { it.level6 })
+        // The source of track init is released; no sample went through it.
+        assertEquals(listOf(DoviRpuBuilder.Handle(1)), fake.released.filter { it.value == 1L })
+        assertTrue(out.formats.all { it.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION })
+        assertEquals(listOf(true, false), out.rpus.map { fakeIsRefresh(it) })
+        assertEveryAuHasAnRpu(out)
+    }
+
+    @Test
+    fun `a track that converts at init keeps its source when the first AU has no static SEI`() {
+        val file = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1))),
+            cluster(0, block(0, true, idr), block(40, false, trail)),
+        )
+        val out = readFile(file, transformer())
+        assertEquals(listOf(defaultLevel6), fake.created.map { it.level6 })
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        assertEveryAuHasAnRpu(out)
+    }
+
+    @Test
+    fun `a track that converts at init stays converted when the scan cannot read the prefix`() {
+        // A prefix past the 64 KiB the scan reads, with the static SEI behind it.
+        val filler = fakeSeiNal(5 to ByteArray(200) { 7 }) + ByteArray(70_000) { 7 }
+        val file = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1))),
+            cluster(0, block(0, true, filler, fakeStaticSei(), idr), block(40, false, trail)),
+        )
+        val out = readFile(file, transformer())
+        assertEquals(listOf(defaultLevel6), fake.created.map { it.level6 })
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        assertEveryAuHasAnRpu(out)
+    }
+
+    @Test
+    fun `a static SEI before a prefix the scan cannot finish still counts on a track converted at init`() {
+        val filler = fakeSeiNal(5 to ByteArray(200) { 7 }) + ByteArray(70_000) { 7 }
+        val file = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1))),
+            cluster(0, block(0, true, fakeStaticSei(), filler, idr), block(40, false, trail)),
+        )
+        readFile(file, transformer())
+        assertEquals(listOf(defaultLevel6, titleLevel6), fake.created.map { it.level6 })
+    }
+
+    @Test
+    fun `a track that converts at init keeps its source when the new one fails`() {
+        fake.failCreateFrom = 2
+        val file = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1))),
+            cluster(0, block(0, true, fakeStaticSei(), idr), block(40, false, trail)),
+        )
+        val out = readFile(file, transformer())
+        assertEquals(listOf(defaultLevel6), fake.created.map { it.level6 })
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        assertEveryAuHasAnRpu(out)
+    }
+
+    @Test
+    fun `nothing is read again when the container and the hvcC state everything`() {
+        val mastering = element(0x55D0, float(0x55D9, 4000f), float(0x55DA, 0.005f))
+        val colour = colour(uint(0x55BB, 9), uint(0x55BA, 16), uint(0x55B1, 9), uint(0x55B9, 1), uint(0x55BC, 500), uint(0x55BD, 300), mastering)
+        val file = mkv(
+            trackEntry(colour, hvcC = hvcCWith(sei(1), fakeSeiNal(137 to fakeMasteringPayload()))),
+            cluster(0, block(0, true, fakeStaticSei(maxCll = 900), idr), block(40, false, trail)),
+        )
+        readFile(file, transformer())
+        assertEquals(listOf(DoviRpuBuilder.Level6(4000, 50, 500, 300)), fake.created.map { it.level6 })
+    }
+
+    @Test
+    fun `with the switch off the RPU params and samples are today's, on both paths`() {
+        val scanned = staticFile(HevcColourFixtures.hvcCOf("pq"), fakeStaticSei())
+        val atInit = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1), fakeSeiNal(144 to fakeLightLevelPayload(108, 53)))),
+            cluster(0, block(0, true, fakeStaticSei(), idr), block(40, false, trail)),
+        )
+        for (file in listOf(scanned, atInit)) {
+            fake.created.clear()
+            val out = readFile(file, transformer(seiStatic = false))
+            assertEquals(listOf(defaultLevel6), fake.created.map { it.level6 })
+            assertEquals(DoviRpuBuilder.PRIMARIES_BT2020, fake.created.single().sourcePrimaryIndex)
+            assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        }
+    }
+
+    @Test
+    fun `conversion off stays byte-identical with static SEI in the hvcC and the first AU`() {
+        val file = mkv(
+            trackEntry(pqColour, hvcC = hvcCWith(sei(1), fakeStaticSei())),
+            cluster(0, block(0, true, fakeStaticSei(), idr), block(40, false, trail)),
+        )
+        val native = readFile(file, transformer = null)
+        for (transformer in listOf(transformer(convert = false), transformer(hdr10Plus = false))) {
+            val out = readFile(file, transformer)
+            assertEquals(MimeTypes.VIDEO_H265, out.format!!.sampleMimeType)
+            assertEquals(native.formats, out.formats)
+            assertSamplesEqual(native.samples, out.samples)
+        }
+        assertTrue(fake.created.isEmpty())
+    }
+
+    @Test
+    fun `a malformed static SEI costs nothing`() {
+        val cut = fakeStaticSei().let { it.copyOf(it.size - 8) }
+        val out = readFile(staticFile(HevcColourFixtures.hvcCOf("pq"), cut), transformer())
+        assertEquals(defaultLevel6, fake.created.single().level6)
+        assertEveryAuHasAnRpu(out)
+    }
+
+    private fun transformer(convert: Boolean = true, hdr10Plus: Boolean = true, seiStatic: Boolean = true) = DolbyVisionMatroskaTransformer(
         DolbyVisionConversionConfig(active = false, convertNonDolbyVision = convert, stats = DolbyVisionStatsSession()),
         hdr10PlusEnabled = hdr10Plus,
+        seiStaticEnabled = seiStatic,
         rpuSource = DvRpuSources(
             { _, _ -> DvRpuSource.Prepared.Unavailable("no 8.4 in this test") },
-            Hdr10PlusDvRpuSource(enabled = hdr10Plus, native = fake),
+            Hdr10PlusDvRpuSource(enabled = hdr10Plus, native = fake, seiStatic = seiStatic),
         ),
         refreshEveryStart = false,
     )

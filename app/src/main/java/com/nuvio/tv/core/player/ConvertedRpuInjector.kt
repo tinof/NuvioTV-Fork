@@ -24,12 +24,46 @@ internal fun interface DvRpuSource {
 }
 
 /**
+ * What the mastering display and content light level SEI of a stream state (ROADMAP DV3.4), each field
+ * null when no message states it: [masteringPrimaries] as [DvTrackFacts] holds them; a light level of 0
+ * or 65535 is not stated.
+ */
+internal class DvSeiStatic(
+    val masteringPrimaries: FloatArray? = null,
+    val masteringMaxNits: Float? = null,
+    val masteringMinNits: Float? = null,
+    val maxContentLightLevel: Int? = null,
+    val maxFrameAverageLightLevel: Int? = null,
+) {
+    /**
+     * This message or set of messages followed by [later], in reading order (hvcC, then AU): the first
+     * mastering display stays and the last stated light level replaces it, as MediaInfo reports them
+     * (`docs/dv-conversion/DESIGN.md` 2.4).
+     */
+    fun then(later: DvSeiStatic?): DvSeiStatic {
+        if (later == null) return this
+        return DvSeiStatic(
+            masteringPrimaries ?: later.masteringPrimaries,
+            masteringMaxNits ?: later.masteringMaxNits,
+            masteringMinNits ?: later.masteringMinNits,
+            later.maxContentLightLevel ?: maxContentLightLevel,
+            later.maxFrameAverageLightLevel ?: maxFrameAverageLightLevel,
+        )
+    }
+}
+
+/** The values of [DvTrackFacts] [DvTrackFacts.filledFromSei] can take from the SEI: MediaInfo's four fields. */
+internal enum class DvStaticField { MASTERING_LUMINANCE, MASTERING_PRIMARIES, MAX_CLL, MAX_FALL }
+
+/**
  * What the extractor knows of a track when it prepares the conversion (ROADMAP DV3.1): the HDR10+
  * candidates of its hvcC or first AU ([HevcInitNals.hdr10PlusPayloadsInSei]) and the Matroska
  * MasteringMetadata, each field null when the container does not state it: [masteringPrimaries] is
  * R, G, B and white point as x, y pairs (8 values); [containerPrimaries] the Colour element's H.273 code.
+ * DV3.4: [seiStatic] is what the stream's SEI states, unused until [filledFromSei], which records in
+ * [fromSei] what it took.
  */
-internal class DvTrackFacts(
+internal class DvTrackFacts @JvmOverloads constructor(
     val hdr10PlusPayloads: List<ByteArray> = emptyList(),
     val masteringMaxNits: Float? = null,
     val masteringMinNits: Float? = null,
@@ -37,15 +71,59 @@ internal class DvTrackFacts(
     val maxFrameAverageLightLevel: Int? = null,
     val masteringPrimaries: FloatArray? = null,
     val containerPrimaries: Int? = null,
+    val seiStatic: DvSeiStatic? = null,
+    val fromSei: Set<DvStaticField> = emptySet(),
 ) {
+    private val masteringLuminanceStated: Boolean
+        get() = isLuminance(masteringMaxNits) && isLuminance(masteringMinNits)
+
+    /**
+     * These facts with the SEI filling what the container leaves open, by MediaInfo's four fields
+     * (`docs/dv-conversion/DESIGN.md` 2.4): the mastering luminance only as a pair, so one RPU never
+     * mixes the two sources, a light level when the container's is absent or 0.
+     */
+    fun filledFromSei(): DvTrackFacts {
+        val sei = seiStatic ?: return this
+        val luminance = !masteringLuminanceStated && isLuminance(sei.masteringMaxNits) && isLuminance(sei.masteringMinNits)
+        val primaries = masteringPrimaries == null && sei.masteringPrimaries != null
+        val maxCll = (maxContentLightLevel ?: 0) <= 0 && sei.maxContentLightLevel != null
+        val maxFall = (maxFrameAverageLightLevel ?: 0) <= 0 && sei.maxFrameAverageLightLevel != null
+        return DvTrackFacts(
+            hdr10PlusPayloads,
+            if (luminance) sei.masteringMaxNits else masteringMaxNits,
+            if (luminance) sei.masteringMinNits else masteringMinNits,
+            if (maxCll) sei.maxContentLightLevel else maxContentLightLevel,
+            if (maxFall) sei.maxFrameAverageLightLevel else maxFrameAverageLightLevel,
+            if (primaries) sei.masteringPrimaries else masteringPrimaries,
+            containerPrimaries,
+            sei,
+            listOfNotNull(
+                DvStaticField.MASTERING_LUMINANCE.takeIf { luminance },
+                DvStaticField.MASTERING_PRIMARIES.takeIf { primaries },
+                DvStaticField.MAX_CLL.takeIf { maxCll },
+                DvStaticField.MAX_FALL.takeIf { maxFall },
+            ).toSet(),
+        )
+    }
+
+    /** Whether the container and the SEI read so far state all four fields: another SEI could add nothing. */
+    fun staticComplete(): Boolean {
+        val filled = filledFromSei()
+        return filled.masteringLuminanceStated && filled.masteringPrimaries != null &&
+            (filled.maxContentLightLevel ?: 0) > 0 && (filled.maxFrameAverageLightLevel ?: 0) > 0
+    }
+
     override fun toString(): String =
         "DvTrackFacts(hdr10Plus=${hdr10PlusPayloads.size}, mastering=$masteringMinNits..$masteringMaxNits, " +
             "maxCll=$maxContentLightLevel, maxFall=$maxFrameAverageLightLevel, " +
-            "primaries=${masteringPrimaries?.contentToString()}/$containerPrimaries)"
+            "primaries=${masteringPrimaries?.contentToString()}/$containerPrimaries, fromSei=$fromSei)"
 
     companion object {
         @JvmField
         val NONE = DvTrackFacts()
+
+        /** A luminance as a mastering display states it; NaN and negative values are not one. */
+        internal fun isLuminance(value: Float?) = value != null && value.isFinite() && value >= 0f
     }
 }
 
