@@ -79,6 +79,42 @@ with exit 3 on one item: `system/nv_ir_non_audio_device_connected` went from 1 t
 session never wrote it, so it stays as the Shield set it. The logcat prune list was put back by hand, and
 `adb logcat -p` read `~! ~1000/!` afterwards.
 
+## 2026-10-31: sync cost study (U1.12 to U1.15)
+
+The owner asked how to cut the upkeep of a sync. Five read-only measurements on scratch clones, two designers, a
+judge who reproduced the numbers, and a Codex critique.
+
+**Measured**
+
+- The sync of 2026-10-31 took 136 min: 48.6 blocked on two owner answers, 10 of CI, about 77 of other machine work.
+  New tokens were about 1.66M, 1.38M of them classify.
+- 246 of 262 commits replayed to the exact real tree. Four syncs had 38 stops and 76 hunks. `merge-tree -X ours`
+  finds all 38 stops in 2 to 7 s, with 16 false alarms.
+- All 5 real issues of 2026-10-31 merged cleanly, so conflict-only analysis would miss them.
+- The light path fired on 0 of 4 syncs. Measured cumulatively, 6 of 129 upstream steps qualify, none on 2026-10-31.
+- rerere had 0 hits: 76 of 76 conflict texts were unique.
+- The 2026-10-27 commit set gives 13 stops, 18 hunks and 130 lines whether synced once or twice. Codex notes that
+  replay used resolved parents, so "no cost" is not fully proven.
+- Fork size does not predict conflicts. `MatroskaExtractor.java` carries +697 lines and had 2 hunks in four syncs.
+  Moving every 8+ line hunk of it and `PlayerRuntimeControllerInitialization.kt` into hooks saved 0 regions.
+- Real fork code in upstream files is about 3,700 added lines in 89 files. No fork commit is patch-equivalent to
+  upstream (264 of 264 by `git cherry`). Overlap shows up in behaviour, as in the 2026-10-31 adapts.
+- Replaying the fork onto official beta.9 gives 68 stops and 244 hunks, against 8 and 12 on ysosrs. The fork depends
+  on ysosrs's 213-commit layer.
+
+**Decisions**
+
+- Syncs follow settled batches, at least weekly (the owner's floor).
+- Before a new fork feature, check official and upstream. When upstream covers a fork change, prefer dropping the
+  fork's version, except for the protected features.
+- U1.10 is held. The stack cleanup waits for the next sync's rebase.
+
+**Rejected on the numbers:** squash, theme regrouping, merge instead of rebase, patch queues, large Init and Matroska
+seams, a fork Gradle module, retuned light rules, tracking official directly.
+
+**Open:** the 30 to 45 min sync target is an estimate until a pilot sync measures it. Reader recall rests on one sync
+with 5 positives.
+
 ## 2026-10-31: U1.5 sync onto upstream 1.1.0-nt.9 (PR #33)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `2b51aba36` onto `d9039df69`: 271 upstream commits behind, 262 fork
