@@ -7,7 +7,8 @@ import androidx.media3.container.NalUnitUtil
  * Reads NAL units from the HEVC initialization data Media3's HevcConfig builds from an hvcC: every
  * NAL of every hvcC array, each behind a start code, in one buffer. For the HLG contract (ROADMAP
  * DV2.4): the first SPS, and the alternative-transfer SEI an hvcC can carry in its prefix SEI array.
- * For the HDR10+ provider (DV3.1): the HDR10+ T.35 payloads of an hvcC or an access unit.
+ * For the HDR10+ provider (DV3.1): the HDR10+ T.35 payloads of an hvcC or an access unit; and (DV3.4)
+ * their mastering display and content light level SEI.
  */
 @UnstableApi
 internal object HevcInitNals {
@@ -21,6 +22,18 @@ internal object HevcInitNals {
     private const val SEI_PAYLOAD_ALTERNATIVE_TRANSFER = 147
     private const val SEI_PAYLOAD_T35 = 4
     private val HDR10_PLUS_T35_HEADER = byteArrayOf(0xB5.toByte(), 0x00, 0x3C, 0x00, 0x01)
+    private const val SEI_PAYLOAD_MASTERING_DISPLAY = 137
+    private const val SEI_PAYLOAD_CONTENT_LIGHT = 144
+    private const val MASTERING_DISPLAY_SIZE = 24
+    private const val CONTENT_LIGHT_SIZE = 4
+
+    // H.265 D.3.28: chromaticity in 0.00002 units, luminance in 0.0001 nits.
+    private const val CHROMATICITY_UNIT = 0.00002
+    private const val LUMINANCE_UNIT = 0.0001
+
+    // A blue primary lies below this in x and y (0.35, in chromaticity units), as MediaInfo sorts them.
+    private const val BLUE_LIMIT = 17_500
+    private const val LIGHT_LEVEL_NOT_MEASURED = 65_535
 
     /** The first SPS NAL (2-byte header included, as coded), or null when there is none. */
     @JvmStatic
@@ -96,6 +109,8 @@ internal object HevcInitNals {
         val parameterSets: List<ByteArray>,
         /** ROADMAP DV3.1: the HDR10+ candidates of the prefix SEI NALs, as [hdr10PlusPayloadsInSei]. */
         val hdr10PlusPayloads: List<ByteArray> = emptyList(),
+        /** ROADMAP DV3.4: the static metadata of the prefix SEI NALs, or null without any. */
+        val seiStatic: DvSeiStatic? = null,
     ) {
         /** The first SPS NAL, or null. */
         val sps: ByteArray? get() = parameterSets.firstOrNull { nalType(it) == NAL_TYPE_SPS }
@@ -121,7 +136,8 @@ internal object HevcInitNals {
         val parameterSets = mutableListOf<ByteArray>()
         val hdr10PlusPayloads = mutableListOf<ByteArray>()
         var preferredTransfer: Int? = null
-        fun result(status: Int) = AuPrefix(status, preferredTransfer, parameterSets, hdr10PlusPayloads)
+        var seiStatic: DvSeiStatic? = null
+        fun result(status: Int) = AuPrefix(status, preferredTransfer, parameterSets, hdr10PlusPayloads, seiStatic)
         if (nalUnitLengthFieldLength !in 1..4) return result(PREFIX_MALFORMED)
         val limit = minOf(available, auLength)
         var pos = 0
@@ -141,6 +157,8 @@ internal object HevcInitNals {
                 val sei = buffer.copyOfRange(pos, end)
                 if (preferredTransfer == null) preferredTransfer = preferredTransferInSei(sei)
                 hdr10PlusPayloads += hdr10PlusPayloadsInSei(sei)
+                val found = seiStaticInSei(sei)
+                seiStatic = seiStatic?.then(found) ?: found
             }
             pos = end
         }
@@ -253,6 +271,86 @@ internal object HevcInitNals {
         }
         return payloads ?: emptyList()
     }
+
+    /** The static metadata of the prefix SEI NALs an hvcC carries (ROADMAP DV3.4), or null without any. */
+    @JvmStatic
+    fun seiStatic(initializationData: List<ByteArray>?): DvSeiStatic? {
+        var static: DvSeiStatic? = null
+        for (nal in nals(initializationData)) {
+            if (nalType(nal) != NAL_TYPE_PREFIX_SEI) continue
+            val found = seiStaticInSei(nal)
+            static = static?.then(found) ?: found
+        }
+        return static
+    }
+
+    /**
+     * The mastering display (payloadType 137) and content light level (144) messages of one SEI NAL,
+     * [DvSeiStatic.then] in message order, or null without a usable one. A message shorter than its
+     * syntax is skipped; a longer one counts, as in MediaInfo (`docs/dv-conversion/DESIGN.md` 2.4).
+     */
+    fun seiStaticInSei(nal: ByteArray): DvSeiStatic? {
+        var static: DvSeiStatic? = null
+        forEachSeiMessage(nal) { type, rbsp, start, size ->
+            val message = when {
+                type == SEI_PAYLOAD_MASTERING_DISPLAY && size >= MASTERING_DISPLAY_SIZE -> masteringDisplay(rbsp, start)
+                type == SEI_PAYLOAD_CONTENT_LIGHT && size >= CONTENT_LIGHT_SIZE -> contentLight(rbsp, start)
+                else -> null
+            }
+            static = static?.then(message) ?: message
+            true
+        }
+        return static
+    }
+
+    /**
+     * mastering_display_colour_volume (H.265 D.2.28): three x, y pairs, the white point, then maximum
+     * and minimum luminance. The pairs come as G, B, R; [masteringPrimaries] sorts them into R, G, B.
+     */
+    private fun masteringDisplay(rbsp: ByteArray, start: Int): DvSeiStatic {
+        val pairs = List(4) { i -> u16(rbsp, start + 4 * i) to u16(rbsp, start + 4 * i + 2) }
+        val maxUnits = u32(rbsp, start + 16)
+        val minUnits = u32(rbsp, start + 20)
+        return DvSeiStatic(
+            masteringPrimaries = masteringPrimaries(pairs),
+            masteringMaxNits = (maxUnits * LUMINANCE_UNIT).toFloat(),
+            masteringMinNits = (minUnits * LUMINANCE_UNIT).toFloat(),
+        )
+    }
+
+    /**
+     * R, G, B and white point as x, y pairs. MediaInfo reports a known gamut whatever order the three
+     * primaries come in, so they are sorted by chromaticity; the spec's G, B, R stands when that does
+     * not give one of each.
+     */
+    private fun masteringPrimaries(pairs: List<Pair<Int, Int>>): FloatArray {
+        val primaries = pairs.take(3)
+        val blue = primaries.filter { (x, y) -> x < BLUE_LIMIT && y < BLUE_LIMIT }
+        val rest = primaries - blue.toSet()
+        val green = rest.filter { (x, y) -> y >= x }
+        val red = rest - green.toSet()
+        val sorted = if (blue.size == 1 && green.size == 1 && red.size == 1) {
+            listOf(red[0], green[0], blue[0])
+        } else {
+            listOf(pairs[2], pairs[0], pairs[1])
+        }
+        return (sorted + pairs[3]).flatMap { (x, y) -> listOf(x, y) }
+            .map { (it * CHROMATICITY_UNIT).toFloat() }.toFloatArray()
+    }
+
+    /** content_light_level_info (H.265 D.2.35). 0 and 65535 state nothing; null when neither level is stated. */
+    private fun contentLight(rbsp: ByteArray, start: Int): DvSeiStatic? {
+        fun stated(value: Int) = value.takeIf { it in 1 until LIGHT_LEVEL_NOT_MEASURED }
+        val maxCll = stated(u16(rbsp, start))
+        val maxFall = stated(u16(rbsp, start + 2))
+        if (maxCll == null && maxFall == null) return null
+        return DvSeiStatic(maxContentLightLevel = maxCll, maxFrameAverageLightLevel = maxFall)
+    }
+
+    private fun u16(bytes: ByteArray, at: Int) = ((bytes[at].toInt() and 0xFF) shl 8) or (bytes[at + 1].toInt() and 0xFF)
+
+    private fun u32(bytes: ByteArray, at: Int) =
+        (u16(bytes, at).toLong() shl 16) or u16(bytes, at + 2).toLong()
 
     /**
      * Calls [visit] with (payloadType, RBSP, payload start, payload size) for each sei_message() of
