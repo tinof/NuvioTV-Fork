@@ -15,13 +15,14 @@ Commands:
          [--decisions classify.json] [--expect-drop SHA,...] [--allow-new SHA,...] [--allow-same PATH ...]
          [--allow-changed PATH ...]
          [--protected-drop SHA,...] [--creation-factor N]
-  protected-apk <apk>
+  protected-apk <apk> [--stamp FILE]
   test-failures <junit-xml-dir>
   gate-skip <base> <head>
   results-complete <dir> --sha S
   compare-results --baseline DIR --baseline-sha S --candidate DIR --candidate-sha S
 
-Exit codes: 0 ok, 1 a check failed or the sync is blocked, 2 usage or environment error, 3 nothing to do.
+Exit codes: 0 ok, 1 a check failed or the sync is blocked, 2 usage or environment error, 3 nothing to do,
+4 protected-apk found only an origin mismatch (shield_build_install.sh can keep that build, and only that).
 """
 import argparse
 import collections
@@ -42,9 +43,15 @@ from sync_tools import (FAIL, NOTHING, OK, USAGE, commits_with_files, feature_of
                         parse_merge_tree, protected_path)
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "sync.json"
+ORIGIN_MISMATCH = 4  # protected-apk: the libraries are right, their origin is not
 # How far a run's JUnit classes may fall short before the run counts as incomplete. A file can hold
 # several classes, so a whole run has more classes than test files (919 for 909 on 2026-10-31).
 CLASS_MARGIN = 0.05
+# Where the protected native libraries come from (protected-apk --stamp).
+RPU_LIB, RPU_SOURCE = "lib/arm64-v8a/libnuvio_rpu.so", "native/rpu_builder"
+FFMPEG_LIB, FFMPEG_AAR = "lib/arm64-v8a/libffmpegJNI.so", "app/libs/lib-decoder-ffmpeg-release.aar"
+FFMPEG_AAR_LIB, FFMPEG_JNI = "jni/arm64-v8a/libffmpegJNI.so", "ffmpeg-decoder-downmix/src/main/jni"
+FFMPEG_STATIC_LIBS = ("libavcodec.a", "libavutil.a", "libswresample.a")
 
 
 # ---------------------------------------------------------------- pure helpers (unit-tested)
@@ -375,6 +382,27 @@ def compare_results(baseline, baseline_sha, candidate, candidate_sha):
     elif lost:
         notes.append(f"upstream test classes that did not run: {', '.join(lost)}")
     return sorted(set(failures) - set(base_failures)), all_problems, notes
+
+
+def java_properties(text):
+    """The simple key=value lines of a local.properties file."""
+    found = (re.match(r"\s*([\w.-]+)\s*[=:]\s*(.*?)\s*$", line) for line in text.splitlines()
+             if not line.lstrip().startswith(("#", "!")))
+    return {m.group(1): m.group(2) for m in found if m}
+
+
+def ffmpeg_setting(name, env, props):
+    """As app/build.gradle.kts reads it: the environment wins, even with an empty value."""
+    return env[name] if name in env else props.get(name)
+
+
+def wants_local_ffmpeg(env, props):
+    """The same test as useLocalFfmpegDecoder. The build script passes no -P, and the bytes check the rest."""
+    return str(ffmpeg_setting("USE_LOCAL_FFMPEG_DECODER", env, props)).lower() in ("true", "1", "yes")
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
 
 
 def sha_matches(a, b):
@@ -754,12 +782,76 @@ def cmd_verify(a, cfg):
     return FAIL if fails else OK
 
 
-def cmd_protected_apk(a, cfg):
-    """Each protected feature's native library is in the APK and carries its marker strings."""
+def rpu_stamp_problems(stamp_path, data):
+    """Why the packaged libnuvio_rpu.so is not the stamped build of HEAD's native/rpu_builder."""
+    try:
+        stamp = json.loads(Path(stamp_path).read_text())
+    except (OSError, ValueError):
+        return [f"hlg-to-dv: no readable stamp at {stamp_path}: this library did not come from "
+                "scripts/build_rpu_builder.sh as it is now"]
+    problems, tree, head = [], stamp.get("tree"), out("rev-parse", f"HEAD:{RPU_SOURCE}")
+    if sha256(data) not in (stamp.get("sha256"), stamp.get("packaged_sha256")):
+        problems.append(f"hlg-to-dv: the APK's {RPU_LIB} (sha256 {sha256(data)}) is not the stamped build")
+    if tree != head:
+        problems.append(f"hlg-to-dv: the library was built from {RPU_SOURCE} tree {tree}, HEAD has {head}")
+    if stamp.get("dirty", True):
+        problems.append(f"hlg-to-dv: the library was built with uncommitted changes in {RPU_SOURCE}")
+    if not problems:
+        print(f"hlg-to-dv: libnuvio_rpu.so is the stamped build of {RPU_SOURCE} tree {tree}")
+    return problems
+
+
+def ffmpeg_inputs(env, props):
+    """(description of the local module's inputs, problems). The static libraries hold the FFmpeg code."""
+    jni, problems = out("rev-parse", f"HEAD:{FFMPEG_JNI}"), []
+    dirty = " (dirty)" if out("status", "--porcelain", "--", FFMPEG_JNI) else ""
+    parts = [f"jni tree {jni}{dirty}"]
+    build = ffmpeg_setting("FFMPEG_BUILD_DIR", env, props)
+    for name in FFMPEG_STATIC_LIBS:
+        path = Path(build or "") / "arm64-v8a" / name
+        if build and path.is_file():
+            parts.append(f"{name} sha256 {sha256(path.read_bytes())}")
+        else:
+            problems.append(f"aac-to-dts: no {path} (FFMPEG_BUILD_DIR), the local module links it")
+    source = ffmpeg_setting("FFMPEG_SOURCE_DIR", env, props)
+    commit = git("-C", source, "rev-parse", "HEAD", check=False).stdout.strip() if source else ""
+    parts.append(f"FFmpeg source {commit or 'not a git checkout'}")
+    return ", ".join(parts), problems
+
+
+def ffmpeg_problems(data, env):
+    """Say which FFmpeg the APK carries, by its bytes, and hold that against the build's settings."""
     import zipfile
-    fails = []
+    props_file = Path("local.properties")
+    props = java_properties(props_file.read_text()) if props_file.exists() else {}
+    with zipfile.ZipFile(FFMPEG_AAR) as z:
+        prebuilt = z.read(FFMPEG_AAR_LIB)
+    carries_aar, wants_local = sha256(data) == sha256(prebuilt), wants_local_ffmpeg(env, props)
+    if carries_aar:
+        print(f"aac-to-dts: FFmpeg is the prebuilt AAR, {FFMPEG_AAR} sha256 {sha256(Path(FFMPEG_AAR).read_bytes())}")
+        return ["aac-to-dts: USE_LOCAL_FFMPEG_DECODER is on, but the APK has the prebuilt AAR's library"] if wants_local else []
+    if not wants_local:
+        return [f"aac-to-dts: the APK's {FFMPEG_LIB} is not the prebuilt AAR's, but USE_LOCAL_FFMPEG_DECODER is off"]
+    described, problems = ffmpeg_inputs(env, props)
+    print(f"aac-to-dts: FFmpeg is the local module, {described}")
+    return problems
+
+
+def cmd_protected_apk(a, cfg):
+    """Each protected feature's native library is in the APK and carries its marker strings.
+
+    With --stamp, also where they came from: an old library has the same markers as a new one. A lost
+    marker or library is FAIL whatever the origin says; ORIGIN_MISMATCH means the markers all held.
+    """
+    import zipfile
+    fails, origin = [], []
     with zipfile.ZipFile(a.apk) as z:
         names = set(z.namelist())
+        if a.stamp:
+            if RPU_LIB in names:
+                origin += rpu_stamp_problems(a.stamp, z.read(RPU_LIB))
+            if FFMPEG_LIB in names:
+                origin += ffmpeg_problems(z.read(FFMPEG_LIB), os.environ)
         for feature in cfg.get("protected_features", []):
             spec = feature.get("apk")
             if not spec:
@@ -773,9 +865,9 @@ def cmd_protected_apk(a, cfg):
                 fails.append(f"{feature['key']}: {spec['lib']} has no {', '.join(missing)}")
             else:
                 print(f"{feature['key']}: {spec['lib']} ({len(data)} bytes) ok")
-    for f in fails:
+    for f in origin + fails:
         print(f"FAIL: {f}")
-    return FAIL if fails else OK
+    return FAIL if fails else ORIGIN_MISMATCH if origin else OK
 
 
 def cmd_test_failures(a, cfg):
@@ -866,6 +958,7 @@ def main(argv):
     s.add_argument("--creation-factor", type=int, default=100, help="git range-diff --creation-factor (default 100)")
     s = sub.add_parser("protected-apk")
     s.add_argument("apk")
+    s.add_argument("--stamp", help="the libnuvio_rpu.so.stamp of build_rpu_builder.sh; also checks FFmpeg's origin")
     s = sub.add_parser("test-failures")
     s.add_argument("dir")
     sync_tools.add_parsers(sub)
