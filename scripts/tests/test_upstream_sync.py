@@ -787,6 +787,44 @@ class DriftWorkflowTest(unittest.TestCase):
         self.assertIn('sed -n 1p "$BODY"', self.step("Update the drift issue"))
 
 
+    def test_the_ci_dispatch_passes_the_input_the_baseline_job_needs(self):
+        # A dispatch without it fails the baseline job, and with a wrong name gh refuses the dispatch.
+        doc = (SKILL / "SKILL.md").read_text()
+        workflow = (SKILL.parents[2] / ".github/workflows/checks.yml").read_text()
+        name = re.search(r"gh workflow run Checks --ref sync/<date>-perf -f (\w+)=<NEW_BASE>", doc).group(1)
+        self.assertIn(f"      {name}:\n", workflow.split("permissions:")[0])
+
+    def step(self, heading, number):
+        """The text of a numbered step under a `## ` heading of SKILL.md."""
+        section = (SKILL / "SKILL.md").read_text().split(f"\n## {heading}\n")[1].split("\n## ")[0]
+        return re.search(rf"(?ms)^{number}\. .*?(?=^\d+\. |\Z)", section).group(0)
+
+    def test_the_worktree_gets_the_stamp_with_the_library(self):
+        # Without it every local APK in the worktree fails on "no readable stamp", and the override becomes a habit.
+        self.assertIn("libnuvio_rpu.so.stamp", self.step("2. Workspace", 3))
+        self.assertIn(".stamp", next(t for t in CONFIG["traps"] if "libnuvio_rpu.so" in t))
+
+    def test_the_local_baseline_is_diagnosis_only(self):
+        self.assertRegex(self.step("2. Workspace", 4), r"^4\. Diagnosis only")
+
+    def test_the_override_advice_names_what_it_covers(self):
+        step = self.step("6. Verify", 4)
+        self.assertNotIn("copies no stamp", step)
+        self.assertIn("exit 4", step)
+        self.assertIn("never a lost marker", step)
+
+    def test_a_rerun_that_retests_the_candidate_is_told_from_one_that_does_not(self):
+        section = (SKILL / "SKILL.md").read_text().split("\n## 7. CI on the pushed candidate\n")[1].split("\n## ")[0]
+        self.assertIn("only a rerun of all jobs retests the candidate", " ".join(section.split()))
+
+    def test_the_doc_names_the_jobs_that_exist(self):
+        doc = (SKILL / "SKILL.md").read_text()
+        workflow = (SKILL.parents[2] / ".github/workflows/checks.yml").read_text()
+        for job in ("Unit tests", "Upstream baseline", "Compare with upstream"):
+            self.assertIn(f"`{job}`", doc)
+            self.assertIn(f"    name: {job}\n", workflow)
+
+
 class GateSkipTest(unittest.TestCase):
     """gate-skip decides whether a pull request runs the suite, and must agree with /ship's contract."""
 
