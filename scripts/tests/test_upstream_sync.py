@@ -1022,6 +1022,21 @@ class ChecksWorkflowTest(unittest.TestCase):
         self.assertIn(f"if: ${{{{ !cancelled() && {sync_branch} }}}}", self.TEXT)
         self.assertIn("needs: [unit-tests, baseline]", self.TEXT)
 
+    def test_the_compare_steps_exit_code_is_the_commands_under_the_default_shell(self):
+        # With a pipe in this step, bash -e returns the last command's 0 and every candidate passes.
+        step = re.search(r"- name: Compare the results\n.*?run: \|\n((?: {10}.*\n)+)", self.TEXT, re.S).group(1)
+        self.assertNotIn("shell:", re.search(r"- name: Compare the results\n(.*?)run:", self.TEXT, re.S).group(1))
+        with tempfile.TemporaryDirectory() as tmp:
+            for code in (0, 1):
+                fake = Path(tmp) / "fake-sync"
+                fake.write_text(f"#!/bin/sh\necho verdict\nexit {code}\n")
+                fake.chmod(0o755)
+                summary = Path(tmp) / "summary"
+                r = subprocess.run(["bash", "-e", "-c", re.sub(r"(?m)^ {10}", "", step)], cwd=tmp, capture_output=True,
+                                   text=True, env=dict(os.environ, SYNC=str(fake), GITHUB_STEP_SUMMARY=str(summary)))
+                self.assertEqual(code, r.returncode, r.stderr)
+                self.assertIn("verdict", summary.read_text())
+
     def test_the_cache_keeps_only_a_baseline_that_was_checked(self):
         save = re.search(r"- name: Keep the baseline for a rerun\n(.*?)\n\n", self.TEXT, re.S).group(1)
         self.assertIn("steps.complete.outcome == 'success'", save)

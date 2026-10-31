@@ -202,7 +202,11 @@ jobs:
             echo "::error::$UPSTREAM_SHA is not an ancestor of $GITHUB_SHA, so it is not this candidate's base"; exit 1; }
 
       - name: Compare the results
-        shell: bash
+        # No pipe here: this exit code is the gate, and the default shell has no pipefail.
         run: |
+          code=0
           $SYNC compare-results --baseline baseline-results --baseline-sha "$UPSTREAM_SHA" \
-            --candidate gate-results --candidate-sha "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+            --candidate gate-results --candidate-sha "$GITHUB_SHA" > compare.txt || code=$?
+          cat compare.txt
+          cat compare.txt >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
