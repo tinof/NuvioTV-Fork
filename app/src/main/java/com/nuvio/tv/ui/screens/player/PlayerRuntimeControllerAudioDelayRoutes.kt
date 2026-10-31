@@ -130,6 +130,13 @@ internal fun PlayerRuntimeController.detectAudioOutputRouteForStream(): AudioOut
         detected = AudioOutputRouteDetector.detect(context)
     )
 
+/**
+ * The route key the audio sink reads on the playback thread. The sink outlives a source switch, so
+ * every read resolves against the current stream: a url kept from build would miss the new pin.
+ */
+internal fun PlayerRuntimeController.sinkOutputRouteKey(): () -> String? =
+    { detectAudioOutputRouteForStream()?.key }
+
 /** [knownRoute] is the route to load the delay for; null detects it for the current stream. */
 internal suspend fun PlayerRuntimeController.applyStoredAudioDelayForCurrentRouteIfEnabled(
     knownRoute: AudioOutputRoute? = null
