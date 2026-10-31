@@ -46,4 +46,18 @@ bad_align="$(echo "$loads" | awk '$NF != "0x4000"')"
 echo "== $lib"
 echo "   align   $(echo "$loads" | wc -l | tr -d ' ') LOAD segments at 0x4000"
 echo "   size    $(wc -c < "$lib" | tr -d ' ') bytes"
-echo "   sha256  $(shasum -a 256 "$lib" | cut -d' ' -f1)"
+sha="$(shasum -a 256 "$lib" | cut -d' ' -f1)"
+echo "   sha256  $sha"
+
+# The stamp ties this library to its source, for `sync.py protected-apk --stamp`. The APK holds other
+# bytes than this file: AGP runs this same strip before packaging, and it reorders .shstrtab.
+stripped="$(mktemp)"
+"${readelf%/*}/llvm-strip" --strip-unneeded -o "$stripped" "$lib"
+packaged_sha="$(shasum -a 256 "$stripped" | cut -d' ' -f1)"
+rm -f "$stripped"
+tree="$(git -C "$root" rev-parse HEAD:native/rpu_builder)"
+dirty=false
+[ -z "$(git -C "$root" status --porcelain -- native/rpu_builder)" ] || dirty=true
+printf '{"tree":"%s","dirty":%s,"sha256":"%s","packaged_sha256":"%s"}\n' \
+  "$tree" "$dirty" "$sha" "$packaged_sha" > "$lib.stamp"
+echo "   stamp   tree ${tree:0:12}, dirty $dirty, packaged sha256 $packaged_sha"

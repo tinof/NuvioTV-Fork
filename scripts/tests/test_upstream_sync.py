@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -323,7 +324,7 @@ class ProtectedApkTest(unittest.TestCase):
                     z.writestr(name, data)
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                code = sync.cmd_protected_apk(argparse.Namespace(apk=str(apk)), CONFIG)
+                code = sync.cmd_protected_apk(argparse.Namespace(apk=str(apk), stamp=None), CONFIG)
             return code, buf.getvalue()
 
     def test_both_libraries_with_their_markers_pass(self):
@@ -1179,6 +1180,231 @@ class CiUnitTestsScriptTest(unittest.TestCase):
         self.assertIn("from-gradle", (self.dir / "out/gradle.log").read_text())
 
 
+class NativeProvenanceTest(unittest.TestCase):
+    """protected-apk --stamp in a small repository, with fixture zips."""
+
+    RPU, FFMPEG = b"..Java_..", b"..dcaxll.."
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.dir)
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for name in ("USE_LOCAL_FFMPEG_DECODER", "FFMPEG_BUILD_DIR", "FFMPEG_SOURCE_DIR"):
+            os.environ.pop(name, None)
+        run("git", "init", "-q", "-b", "main", cwd=self.dir)
+        run("git", "config", "user.email", "t@example.com", cwd=self.dir)
+        run("git", "config", "user.name", "t", cwd=self.dir)
+        for path in ("native/rpu_builder/lib.rs", f"{sync.FFMPEG_JNI}/ffmpeg_jni.cc"):
+            (self.dir / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.dir / path).write_text("v1\n")
+        (self.dir / "app/libs").mkdir(parents=True)
+        with zipfile.ZipFile(self.dir / sync.FFMPEG_AAR, "w") as z:
+            z.writestr(sync.FFMPEG_AAR_LIB, self.FFMPEG)
+        self.commit()
+        self.stamp(packaged_sha256=sync.sha256(self.RPU))
+
+    def commit(self):
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "c", cwd=self.dir)
+
+    def stamp(self, **fields):
+        tree = subprocess.run(["git", "rev-parse", "HEAD:native/rpu_builder"], cwd=self.dir,
+                              capture_output=True, text=True).stdout.strip()
+        (self.dir / "lib.stamp").write_text(json.dumps(
+            {"tree": tree, "dirty": False, "sha256": "raw", "packaged_sha256": "stripped", **fields}))
+
+    def check(self, rpu=RPU, ffmpeg=FFMPEG):
+        with zipfile.ZipFile(self.dir / "app.apk", "w") as z:
+            z.writestr(sync.RPU_LIB, rpu)
+            z.writestr(sync.FFMPEG_LIB, ffmpeg)
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            code = sync.main(["protected-apk", str(self.dir / "app.apk"), "--stamp", str(self.dir / "lib.stamp")])
+        return code, buf.getvalue()
+
+    def local_module(self, static_libs=sync.FFMPEG_STATIC_LIBS):
+        build = self.dir / "ffmpeg-build"
+        (build / "arm64-v8a").mkdir(parents=True)
+        for name in static_libs:
+            (build / "arm64-v8a" / name).write_bytes(name.encode())
+        (self.dir / "local.properties").write_text(f"USE_LOCAL_FFMPEG_DECODER=true\nFFMPEG_BUILD_DIR={build}\n")
+
+    def test_the_stamped_build_of_head_passes(self):
+        code, report = self.check()
+        self.assertEqual(0, code, report)
+        self.assertIn("is the stamped build of native/rpu_builder", report)
+
+    def test_a_library_packaged_unstripped_also_matches(self):
+        self.stamp(sha256=sync.sha256(self.RPU), packaged_sha256="stripped")
+        self.assertEqual(0, self.check()[0])
+
+    def test_another_library_with_the_same_markers_fails(self):
+        code, report = self.check(rpu=b"..Java_.. older build")
+        self.assertEqual(sync.ORIGIN_MISMATCH, code)
+        self.assertIn("is not the stamped build", report)
+
+    def test_a_stamp_from_older_source_fails(self):
+        (self.dir / "native/rpu_builder/lib.rs").write_text("v2\n")
+        self.commit()
+        code, report = self.check()
+        self.assertEqual(sync.ORIGIN_MISMATCH, code)
+        self.assertRegex(report, r"built from native/rpu_builder tree \w+, HEAD has \w+")
+
+    def test_a_library_built_from_uncommitted_source_fails(self):
+        self.stamp(dirty=True, packaged_sha256=sync.sha256(self.RPU))
+        code, report = self.check()
+        self.assertEqual(sync.ORIGIN_MISMATCH, code)
+        self.assertIn("uncommitted changes", report)
+
+    def test_a_missing_or_broken_stamp_fails(self):
+        (self.dir / "lib.stamp").write_text("{not json")
+        self.assertIn("no readable stamp", self.check()[1])
+        (self.dir / "lib.stamp").unlink()
+        code, report = self.check()
+        self.assertEqual(sync.ORIGIN_MISMATCH, code)
+        self.assertIn("no readable stamp", report)
+
+    def test_the_marker_check_stays_with_a_good_stamp(self):
+        self.stamp(packaged_sha256=sync.sha256(b"no markers"))
+        code, report = self.check(rpu=b"no markers")
+        self.assertEqual(1, code)
+        self.assertIn("has no Java_", report)
+
+    def test_a_lost_marker_outranks_an_origin_mismatch(self):
+        # The override follows the exit code, so a report with both must not read as an origin problem.
+        code, report = self.check(ffmpeg=b"no writer", rpu=b"no markers")
+        self.assertEqual(sync.FAIL, code)
+        self.assertIn("is not the stamped build", report)
+        self.assertIn("has no dcaxll", report)
+
+    def test_a_missing_library_outranks_an_origin_mismatch(self):
+        (self.dir / "lib.stamp").unlink()
+        with zipfile.ZipFile(self.dir / "app.apk", "w") as z:
+            z.writestr(sync.RPU_LIB, self.RPU)
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = sync.main(["protected-apk", str(self.dir / "app.apk"), "--stamp", str(self.dir / "lib.stamp")])
+        self.assertEqual(sync.FAIL, code)
+
+    def test_without_the_option_nothing_of_this_runs(self):
+        with zipfile.ZipFile(self.dir / "app.apk", "w") as z:
+            z.writestr(sync.RPU_LIB, self.RPU)
+            z.writestr(sync.FFMPEG_LIB, b"..dcaxll.. other")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, sync.main(["protected-apk", str(self.dir / "app.apk")]))
+
+    def test_the_prebuilt_aar_is_named_with_its_hash(self):
+        code, report = self.check()
+        aar = sync.sha256((self.dir / sync.FFMPEG_AAR).read_bytes())
+        self.assertEqual(0, code, report)
+        self.assertIn(f"FFmpeg is the prebuilt AAR, {sync.FFMPEG_AAR} sha256 {aar}", report)
+
+    def test_a_library_that_is_not_the_aars_needs_the_local_module_switched_on(self):
+        code, report = self.check(ffmpeg=b"..dcaxll.. built locally")
+        self.assertEqual(sync.ORIGIN_MISMATCH, code)
+        self.assertIn("USE_LOCAL_FFMPEG_DECODER is off", report)
+
+    def test_the_local_module_reports_its_inputs(self):
+        self.local_module()
+        code, report = self.check(ffmpeg=b"..dcaxll.. built locally")
+        self.assertEqual(0, code, report)
+        self.assertIn("FFmpeg is the local module", report)
+        self.assertRegex(report, r"jni tree [0-9a-f]{40},")
+        self.assertIn(f"libavcodec.a sha256 {sync.sha256(b'libavcodec.a')}", report)
+        self.assertIn("libswresample.a sha256", report)
+
+    def test_uncommitted_jni_source_is_named(self):
+        self.local_module()
+        (self.dir / sync.FFMPEG_JNI / "ffmpeg_jni.cc").write_text("v2\n")
+        self.assertRegex(self.check(ffmpeg=b"..dcaxll.. local")[1], r"jni tree \w+ \(dirty\)")
+
+    def test_the_local_module_without_its_static_libraries_fails(self):
+        self.local_module(static_libs=("libavcodec.a", "libavutil.a"))
+        code, report = self.check(ffmpeg=b"..dcaxll.. local")
+        self.assertEqual(sync.ORIGIN_MISMATCH, code)
+        self.assertIn("libswresample.a", report)
+
+    def test_the_setting_on_with_the_aars_library_in_the_apk_fails(self):
+        # What a stale merged library or a -P override looks like: the setting and the bytes disagree.
+        self.local_module()
+        code, report = self.check()
+        self.assertEqual(sync.ORIGIN_MISMATCH, code)
+        self.assertIn("the APK has the prebuilt AAR's library", report)
+
+    def test_the_setting_is_read_the_way_gradle_reads_it(self):
+        on = {"USE_LOCAL_FFMPEG_DECODER": "true"}
+        self.assertTrue(sync.wants_local_ffmpeg({}, on))
+        self.assertTrue(sync.wants_local_ffmpeg({"USE_LOCAL_FFMPEG_DECODER": "YES"}, {}))
+        self.assertTrue(sync.wants_local_ffmpeg({"USE_LOCAL_FFMPEG_DECODER": "1"}, {}))
+        self.assertFalse(sync.wants_local_ffmpeg({"USE_LOCAL_FFMPEG_DECODER": "false"}, on))
+        self.assertFalse(sync.wants_local_ffmpeg({"USE_LOCAL_FFMPEG_DECODER": ""}, on))
+        self.assertFalse(sync.wants_local_ffmpeg({}, {"USE_LOCAL_FFMPEG_DECODER": "on"}))
+        self.assertFalse(sync.wants_local_ffmpeg({}, {}))
+
+    def test_properties_skip_comments(self):
+        self.assertEqual({"A": "1", "b.c": "x y"}, sync.java_properties("# A=2\n! A=3\nA = 1\n\nb.c: x y\n"))
+
+
+class BuildRpuScriptTest(unittest.TestCase):
+    """build_rpu_builder.sh over a fake cargo and NDK: the stamp it writes."""
+
+    REPO = SKILL.parents[1].parent
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name) / "tree"
+        (self.dir / "scripts").mkdir(parents=True)
+        script = self.dir / "scripts/build_rpu_builder.sh"
+        script.write_bytes((self.REPO / "scripts/build_rpu_builder.sh").read_bytes())
+        script.chmod(0o755)
+        (self.dir / "native/rpu_builder").mkdir(parents=True)
+        (self.dir / "native/rpu_builder/lib.rs").write_text("v1\n")
+        (self.dir / "app").mkdir()
+        (self.dir / "app/build.gradle.kts").write_text('    ndkVersion = "1.2.3"\n')
+        self.lib = self.dir / "app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so"
+        (self.dir / ".gitignore").write_text("/app/src/main/jniLibs/\n")
+        sdk = Path(tmp.name) / "sdk"
+        tools = sdk / "ndk/1.2.3/toolchains/llvm/prebuilt/fake/bin"
+        tools.mkdir(parents=True)
+        self.tool(tools / "llvm-readelf", "echo '  LOAD 0 0 0 0 0 RW 0x4000'\n")
+        self.tool(tools / "llvm-strip", 'cat "$4" > "$3"\necho stripped >> "$3"\n')
+        self.tool(Path(tmp.name) / "cargo", f'[ "$2" = --version ] && exit 0\nmkdir -p {self.lib.parent}\necho library > {self.lib}\n')
+        self.env = dict(os.environ, ANDROID_HOME=str(sdk), PATH=f"{tmp.name}:{os.environ['PATH']}")
+        run("git", "init", "-q", "-b", "main", cwd=self.dir)
+        run("git", "config", "user.email", "t@example.com", cwd=self.dir)
+        run("git", "config", "user.name", "t", cwd=self.dir)
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "c", cwd=self.dir)
+
+    def tool(self, path, body):
+        path.write_text("#!/bin/sh\n" + body)
+        path.chmod(0o755)
+
+    def build(self):
+        r = subprocess.run(["scripts/build_rpu_builder.sh"], cwd=self.dir, env=self.env, capture_output=True, text=True)
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        return json.loads(Path(f"{self.lib}.stamp").read_text())
+
+    def test_the_stamp_names_the_tree_and_both_forms_of_the_library(self):
+        stamp = self.build()
+        tree = subprocess.run(["git", "rev-parse", "HEAD:native/rpu_builder"], cwd=self.dir,
+                              capture_output=True, text=True).stdout.strip()
+        self.assertEqual({"tree": tree, "dirty": False, "sha256": sync.sha256(b"library\n"),
+                          "packaged_sha256": sync.sha256(b"library\nstripped\n")}, stamp)
+
+    def test_uncommitted_source_is_recorded(self):
+        (self.dir / "native/rpu_builder/lib.rs").write_text("v2\n")
+        self.assertTrue(self.build()["dirty"])
+
+    def test_an_untracked_source_file_is_recorded(self):
+        (self.dir / "native/rpu_builder/new.rs").write_text("x\n")
+        self.assertTrue(self.build()["dirty"])
+
+
 @unittest.skipUnless(Path("/usr/libexec/java_home").exists(), "the script finds JDK 17 through macOS java_home")
 class ShieldBuildScriptTest(unittest.TestCase):
     """shield_build_install.sh in a throwaway tree, over a fake gradlew and Android tools. Never --install."""
@@ -1211,19 +1437,31 @@ class ShieldBuildScriptTest(unittest.TestCase):
         self.tool(self.dir / "gradlew", f"mkdir -p {target}\ncp {self.apk} {target}/app-full-arm64-v8a-debug.apk\n")
         self.env = dict(os.environ, HOME=str(self.home), ANDROID_HOME=str(tools.parents[1]),
                         PATH=f"{self.bin}:{os.environ['PATH']}")
-        self.env.pop("NUVIO_DEBUG_STORE_FILE", None)
+        for name in ("NUVIO_DEBUG_STORE_FILE", "USE_LOCAL_FFMPEG_DECODER", "NUVIO_ALLOW_NATIVE_MISMATCH"):
+            self.env.pop(name, None)
+        (self.dir / "native/rpu_builder").mkdir(parents=True)
+        (self.dir / "native/rpu_builder/lib.rs").write_text("v1\n")
+        (self.dir / "app/libs").mkdir(parents=True)
+        with zipfile.ZipFile(self.dir / sync.FFMPEG_AAR, "w") as z:
+            z.writestr(sync.FFMPEG_AAR_LIB, self.GOOD[sync.FFMPEG_LIB])
         run("git", "init", "-q", "-b", "main", cwd=self.dir)
         run("git", "config", "user.email", "t@example.com", cwd=self.dir)
         run("git", "config", "user.name", "t", cwd=self.dir)
         run("git", "add", "-A", cwd=self.dir)
         run("git", "commit", "-q", "-m", "c", cwd=self.dir)
+        self.lib = self.dir / "app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so"
+        self.lib.parent.mkdir(parents=True)
+        self.lib.write_bytes(self.GOOD[sync.RPU_LIB])
+        tree = subprocess.run(["git", "rev-parse", "HEAD:native/rpu_builder"], cwd=self.dir,
+                              capture_output=True, text=True).stdout.strip()
+        (self.dir / f"{self.lib}.stamp").write_text(json.dumps(
+            {"tree": tree, "dirty": False, "sha256": "raw", "packaged_sha256": sync.sha256(self.GOOD[sync.RPU_LIB])}))
 
     def tool(self, path, body):
         path.write_text("#!/bin/sh\n" + body)
         path.chmod(0o755)
 
     def build(self, members, **env):
-        import zipfile
         with zipfile.ZipFile(self.apk, "w") as z:
             for name, data in members.items():
                 z.writestr(name, data)
@@ -1245,6 +1483,56 @@ class ShieldBuildScriptTest(unittest.TestCase):
         self.assertEqual(1, r.returncode, r.stdout + r.stderr)
         self.assertIn("FAIL: hlg-to-dv: lib/arm64-v8a/libnuvio_rpu.so is not in the APK", r.stdout)
         self.assertEqual("", self.logged())
+
+    def test_an_old_library_built_from_older_source_stops_the_build_and_says_so(self):
+        # The case this stamp exists for: no cargo-ndk, so the script packages what is there.
+        (self.dir / "native/rpu_builder/lib.rs").write_text("v2\n")
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "new source", cwd=self.dir)
+        r = self.build(self.GOOD)
+        self.assertEqual(1, r.returncode, r.stdout + r.stderr)
+        self.assertIn("packaging the existing", r.stderr)
+        self.assertIn("HEAD has", r.stdout)
+        self.assertIn("NUVIO_ALLOW_NATIVE_MISMATCH=1", r.stderr)
+        self.assertEqual("", self.logged())
+
+    def test_the_override_keeps_that_build_and_says_it_did(self):
+        (self.dir / f"{self.lib}.stamp").unlink()
+        r = self.build(self.GOOD, NUVIO_ALLOW_NATIVE_MISMATCH="1")
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        self.assertIn("FAIL: hlg-to-dv: no readable stamp", r.stdout)
+        self.assertIn("keeping this build because NUVIO_ALLOW_NATIVE_MISMATCH=1", r.stderr)
+        self.assertIn("com.example.exp", self.logged())
+
+    def assert_the_override_does_not_keep(self, members=GOOD):
+        r = self.build(members, NUVIO_ALLOW_NATIVE_MISMATCH="1")
+        self.assertEqual(1, r.returncode, r.stdout + r.stderr)
+        self.assertNotIn("keeping this build", r.stderr)
+        self.assertNotIn("NUVIO_ALLOW_NATIVE_MISMATCH=1", r.stderr)
+        self.assertEqual("", self.logged())
+        return r
+
+    def test_the_override_does_not_keep_a_lost_marker(self):
+        r = self.assert_the_override_does_not_keep({**self.GOOD, sync.FFMPEG_LIB: b"no writer"})
+        self.assertIn("FAIL: aac-to-dts: lib/arm64-v8a/libffmpegJNI.so has no dcaxll", r.stdout)
+
+    def test_the_override_does_not_keep_a_missing_library(self):
+        self.assert_the_override_does_not_keep({sync.FFMPEG_LIB: self.GOOD[sync.FFMPEG_LIB]})
+
+    def test_the_override_does_not_keep_a_crash(self):
+        (self.dir / sync.FFMPEG_AAR).unlink()
+        self.assertIn("Traceback", self.assert_the_override_does_not_keep().stderr)
+
+    def test_the_override_does_not_keep_a_usage_error(self):
+        (self.dir / ".claude/skills/upstream-sync/scripts/sync.py").write_text("import sys\nsys.exit(2)\n")
+        self.assert_the_override_does_not_keep()
+
+    def test_only_the_exact_override_value_counts(self):
+        (self.dir / f"{self.lib}.stamp").unlink()
+        self.assertEqual(1, self.build(self.GOOD, NUVIO_ALLOW_NATIVE_MISMATCH="yes").returncode)
+
+    def test_the_build_names_the_ffmpeg_it_carries(self):
+        self.assertIn("FFmpeg is the prebuilt AAR", self.build(self.GOOD).stdout)
 
 
 class MapOverlapRepoTest(RepoFixture, unittest.TestCase):
