@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +22,7 @@ def load(name):
 
 
 sync = load("sync")
+tools = sys.modules["sync_tools"]
 both = load("both")
 CONFIG = sync.load_config(SKILL / "sync.json")
 
@@ -299,6 +301,8 @@ class RepoFixture:
         run("git", "init", "-q", "-b", "main", cwd=self.dir)
         run("git", "config", "user.email", "t@example.com", cwd=self.dir)
         run("git", "config", "user.name", "t", cwd=self.dir)
+        # Background maintenance puts a lock under .git/objects while a test lists that directory.
+        run("git", "config", "maintenance.auto", "false", cwd=self.dir)
         self.files = {"shared.txt": list(self.LINES), "fork-only.txt": list(self.LINES), "upstream.txt": ["u"]}
         self.commit("base", {})
         run("git", "tag", "B", cwd=self.dir)
@@ -726,6 +730,157 @@ class RenameRepoTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn("upstream removed x.txt", report)
         self.assertNotIn("fork change lost", report)
+
+
+class DryRunRepoTest(RepoFixture, unittest.TestCase):
+    """dry-run: the old fork on B replayed onto U; upstream.txt is the file both sides edit."""
+
+    CLEAN = [("fix: top", {"shared.txt": {1: "TOP"}}), ("fix: middle", {"fork-only.txt": {10: "line 10 fork"}})]
+
+    def fork(self, commits, start="B"):
+        run("git", "checkout", "-q", "-B", "x", start, cwd=self.dir)
+        self.files = {"shared.txt": list(self.LINES), "fork-only.txt": list(self.LINES), "upstream.txt": ["u"]}
+        if start != "B":
+            self.files = {k: list(v) for k, v in self.upstream_files.items()}
+        for subject, edits in commits:
+            self.commit(subject, edits)
+
+    def dry(self, base="B", fork="x", onto="U", as_json=True):
+        a = argparse.Namespace(base=base, fork=fork, onto=onto, json=as_json)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = tools.cmd_dry_run(a, self.cfg)
+        return code, json.loads(buf.getvalue()) if as_json else buf.getvalue()
+
+    def objects(self):
+        return sorted(str(p) for p in (self.dir / ".git/objects").rglob("*") if p.is_file())
+
+    def test_a_clean_replay_has_no_stops(self):
+        self.fork(self.CLEAN)
+        code, report = self.dry()
+        self.assertEqual(sync.OK, code)
+        self.assertEqual((2, 2, []), (report["replayed"], report["clean"], report["stops"]))
+
+    def test_a_conflict_is_a_stop_and_the_exit_stays_zero(self):
+        self.fork(self.CLEAN + [("fix: fork edits the upstream file", {"upstream.txt": {1: "fork"}})])
+        code, report = self.dry()
+        self.assertEqual(sync.OK, code)
+        self.assertEqual(3, report["replayed"])
+        self.assertEqual(2, report["clean"])
+        self.assertEqual([{"sha": self.sha("x")[:12], "subject": "fix: fork edits the upstream file",
+                           "files": ["upstream.txt"], "protected_features": []}], report["stops"])
+
+    def test_the_real_repository_gets_no_new_objects(self):
+        self.fork(self.CLEAN + [("fix: fork edits the upstream file", {"upstream.txt": {1: "fork"}})])
+        before = self.objects()
+        self.dry()
+        self.assertEqual(before, self.objects())
+
+    def test_commits_chain_in_order(self):
+        # The second commit edits a line only the first one put there, so it merges only on top of the first.
+        self.fork([("feat: add a line", {"fork-only.txt": {21: "added"}}),
+                   ("fix: edit that line", {"fork-only.txt": {21: "edited"}})])
+        _, report = self.dry()
+        self.assertEqual((2, []), (report["clean"], report["stops"]))
+
+    def test_the_chain_continues_from_the_ours_result(self):
+        # -X ours keeps upstream's line, so the next commit on the same line stops as well. Merging it on the
+        # fork's own result would be clean: that is why a stop can be a false alarm.
+        self.fork([("fix: one", {"upstream.txt": {1: "fork one"}}), ("fix: two", {"upstream.txt": {1: "fork two"}})])
+        _, report = self.dry()
+        self.assertEqual(["fix: one", "fix: two"], [s["subject"] for s in report["stops"]])
+
+    def test_a_conflict_the_strategy_cannot_settle_still_moves_on(self):
+        run("git", "checkout", "-q", "U", cwd=self.dir)
+        run("git", "rm", "-q", "upstream.txt", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "upstream drops the file", cwd=self.dir)
+        run("git", "tag", "U2", cwd=self.dir)
+        self.fork([("fix: edit a deleted file", {"upstream.txt": {1: "fork"}}),
+                   ("fix: after it", {"fork-only.txt": {3: "fork"}})], start="U")
+        _, report = self.dry(base="U", onto="U2")
+        self.assertEqual(["fix: edit a deleted file"], [s["subject"] for s in report["stops"]])
+        self.assertEqual(1, report["clean"])
+
+    def test_a_later_commit_sees_the_clean_changes_of_a_commit_the_strategy_cannot_settle(self):
+        # The first commit also adds a line to fork-only.txt, and the second one edits that line. Throwing the first
+        # commit away would turn the second into a false stop.
+        run("git", "checkout", "-q", "U", cwd=self.dir)
+        run("git", "rm", "-q", "upstream.txt", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "upstream drops the file", cwd=self.dir)
+        run("git", "tag", "U2", cwd=self.dir)
+        self.fork([("fix: edit a deleted file and add a line", {"upstream.txt": {1: "fork"}, "fork-only.txt": {21: "added"}}),
+                   ("fix: edit the added line", {"fork-only.txt": {21: "edited"}})], start="U")
+        _, report = self.dry(base="U", onto="U2")
+        self.assertEqual(["fix: edit a deleted file and add a line"], [s["subject"] for s in report["stops"]])
+        self.assertEqual(["upstream.txt"], report["stops"][0]["files"])
+        self.assertEqual(1, report["clean"])
+
+    def test_a_stop_names_the_protected_feature_by_commit_and_by_file(self):
+        self.fork([("feat(dv): HLG conversion edits the upstream file", {"upstream.txt": {1: "fork"}})])
+        self.assertEqual(["hlg-to-dv"], self.dry()[1]["stops"][0]["protected_features"])
+        self.cfg["protected_features"] = [{"key": "feat", "anchors": ["^nothing$"], "binaries": ["upstream.txt"]}]
+        self.fork([("fix: plain subject", {"upstream.txt": {1: "fork"}})])
+        self.assertEqual(["feat"], self.dry()[1]["stops"][0]["protected_features"])
+        self.cfg["protected_features"] = []
+        self.assertEqual([], self.dry()[1]["stops"][0]["protected_features"])
+
+    def test_a_commit_upstream_already_holds_comes_out_empty(self):
+        self.fork([("fix: same as upstream", {"upstream.txt": {1: "u2"}})])
+        _, report = self.dry()
+        self.assertEqual(["fix: same as upstream"], [e["subject"] for e in report["empty"]])
+        self.assertEqual(0, report["clean"])
+
+    def test_an_empty_commit_is_a_stop_on_the_interactive_path(self):
+        # What the report says about git: rebase -i stops on a commit that comes out empty, a plain rebase drops it.
+        self.fork([("fix: same as upstream", {"upstream.txt": {1: "u2"}}), *self.CLEAN])
+        _, text = self.dry(as_json=False)
+        self.assertRegex(text, r"(?m)^dry-run: .*: 2 clean, 0 predicted stops, 1 empty \(rebase -i stops, a plain rebase drops\)$")
+        self.assertRegex(text, rf"(?m)^empty {self.sha('x~2')[:9]} fix: same as upstream \(rebase -i stops here")
+        env = {**os.environ, "GIT_SEQUENCE_EDITOR": "true"}
+        r = subprocess.run(["git", "rebase", "-i", "--onto", "U", "B", "x"], cwd=self.dir, env=env, capture_output=True, text=True)
+        self.assertNotEqual(0, r.returncode, r.stdout)
+        run("git", "rebase", "--abort", cwd=self.dir)
+        run("git", "rebase", "--onto", "U", "B", "x", cwd=self.dir)
+        self.assertEqual(2, int(self.count("U..x")))
+
+    def count(self, rng):
+        return subprocess.run(["git", "rev-list", "--count", rng], cwd=self.dir, capture_output=True, text=True).stdout
+
+    def test_the_counts_add_up(self):
+        self.fork([("fix: same as upstream", {"upstream.txt": {1: "u2"}}), *self.CLEAN,
+                   ("fix: fork edits the upstream file", {"upstream.txt": {1: "fork"}})])
+        _, report = self.dry()
+        self.assertEqual(report["replayed"], report["clean"] + len(report["stops"]) + len(report["empty"]))
+
+    def test_the_skill_states_the_measured_track_record(self):
+        map_step = (SKILL / "SKILL.md").read_text().split("## 3. Map")[1].split("\n## ")[0]
+        self.assertNotIn("none missed", map_step)
+        self.assertIn("54 predicted stops, 38 real, on four syncs", map_step)
+        self.assertRegex(map_step, r"`empty` lists .*: `rebase -i` stops on each one")
+
+    def test_the_output_names_the_strategy_and_its_limits(self):
+        self.fork(self.CLEAN)
+        _, text = self.dry(as_json=False)
+        self.assertIn("merge-tree", text)
+        self.assertIn("-X ours", text)
+        self.assertIn("false alarms are expected", text)
+        self.assertIn("A clean replay says nothing about meaning", text)
+        _, report = self.dry()
+        self.assertEqual({"strategy", "note", "base", "fork", "onto", "replayed", "clean", "stops", "empty"},
+                         set(report))
+
+    def test_a_git_failure_exits_two(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(sync.USAGE, sync.main(["dry-run", "--base", "B", "--fork", "no-such-ref", "--onto", "U"]))
+
+    def test_it_runs_as_a_script_in_isolated_mode(self):
+        # python3 -I keeps the script's directory off sys.path, so the sibling module must still load.
+        self.fork(self.CLEAN)
+        r = subprocess.run([sys.executable, "-I", str(SKILL / "scripts/sync.py"), "dry-run", "--base", "B", "--fork", "x",
+                            "--onto", "U", "--json"], cwd=self.dir, capture_output=True, text=True)
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual(2, json.loads(r.stdout)["clean"])
+
 
 if __name__ == "__main__":
     unittest.main()
