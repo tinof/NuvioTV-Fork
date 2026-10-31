@@ -692,6 +692,8 @@ because a wrong passthrough path is invisible until measured.
   - [U1.15][desk] Classify by exception: one resolver, up to 3 readers with an attachment checklist, and a short
     critic whose findings count. It replaces per-commit classify only after a blind test on frozen 2026-10-31
     state finds all 5 known adapts, and after one real sync run in shadow. Gate: that eval and that shadow run.
+    The first eval failed on 2026-11-01: 4 of 5, 1.09M tokens and 30 min against 1.38M and 25, so per-commit classify
+    stays the default. A changed prompt needs a new blind test on the frozen 2026-10-26 state.
 
 ## Docs
 
