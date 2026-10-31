@@ -345,6 +345,24 @@ class MatroskaRpuInjectionTest {
         }
     }
 
+    @Test
+    fun `an HLG track reads no static SEI and is prepared once`() {
+        var prepares = 0
+        val counting = DvRpuSource { target, facts ->
+            prepares++
+            readySource.prepare(target, facts)
+        }
+        val static = com.nuvio.tv.core.player.fakeStaticSei()
+        val file = mkv(trackEntry("hlg_tagged", hlgColour), cluster(0, block(0, keyframe = true, static, idr), block(40, keyframe = false, trail)))
+        val native = readFile(file, transformer = null)
+        val out = readFile(file, transformer(source = counting))
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        assertEquals(1, prepares)
+        for (i in native.samples.indices) {
+            assertArrayEquals("AU $i", native.samples[i] + annexB(if (i == 0) refreshRpu else plainRpu), out.samples[i])
+        }
+    }
+
     private class Read(val format: Format?, val samples: List<ByteArray>, val timesUs: List<Long>, val track: MatroskaExtractor.Track?, val stats: DolbyVisionStatsSession)
 
     private fun transformer(
