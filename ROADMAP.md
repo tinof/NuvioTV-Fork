@@ -111,6 +111,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 | Date | Step | Items | Where |
 |------|------|-------|-------|
 | 2026-11-01 | DV3.4 closed: an HDR10+ title's static metadata comes from its SEI, its RPUs equal real `mkvdovi` on all 7231 compared frames, and the owner saw no large difference on the TV. | DV3 | [log](docs/ROADMAP_LOG.md), PR #37 |
+| 2026-10-31 | Sync cost study: 136 min on 10-31, spent on reading and hand execution, not conflicts; syncs now follow settled batches, at least weekly; U1.10 held; U1.12 to U1.15 added. | U1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-31 | U1.5: rebased onto upstream 1.1.0-nt.9 with no drop; both protected features kept every line; `mdarcy` keeps refusing upstream's new small-box swap room; a new base commit gives the unit test JVM 1 GB of heap, because upstream's suite alone reaches 488 of 512 MB. | U1, Q5 | [log](docs/ROADMAP_LOG.md), PR #33 |
 | 2026-10-31 | DV3.1 closed: an HDR10+ series plays as Dolby Vision 8.1 on the owner's TV, with an RPU in every AU and L1 equal to `dovi_tool` on all 6115 compared frames; DV3.4 added for the static metadata that this title states only in its SEI. | DV3 | [log](docs/ROADMAP_LOG.md), PR #30 |
 | 2026-10-29 | DV3.1 code: a Matroska PQ track with HDR10+ in its hvcC or first AU converts to Dolby Vision 8.1, L1 from each AU's own HDR10+ SEI (`dovi_tool` parity, 16 fixtures byte for byte), the scene refresh in presentation order; plain HDR10 stays native; the setting becomes "Convert HLG and HDR10+ to Dolby Vision". Device gate open. | DV3 | [log](docs/ROADMAP_LOG.md), PR #30 |
@@ -626,7 +627,9 @@ because a wrong passthrough path is invisible until measured.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
 - [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
-  theme. Gate: the answer recorded in the log.
+  theme. Official NuvioTV (`NuvioMedia/NuvioTV`) merged 284 of its last 400 PRs and ysosrs merged 1 of 4, so
+  try one small every-device fix on official first, though 18 of 20 candidates need porting there. Gate: the
+  answer recorded in the log.
 - [U1.2][desk] Sort the commits in `git log upstream/main..perf/shield-pass` into fork-only and upstreamable,
   and list the every-device changes with the reason each applies everywhere (audio route under a Bluetooth
   pin, lossless track default, controller buttons, native libraries loaded from the APK). Gate: the table in
@@ -639,7 +642,9 @@ because a wrong passthrough path is invisible until measured.
 - [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves: run `/upstream-sync`
   when the drift issue is open. One rebased branch, never merged: `perf/shield-pass` (the default branch) =
   `upstream/main` + the fork's CI, test and fix commits and the drift watcher + the Shield work; `main` mirrors
-  upstream at the last synced base. Gate: 0 commits behind at each pull request.
+  upstream at the last synced base. Sync when a batch has settled (24 h with no first-parent push), and at
+  least weekly. Syncing more often saves no conflict work, while its fixed cost repeats. Gate: no upstream
+  commit waits more than 7 days, and each sync ends 0 commits behind.
 - Sync v2 (plan of 2026-10-27): cut the fixed cost of a sync, then run small syncs in the cloud at night and
   publish them with one tap in the morning. Steps in order:
   - [U1.6][owner] Spikes before building: whether a ruleset on this personal repo can let only a publish deploy
@@ -657,7 +662,9 @@ because a wrong passthrough path is invisible until measured.
   - [U1.9][desk] CI is the gate: Checks runs on pushed sync candidates with an upstream baseline job and a
     compare job that fails on new or incomplete results; `shield_build_install.sh` runs `protected-apk` on every
     local build. Gate: a scratch candidate with an injected failure, and one with a crashed test run, fail.
-  - [U1.10][desk][owner] Nightly cloud run at 02:07 Helsinki time: light syncs only, pushed as
+  - [U1.10][desk][owner] Held since 2026-10-31: the light path fired on 0 of 4 syncs, so this run would almost
+    never start. Redefine it after U1.9 and U1.15 prove out, as a run that prepares every settled batch for the
+    owner's tap. Until then, as first planned: nightly cloud run at 02:07 Helsinki time: light syncs only, pushed as
     `claude/sync/<date>-<n>` with a manifest of the exact verify inputs; anything else stops with a comment on
     the drift issue. The run unshallows its clone first, and the routine is created without connectors.
     Gate: a one-off run on a replay branch matches the local result, and its commits, PR text and comments carry
@@ -668,6 +675,23 @@ because a wrong passthrough path is invisible until measured.
     `sync-publish` deploys only from `perf/shield-pass`, and a ruleset refuses a merge into `perf/shield-pass`
     from the Claude App token while the owner's merges go through. Gate: dry run, a publish and a rollback on
     spike branches; a cloud REST merge into a protected spike branch is refused. Needs: U1.6, U1.10.
+- Sync cost (study of 2026-10-31, see the log): the cost sits in reading, hand execution and fixed ceremony, not
+  in conflicts. Steps:
+  - [U1.12][desk] Tooling: `sync.py dry-run`, `due`, `official-preview`, `judgement` and `docs-entry`, a heap hint
+    in `test-failures`, the rebase in one fresh subagent, and the docs follow-up on gate-skip paths. Gate: the
+    script tests, and the next sync uses them.
+  - [U1.13][desk][owner] Clean the stack inside the next sync's rebase, after DV3.4 merges, so nothing is rewritten
+    twice. Fold the superseded RPU dump chain into its replacement (the owner's narrow exception to one finding
+    per commit, for superseded findings only, with an archive tag). Move Shield strings to `strings_shield.xml`
+    per locale, with a new key instead of overriding `audio_tunneled_sub` in 38 locales. Move the fork README to
+    `.github/README.md`. Gate: an identical tree for the fold, an identical key-to-value map per locale for the
+    strings, and one local APK build. Needs: DV3.4.
+  - [U1.14][desk] Behavioural tests for how fork code attaches to upstream paths: the IEC route key on a live
+    source switch, `swapRoom` through the public entry points, and Tracks-after-Clusters. Gate: each test fails
+    when its case is reverted.
+  - [U1.15][desk] Classify by exception: one resolver, up to 3 readers with an attachment checklist, and a short
+    critic whose findings count. It replaces per-commit classify only after a blind test on frozen 2026-10-31
+    state finds all 5 known adapts, and after one real sync run in shadow. Gate: that eval and that shadow run.
 
 ## Docs
 
