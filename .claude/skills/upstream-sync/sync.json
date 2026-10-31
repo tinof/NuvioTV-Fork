@@ -1,6 +1,8 @@
 {
   "repo": "tinof/NuvioTV-Fork",
   "upstream_repo": "ysosrs123/NuvioTV-Fork",
+  "official_repo": "NuvioMedia/NuvioTV",
+  "official_branch": "dev",
   "remotes": {
     "fork": "origin",
     "upstream": "upstream"

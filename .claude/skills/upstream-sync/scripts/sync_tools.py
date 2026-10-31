@@ -221,9 +221,72 @@ def cmd_due(a, cfg):
     return OK
 
 
+# ---------------------------------------------------------------- official-preview
+
+# Private to the preview: refs/remotes/official/* belongs to anyone who has a remote named official.
+OFFICIAL_REF = "refs/upstream-sync/official-preview"
+
+
+def latest_tag(url):
+    """The newest version tag: a pre-release sorts before its release, beta.10 after beta.9."""
+    rows = lines("-c", "versionsort.suffix=-", "ls-remote", "--tags", "--refs", "--sort=-v:refname", url)
+    tags = (r.split("refs/tags/", 1)[1] for r in rows)
+    return next((t for t in tags if re.match(r"v?\d", t)), None)
+
+
+def merged_prs(repo, branch, limit=10):
+    """Recent merged PR titles, through REST: GraphQL, and with it `gh pr`, is blocked in cloud sessions."""
+    rows = gh_json("api", f"repos/{repo}/pulls?state=closed&base={branch}&sort=updated&direction=desc&per_page=50")
+    return [f"#{p['number']} {p['title']}" for p in rows or [] if p.get("merged_at")][:limit]
+
+
+def preview_git(url, branch, tip, upstream, fork):
+    """Fetches by URL, so no remote exists and nothing has a push URL. The ref goes away again in the caller."""
+    git("fetch", "--quiet", "--no-tags", "--no-write-fetch-head", url, f"+refs/heads/{branch}:{tip}")
+    print(f"official {branch}: tip {out('rev-parse', '--short=9', tip)}, latest tag {latest_tag(url) or 'none'}")
+    ahead = lines("log", "--no-merges", "--format=%s", f"{upstream}..{tip}")
+    known = set(lines("log", "--format=%s", upstream))
+    missing = [s for s in ahead if s not in known]
+    print(f"{len(missing)} of its commits are not in {upstream} by subject ({len(ahead)} outside its history)")
+    with scratch_objects() as env:
+        conflicts = merge_tree(fork, tip, env=env)[1]
+    print(f"trial merge with {fork}: {len(conflicts)} conflicting files")
+    print("".join(f"  {f}\n" for f in conflicts), end="")
+
+
+def drop_preview_ref():
+    """Deletes the ref the fetch wrote, and only that ref. After a failed fetch there is none."""
+    try:
+        if git("rev-parse", "--verify", "--quiet", OFFICIAL_REF, check=False).returncode == 0:
+            git("update-ref", "-d", OFFICIAL_REF)
+    except Exception as e:
+        print(f"official: ref not removed: {OFFICIAL_REF} ({e})")
+
+
+def cmd_official_preview(a, cfg):
+    """Advisory: every failure is a line of output and the exit code stays 0, so each stage catches Exception."""
+    repo, branch = cfg["official_repo"], cfg["official_branch"]
+    upstream = a.upstream or f"{cfg['remotes']['upstream']}/main"
+    fork = a.fork or f"{cfg['remotes']['fork']}/{cfg['layers']['perf']}"
+    print(f"official preview of {repo} {branch}; advisory, it blocks nothing")
+    try:
+        preview_git(a.url or f"https://github.com/{repo}.git", branch, OFFICIAL_REF, upstream, fork)
+    except Exception as e:
+        print(f"official: not available ({e})")
+    finally:
+        drop_preview_ref()
+    try:
+        titles = merged_prs(repo, branch)
+        print(f"recent merged PRs into {branch}: {len(titles)}")
+        print("".join(f"  {t}\n" for t in titles), end="")
+    except Exception as e:
+        print(f"recent merged PRs: skipped, gh is not available ({e})")
+    return OK
+
+
 # ---------------------------------------------------------------- registration
 
-COMMANDS = {"dry-run": cmd_dry_run, "due": cmd_due}
+COMMANDS = {"dry-run": cmd_dry_run, "due": cmd_due, "official-preview": cmd_official_preview}
 
 
 def add_parsers(sub):
@@ -237,3 +300,7 @@ def add_parsers(sub):
     s.add_argument("--fork", help="default: the fork's perf branch on the fork remote")
     s.add_argument("--now", type=float, help="the time to judge at, in seconds since the epoch (default: the clock)")
     s.add_argument("--json", action="store_true")
+    s = sub.add_parser("official-preview", help="read-only look at what official NuvioTV will bring next")
+    s.add_argument("--url", help="fetch from this URL or path instead of official_repo")
+    s.add_argument("--upstream", help="default: upstream/main")
+    s.add_argument("--fork", help="default: the fork's perf branch on the fork remote")
