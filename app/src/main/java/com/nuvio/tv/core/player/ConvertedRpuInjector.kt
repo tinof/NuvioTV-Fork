@@ -36,16 +36,18 @@ internal class DvSeiStatic(
     val maxFrameAverageLightLevel: Int? = null,
 ) {
     /**
-     * This message or set of messages followed by [later], in reading order (hvcC, then AU): the first
-     * mastering display stays and the last stated light level replaces it, as MediaInfo reports them
-     * (`docs/dv-conversion/DESIGN.md` 2.4).
+     * This message or set of messages followed by [later], in reading order (hvcC, then AU), as MediaInfo
+     * reports them (`docs/dv-conversion/DESIGN.md` 2.4): the first mastering display with primaries stays
+     * whole, even without luminance; until there is one, a later message's luminance replaces this
+     * one's. The last stated light level wins.
      */
     fun then(later: DvSeiStatic?): DvSeiStatic {
         if (later == null) return this
+        val laterLuminance = masteringPrimaries == null && later.masteringMaxNits != null
         return DvSeiStatic(
             masteringPrimaries ?: later.masteringPrimaries,
-            masteringMaxNits ?: later.masteringMaxNits,
-            masteringMinNits ?: later.masteringMinNits,
+            if (laterLuminance) later.masteringMaxNits else masteringMaxNits,
+            if (laterLuminance) later.masteringMinNits else masteringMinNits,
             later.maxContentLightLevel ?: maxContentLightLevel,
             later.maxFrameAverageLightLevel ?: maxFrameAverageLightLevel,
         )

@@ -35,6 +35,10 @@ internal object HevcInitNals {
     private const val BLUE_LIMIT = 17_500
     private const val LIGHT_LEVEL_NOT_MEASURED = 65_535
 
+    // All ones: what MediaInfo treats as not stated (`docs/dv-conversion/DESIGN.md` 2.4).
+    private const val CHROMATICITY_NOT_STATED = 0xFFFF
+    private const val LUMINANCE_NOT_STATED = 0xFFFF_FFFFL
+
     /** The first SPS NAL (2-byte header included, as coded), or null when there is none. */
     @JvmStatic
     fun firstSps(initializationData: List<ByteArray>?): ByteArray? =
@@ -306,15 +310,18 @@ internal object HevcInitNals {
     /**
      * mastering_display_colour_volume (H.265 D.2.28): three x, y pairs, the white point, then maximum
      * and minimum luminance. The pairs come as G, B, R; [masteringPrimaries] sorts them into R, G, B.
+     * One all-ones chromaticity leaves the primaries unstated, and one all-ones luminance the pair.
      */
     private fun masteringDisplay(rbsp: ByteArray, start: Int): DvSeiStatic {
         val pairs = List(4) { i -> u16(rbsp, start + 4 * i) to u16(rbsp, start + 4 * i + 2) }
         val maxUnits = u32(rbsp, start + 16)
         val minUnits = u32(rbsp, start + 20)
+        val primariesStated = pairs.none { (x, y) -> x == CHROMATICITY_NOT_STATED || y == CHROMATICITY_NOT_STATED }
+        val luminanceStated = maxUnits != LUMINANCE_NOT_STATED && minUnits != LUMINANCE_NOT_STATED
         return DvSeiStatic(
-            masteringPrimaries = masteringPrimaries(pairs),
-            masteringMaxNits = (maxUnits * LUMINANCE_UNIT).toFloat(),
-            masteringMinNits = (minUnits * LUMINANCE_UNIT).toFloat(),
+            masteringPrimaries = if (primariesStated) masteringPrimaries(pairs) else null,
+            masteringMaxNits = if (luminanceStated) (maxUnits * LUMINANCE_UNIT).toFloat() else null,
+            masteringMinNits = if (luminanceStated) (minUnits * LUMINANCE_UNIT).toFloat() else null,
         )
     }
 
