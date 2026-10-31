@@ -452,6 +452,21 @@ class VerifyRepoTest(RepoFixture, unittest.TestCase):
         self.assertEqual(0, code, report)
         self.assertIn("expected drop from the classify decisions", report)
 
+    def test_an_approved_retire_in_summary_drop_reaches_drops_and_verify(self):
+        # The analysts said keep, so only the hand edit of summary.drop carries the owner's decision.
+        self.new_branch(self.FAITHFUL[1:])
+        sha = self.sha("old~1")[:12]
+        path = self.dir / "classify.json"
+        path.write_text(json.dumps({"groups": [{"commits": [{"sha": sha, "verdict": "keep-clean"}]}],
+                                    "summary": {"drop": [sha], "keepClean": []}}))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            sync.cmd_drops(argparse.Namespace(decisions=str(path), range="B..old"), self.cfg)
+        self.assertEqual(sha, buf.getvalue().strip())
+        code, report = self.verify(decisions=str(path))
+        self.assertEqual(0, code, report)
+        self.assertIn("expected drop from the classify decisions", report)
+
     def test_a_changed_fork_only_file_fails_unless_allowed(self):
         self.new_branch([self.FAITHFUL[0],
                          ("fix: retained bottom", {"shared.txt": {20: "BOTTOM"}, "fork-only.txt": {10: "line 10 adapted"}})])
@@ -654,6 +669,56 @@ class SkillDocTest(unittest.TestCase):
         var = re.search(r"--force-with-lease=refs/heads/main:<(\w+)>", doc).group(1)
         self.assertIn(f"`{var}` (`origin/main`", doc)
         self.assertNotRegex(doc, rf"as `{var}` instead")
+
+    def doc(self):
+        return (SKILL / "SKILL.md").read_text()
+
+    def section(self, heading):
+        return self.doc().split(f"## {heading}")[1].split("\n## ")[0]
+
+    def test_the_trigger_rule_heads_the_skill(self):
+        self.assertRegex(self.doc().split("## Rules")[0], r"\*\*Trigger:\*\* sync when `sync\.py due` says `due`, and at least weekly")
+
+    def test_the_apk_is_not_called_the_only_aapt_run(self):
+        # The gate's task graph runs mergeFullDebugResources and processFullDebugResources, and verify reads the locale
+        # files itself, so a sentence that sends a reader to the APK for the locale trap is wrong.
+        self.assertNotRegex(self.doc(), r"only check that runs aapt")
+        self.assertIn("`duplicate_names`", self.section("6. Verify"))
+        self.assertIn("processFullDebugResources", self.section("6. Verify"))
+
+    def test_the_follow_up_pr_stays_on_gate_skip_paths(self):
+        carried = self.section("9. Follow-ups").split("It carries:")[1].split("Two things stay out")[0]
+        paths = re.findall(r"^- `([^`]+)`", carried, re.M)
+        self.assertEqual(["docs/shield-todo.md", "ROADMAP.md", "docs/ROADMAP_LOG.md"], paths)
+        globs = re.search(r"^gate-skip:\s+(.*)$", (SKILL.parents[2] / ".claude/workflow.md").read_text(), re.M).group(1)
+        self.assertEqual({"*.md", "docs/**"}, set(re.findall(r"'([^']+)'", globs)))
+        self.assertTrue(all(p.endswith(".md") for p in paths))
+
+    def test_the_rebase_contract_is_written_down(self):
+        rebase = self.section("5. Rebase")
+        for needle in ("one fresh subagent", "**Inputs:**", "`resolution_guidance`", "**Outputs:**", "`resolutions.md`",
+                       "branch head", "**Block check", "no leftover markers", "no two identical adjacent multi-line blocks"):
+            self.assertIn(needle, rebase)
+
+    def test_the_retire_question_keeps_the_protected_exception(self):
+        for text in (CONFIG["owner_rule"], self.section("4. Classify (skip for tiers `skip` and `light`)")):
+            self.assertRegex(text, r"(?i)retire question")
+            self.assertRegex(text, r"prefer dropping the fork's version")
+            self.assertRegex(text, r"(?i)protected")
+
+    def test_a_retire_is_asked_before_the_owner_sees_the_drops_and_lands_in_summary_drop(self):
+        # sync.py drops reads only summary.drop, so a retire decided after the owner's list never reaches the rebase.
+        classify = self.section("4. Classify (skip for tiers `skip` and `light`)")
+        self.assertLess(classify.index("Ask the retire question"), classify.index("Show the owner the drop list"))
+        self.assertRegex(classify, r"retire .*`summary\.drop` in `<scratch>/classify\.json`")
+        self.assertRegex(classify, r"`sync\.py drops` and `verify --decisions`")
+        self.assertNotIn("goes to the owner in item 5", classify)
+        self.assertEqual(["1", "2", "3", "4", "5", "6", "7", "8"], re.findall(r"^(\d)\. ", classify, re.M))
+
+    def test_step_numbers_in_the_verify_section_run_in_order(self):
+        numbers = re.findall(r"^(\d)\. ", self.section("6. Verify"), re.M)
+        self.assertEqual(["1", "2", "3", "4", "5", "6"], numbers)
+        self.assertIn("the review in step 6.6", self.section("6. Verify"))
 
 
 class MapOverlapRepoTest(RepoFixture, unittest.TestCase):

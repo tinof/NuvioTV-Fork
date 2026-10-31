@@ -7,6 +7,8 @@ disable-model-invocation: true
 
 # upstream-sync
 
+**Trigger:** sync when `sync.py due` says `due`, and at least weekly. The verdict is advice: `wait` blocks nothing, and an owner can always sync.
+
 The user typed `/upstream-sync $ARGUMENTS`. With no argument, run every step in order. With one, start at
 that step, after checking that the earlier steps' outputs exist in the scratchpad. The open "Upstream drift"
 issue (label `upstream-drift`, kept current by `.github/workflows/upstream-drift.yml` on the default branch
@@ -29,12 +31,14 @@ issue (label `upstream-drift`, kept current by `.github/workflows/upstream-drift
 - **Owner rule (`owner_rule` in `sync.json`):**
   - If upstream changes a setting the Shield plan also sets, keep the fork's value. Gate it on Nvidia, give it a `debug.nuvio.*` revert switch, and add a row to `docs/shield-todo.md`.
   - If the plan has no such setting, take upstream's value and list it under "Upstream defaults taken with the sync of <date>".
+  - Retire question: where upstream now covers a fork change, prefer dropping the fork's version, except for protected features.
 - **Protected features (`protected_features` in `sync.json`):** the AAC-to-DTS / DTS-HD MA transcode and the
   HLG-to-Dolby-Vision conversion are what the owner keeps the fork for. A commit of either is never dropped or
   partly superseded without the owner, even where the owner rule would settle it, and every line it adds must
   survive the rebase (`verify` checks both).
 - **Gradle runs on JDK 17:** prefix every `./gradlew` with `JAVA_HOME=${JAVA17_HOME:-$(/usr/libexec/java_home -v 17)}`;
   the system Java is newer than upstream's Gradle can run on.
+- **The rebase runs in one fresh subagent**, not in the main context. Step 5 holds its contract.
 - **Stop and ask the owner** before:
   - dropping a commit;
   - any setting decision the owner rule does not settle;
@@ -112,10 +116,23 @@ Scale tiers:
 2. Save the result to `<scratch>/classify.json`.
 3. If `summary.complete` is false, rerun the failed groups (`summary.failedGroups`) until every commit has a verdict: `summary.unclassified` lists the commits without one.
 4. Check the `file:line` claims behind every drop, adapt and partial verdict yourself before you use them.
-5. Show the owner the drop list (with the reason, e.g. "net-zero pair" or "upstream does it in <sha>"), the adapt list and every setting decision. Wait for answers where the owner rule does not settle a decision.
-6. `summary.protectedAsk` lists drop and partial verdicts on protected-feature commits. Each one is the owner's decision; an approved drop is passed to `verify` as `--protected-drop <sha>`.
+5. Ask the retire question of every keep verdict: does upstream now cover this fork change? If it does, prefer dropping the fork's version, because each kept commit costs a conflict risk at every later sync. A protected-feature commit is exempt. Each yes joins the drop list in item 6 as a proposed retire.
+6. Show the owner the drop list (with the reason, e.g. "net-zero pair" or "upstream does it in <sha>"), the adapt list and every setting decision. Wait for answers where the owner rule does not settle a decision.
+7. Add each retire the owner approves to `summary.drop` in `<scratch>/classify.json`, and take it off its keep list. `sync.py drops` and `verify --decisions` read that list. A retire left out of it stays in the rebase, and a hand drop then fails `verify`.
+8. `summary.protectedAsk` lists drop and partial verdicts on protected-feature commits. Each one is the owner's decision; an approved drop is passed to `verify` as `--protected-drop <sha>`.
 
 ## 5. Rebase
+
+Run this whole step in one fresh subagent. One agent keeps what the earlier stops decided, and the main context stays free for the owner's questions and for the checks in step 6.
+
+The subagent's contract:
+- **Inputs:** the classify guidance (`<scratch>/classify.json`, each commit's `resolution_guidance`; on the light path `<scratch>/overlap.json`), the drop list, the worktree path, `OLD_BASE`, and the traps and `protected_features` in `sync.json`.
+- **Outputs:** `<scratch>/resolutions.md` and the branch head (the full SHA of `NEW_PERF`). A stop it cannot settle comes back as a question with the rebase left stopped: a setting the owner rule does not settle, or a protected commit outside its guidance. A `stop-check` exit 1 aborts the rebase, as item 2.0 says, and comes back too.
+- **Block check after each resolution,** before `git add`:
+  - no leftover markers: `git diff --check` reports none in the file;
+  - no two identical adjacent multi-line blocks in a hand-replaced region. A hand edit can paste the resolved block beside the copy it meant to replace, and both copies can still compile.
+
+The main context reads `resolutions.md`, then runs step 6. It does not take the subagent's word for the result.
 
 1. Start the rebase in the worktree. The drops come from `python3 -I $S/sync.py drops --decisions <scratch>/classify.json --range OLD_BASE..OLD_PERF`:
    ```
@@ -179,8 +196,9 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
 
    It says nothing inside a declared file, and it cannot see a fork hunk the rebase gave up to upstream, because the mechanical tree has the same text there. The independent review stays.
 4. Run the full gate in the worktree. Compare `sync.py test-failures` with the baseline: any new failure blocks. Its stdout holds only test names; a heap hint goes to stderr.
-5. Build the APK in the worktree (`./gradlew :app:assembleFullDebug`, JDK 17): it is the only check that runs aapt
-   (the locale trap) and the native builds. Then `python3 -I $S/sync.py protected-apk
+5. Build the APK in the worktree (`./gradlew :app:assembleFullDebug`, JDK 17): it is the only check that runs the
+   native builds. The locale trap has two earlier checks: `verify` finds a duplicate string with `duplicate_names`
+   without running aapt, and the gate runs aapt in `mergeFullDebugResources` and `processFullDebugResources`. Then `python3 -I $S/sync.py protected-apk
    app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk` must pass: the DTS-HD MA writer in
    `libffmpegJNI.so` and `libnuvio_rpu.so` for the Dolby Vision conversion.
 6. Have one independent Opus `medium` reviewer read the `!` hunks from the verify report together with `resolutions.md` and `judgement.diff`. Check its claims before acting on them.
@@ -213,11 +231,14 @@ publish the candidate first:
 
 ## 9. Follow-ups (a normal PR through /ship)
 
-Create a branch `fork/u1-5-sync-<date>-followups` from `origin/perf/shield-pass`. It carries:
-- the Nvidia-gated keeps the owner rule asked for, one finding per commit, each with a revert switch and a test;
+The follow-up PR stays on the contract's `gate-skip` paths (`*.md` and `docs/**`), so it needs no gate run. Create a branch `fork/u1-5-sync-<date>-followups` from `origin/perf/shield-pass`. It carries:
 - `docs/shield-todo.md`: new rows, and the "Upstream defaults taken with the sync of <date>" section;
 - `ROADMAP.md`: a progress-log row for U1.5 that cites the PR;
 - `docs/ROADMAP_LOG.md`: an entry with the counts, the verify report summary, the gate and CI evidence, the drops with their reasons, and the setting decisions.
+
+Two things stay out unless they are needed:
+- A `sync.json` trap edit goes in only when the sync turned up a new trap. It is a Tier 2 path outside `gate-skip`, so it costs the PR a gate and a Tier 2 review.
+- The Nvidia-gated keeps the owner rule asked for are code. They go in their own PR, one finding per commit, each with a revert switch and a test.
 
 `python3 -I $S/sync.py docs-entry --verify-report <scratch>/verify.txt [--classify <scratch>/classify.json] --date <date> --pr <n>` prints both skeletons to stdout: the log entry, and the defaults section with each setting once. On tiers `skip` and `light` there is no classify.json: leave out `--classify`, and the verdict counts and the defaults become `TODO` lines. Facts come only from those files; a `TODO` line marks what a human must add. It groups analysts' entries by a shared setting name, so read what it merged, and clear every `TODO` before the PR.
 
@@ -227,4 +248,4 @@ Remove the worktrees and the `backup/*` branch. Keep the `sync/<date>/*` tags: t
 
 ## Known traps
 
-Read `traps` in `sync.json`; add new ones there in the follow-up PR. Locale files have their own trap: a fork hunk that carries an upstream-moved string as context re-adds it. `verify` catches the duplicate, and the fix is to drop the fork-side line.
+Read `traps` in `sync.json`; add new ones there when a sync turns one up (step 9). Locale files have their own trap: a fork hunk that carries an upstream-moved string as context re-adds it. `verify` catches the duplicate, and the fix is to drop the fork-side line.
