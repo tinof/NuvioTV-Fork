@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILL = ROOT / ".claude/skills/upstream-sync"
+TRIAGE_WORKFLOW = ROOT / ".claude/workflows/upstream-sync-triage.js"
 
 
 def load(name):
@@ -1008,6 +1010,366 @@ class TriageSetsFrozenSyncTest(unittest.TestCase):
         stopped = {f for s in self.map["stops"] for f in s["files"]}
         self.assertEqual(7, len(self.map["conflictFiles"]))
         self.assertLessEqual(set(self.map["conflictFiles"]), stopped)
+
+    def test_args_pass_the_workflow_size_guard(self):
+        limit = int(re.search(r"MAX_ARGS_CHARS = (\d+)", TRIAGE_WORKFLOW.read_text()).group(1))
+        self.assertLess(len(json.dumps(self.args)), limit)
+
+
+RUNNER = """
+import { run } from './body.mjs'
+import { readFileSync } from 'node:fs'
+const { args, replies } = JSON.parse(readFileSync(0, 'utf8'))
+const logs = [], labels = [], prompts = {}
+const agent = async (prompt, opts) => {
+  labels.push(opts.label)
+  prompts[opts.label] = prompt
+  if (!opts.schema) throw new Error('agent without a schema')
+  return replies[opts.label] ?? null
+}
+const parallel = thunks => Promise.all(thunks.map(t => t().catch(() => null)))
+try {
+  const result = await run({ args, agent, parallel, log: m => logs.push(m), phase: () => {} })
+  console.log(JSON.stringify({ result, logs, labels, prompts }))
+} catch (e) {
+  console.log(JSON.stringify({ error: e.message, logs, labels }))
+}
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "needs node")
+class TriageWorkflowTest(unittest.TestCase):
+    """Runs the workflow's own script under node, with the agents stubbed. Top-level return is valid in a workflow
+    script and not in a module, so the body goes into a function; the export of meta stays."""
+
+    SETS = [["a/One.kt", "a/Two.kt"], ["b/Three.kt"]]
+    ARGS = {"repo": "/r", "mapPath": "/s/map.json", "prTitlesPath": "", "upstreamRef": "U",
+            "forkRef": "F", "mb": "m" * 40, "upstreamTip": "u" * 40, "forkTip": "f" * 40,
+            "counts": {"fork": 9, "bothChanged": 4, "mainCode": 3}, "sets": SETS,
+            "stops": [{"sha": "aaaaaaaaaaaa", "files": ["a/One.kt"]}], "conflictFiles": ["a/One.kt"],
+            "protected": ["bbbbbbbbbbbb"],
+            "caps": ["1 file went to no reader"]}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.dir = Path(cls.tmp.name)
+        text = TRIAGE_WORKFLOW.read_text()
+        end = re.search(r"^}\n", text, re.M).end()
+        (cls.dir / "body.mjs").write_text(text[:end] + "export async function run({ args, agent, parallel, log, phase }) {\n"
+                                          + text[end:] + "\n}\n")
+        (cls.dir / "runner.mjs").write_text(RUNNER)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    @staticmethod
+    def adapt(sha="cccccccccccc", file="a/One.kt"):
+        return {"fork_sha": sha, "file": file, "line": 7, "attachment": "a new caller", "fix": "pass it", "evidence": ["U:a/One.kt:7"]}
+
+    def replies(self):
+        return {
+            "resolver": {"stops": [{"sha": "aaaaaaaaa", "status": "resolved", "note": "", "resolutions": [
+                {"path": "a/One.kt", "block": 1, "upstream_side": "u", "fork_side": "f", "merged": "both"}]}],
+                "adapts": [], "open_questions": []},
+            "reader-1": {"covered_files": self.SETS[0], "not_covered": [], "adapts": [self.adapt()], "superseded": [],
+                         "settings": [{"upstream_sha": "ddd", "description": "default", "owner_rule": "take-upstream"}],
+                         "open_questions": []},
+            "reader-2": {"covered_files": self.SETS[1], "not_covered": [], "adapts": [], "superseded": [], "settings": [],
+                         "open_questions": []},
+            "critic": {"coverage_ok": True, "gaps": [], "contradictions": [], "added_adapts": [], "added_settings": []},
+        }
+
+    def run_workflow(self, replies=None, **changes):
+        scenario = {"args": {**self.ARGS, **changes}, "replies": self.replies() if replies is None else replies}
+        r = subprocess.run(["node", "runner.mjs"], cwd=self.dir, input=json.dumps(scenario), capture_output=True, text=True)
+        self.assertEqual(0, r.returncode, r.stderr)
+        return json.loads(r.stdout)
+
+    def summary(self, replies=None, **changes):
+        return self.run_workflow(replies, **changes)["result"]["summary"]
+
+    def test_the_script_passes_node_check(self):
+        r = subprocess.run(["node", "--check", "body.mjs"], cwd=self.dir, capture_output=True, text=True)
+        self.assertEqual(0, r.returncode, r.stderr)
+
+    def test_a_full_run_is_complete_with_the_keys_the_skill_reads(self):
+        out = self.run_workflow()
+        s = out["result"]["summary"]
+        self.assertEqual(["resolver", "reader-1", "reader-2", "critic"], out["labels"])
+        self.assertTrue(s["complete"])
+        self.assertEqual(["ccccccccc"], s["adapt"])
+        self.assertEqual(["aaaaaaaaa"], s["resolve"])
+        self.assertEqual([], s["drop"])
+        self.assertEqual([{"upstream": "ddd", "rule": "take-upstream", "what": "default", "note": ""}], s["defaults"])
+        for k in ("failedGroups", "unclassified", "protectedAsk", "keepClean"):
+            self.assertEqual([], s[k], k)
+
+    def test_verify_decisions_reads_the_result(self):
+        replies = self.replies()
+        replies["reader-2"]["superseded"] = [
+            {"fork_sha": "eeeeeeeeeeee", "upstream_sha": "ddd", "scope": "whole", "evidence": ["U:b/Three.kt:1"]},
+            {"fork_sha": "999999999999", "upstream_sha": "ddd", "scope": "part", "evidence": ["U:b/Three.kt:2"]}]
+        drops, hints = sync.decisions(self.run_workflow(replies)["result"])
+        self.assertEqual(["eeeeeeeee"], drops)
+        self.assertEqual(2, len(hints), hints)
+        self.assertIn("cccccccccccc (keep-adapt): consider --allow-changed", " ".join(hints))
+        self.assertIn("999999999999 (partial-superseded): consider --allow-same", " ".join(hints))
+
+    def test_the_critic_decides_complete(self):
+        for name, verdict in (("gap", {"coverage_ok": False, "gaps": ["theme x"]}),
+                              ("contradiction", {"contradictions": ["resolver and reader-1 disagree"]}),
+                              ("bare refusal", {"coverage_ok": False})):
+            replies = self.replies()
+            replies["critic"].update(verdict)
+            s = self.summary(replies)
+            self.assertFalse(s["complete"], name)
+            self.assertTrue(s["criticIssues"], name)
+
+    def test_a_gap_counts_even_when_the_critic_says_coverage_is_fine(self):
+        replies = self.replies()
+        replies["critic"].update({"coverage_ok": True, "gaps": ["theme x"]})
+        self.assertFalse(self.summary(replies)["complete"])
+
+    def test_a_failed_critic_leaves_the_triage_incomplete(self):
+        replies = self.replies()
+        replies["critic"] = None
+        s = self.summary(replies)
+        self.assertFalse(s["complete"])
+        self.assertEqual(["critic"], s["failedGroups"])
+
+    def test_critic_findings_join_the_adapts_with_their_source(self):
+        replies = self.replies()
+        replies["critic"]["added_adapts"] = [self.adapt("fffffffffffff", "x/Upstream.kt")]
+        replies["critic"]["added_settings"] = [{"upstream_sha": "ee1", "description": "d2", "owner_rule": "keep-fork-gated"}]
+        result = self.run_workflow(replies)["result"]
+        self.assertEqual(["ccccccccc", "fffffffff"], result["summary"]["adapt"])
+        self.assertEqual({"reader-1", "critic"}, {x["source"] for x in result["adapts"]})
+        self.assertEqual(["take-upstream", "keep-fork-gated"], [d["rule"] for d in result["summary"]["defaults"]])
+
+    def test_an_assigned_file_a_reader_did_not_cover_blocks(self):
+        replies = self.replies()
+        replies["reader-1"]["covered_files"] = ["a/One.kt"]
+        s = self.summary(replies)
+        self.assertFalse(s["complete"])
+        self.assertEqual(["a/Two.kt"], s["uncovered"])
+
+    def test_a_file_listed_as_not_covered_is_not_covered(self):
+        replies = self.replies()
+        replies["reader-1"]["not_covered"] = [{"path": "a/One.kt", "reason": "too long"}]
+        self.assertEqual(["a/One.kt"], self.summary(replies)["uncovered"])
+
+    def test_a_failed_reader_leaves_its_files_uncovered(self):
+        replies = self.replies()
+        replies["reader-2"] = None
+        s = self.summary(replies)
+        self.assertFalse(s["complete"])
+        self.assertEqual(["reader-2"], s["failedGroups"])
+        self.assertEqual(["b/Three.kt"], s["uncovered"])
+
+    def test_a_stop_with_no_resolution_blocks(self):
+        for status in ("ask-owner", None):
+            replies = self.replies()
+            if status:
+                replies["resolver"]["stops"][0]["status"] = status
+            else:
+                replies["resolver"]["stops"] = []
+            s = self.summary(replies)
+            self.assertFalse(s["complete"], status)
+            self.assertEqual(["aaaaaaaaaaaa"], [u["sha"] for u in s["unclassified"]])
+
+    def test_a_false_alarm_answers_a_stop_but_not_a_conflict_file(self):
+        replies = self.replies()
+        replies["resolver"]["stops"][0].update(status="false-alarm", resolutions=[])
+        s = self.summary(replies)
+        self.assertEqual([], s["unclassified"])
+        self.assertEqual(["a/One.kt"], s["unresolvedFiles"])
+        self.assertFalse(s["complete"])
+        s = self.summary(replies, conflictFiles=[])
+        self.assertTrue(s["complete"])
+        self.assertEqual([], s["resolve"])
+
+    @staticmethod
+    def resolution(path):
+        return {"path": path, "block": 1, "upstream_side": "u", "fork_side": "f", "merged": "both"}
+
+    def test_a_resolved_stop_with_no_resolutions_is_unresolved(self):
+        replies = self.replies()
+        replies["resolver"]["stops"][0]["resolutions"] = []
+        s = self.summary(replies, conflictFiles=[])
+        self.assertFalse(s["complete"])
+        self.assertEqual(["aaaaaaaaaaaa"], [u["sha"] for u in s["unclassified"]])
+        self.assertEqual([], s["resolve"])
+
+    def test_a_resolved_stop_with_no_resolutions_still_overrules_a_drop(self):
+        replies = self.replies()
+        replies["resolver"]["stops"][0]["resolutions"] = []
+        replies["reader-2"]["superseded"] = [self.claim("aaaaaaaaaaaa")]
+        self.assertEqual([], self.summary(replies)["drop"])
+
+    def test_a_row_outside_the_stops_with_no_resolutions_resolves_nothing(self):
+        replies = self.replies()
+        replies["resolver"]["stops"].append({"sha": "eeeeeeeeeeee", "status": "resolved", "note": "", "resolutions": []})
+        self.assertEqual(["aaaaaaaaa"], self.summary(replies)["resolve"])
+
+    def test_every_file_of_a_stop_needs_a_resolution(self):
+        stops = [{"sha": "aaaaaaaaaaaa", "files": ["a/One.kt", "a/Two.kt"]}]
+        result = self.run_workflow(stops=stops)["result"]
+        s = result["summary"]
+        self.assertFalse(s["complete"])
+        self.assertEqual(["aaaaaaaaaaaa"], [u["sha"] for u in s["unclassified"]])
+        self.assertIn("a/Two.kt", s["unclassified"][0]["subject"])
+        self.assertNotIn("a/One.kt", s["unclassified"][0]["subject"])
+        self.assertEqual([], s["resolve"])
+        self.assertEqual(["keep-resolve"], [c["verdict"] for c in self.rows_of(result, "a")])
+        replies = self.replies()
+        replies["resolver"]["stops"][0]["resolutions"].append(self.resolution("a/Two.kt"))
+        s = self.summary(replies, stops=stops)
+        self.assertTrue(s["complete"])
+        self.assertEqual(["aaaaaaaaa"], s["resolve"])
+
+    def test_a_stop_is_not_answered_by_the_row_of_another_stop_on_the_same_file(self):
+        stops = [{"sha": "aaaaaaaaaaaa", "files": ["a/One.kt"]}, {"sha": "eeeeeeeeeeee", "files": ["a/One.kt"]}]
+        for label, resolutions in (("empty", []), ("another file", [self.resolution("b/Three.kt")])):
+            replies = self.replies()
+            replies["resolver"]["stops"].append({"sha": "eeeeeeeee", "status": "resolved", "note": "", "resolutions": resolutions})
+            s = self.summary(replies, stops=stops)
+            self.assertFalse(s["complete"], label)
+            self.assertEqual(["eeeeeeeeeeee"], [u["sha"] for u in s["unclassified"]], label)
+            self.assertEqual([], s["unresolvedFiles"], label)
+            self.assertEqual(["aaaaaaaaa"], s["resolve"], label)
+
+    def test_the_resolver_is_told_every_file_of_a_stop_needs_a_row(self):
+        self.assertIn("Every file in the stop's `files` needs at least one row", self.run_workflow()["prompts"]["resolver"])
+
+    def test_stops_without_their_files_are_refused(self):
+        for stops in (["aaaaaaaaaaaa"], [{"sha": "aaaaaaaaaaaa"}], [{"sha": "aaaaaaaaaaaa", "files": []}]):
+            out = self.run_workflow(stops=stops)
+            self.assertIn("args.stops", out["error"])
+            self.assertEqual([], out["labels"])
+
+    def test_no_agent_drops_a_protected_commit(self):
+        replies = self.replies()
+        replies["reader-2"]["superseded"] = [
+            {"fork_sha": "bbbbbbbbbb", "upstream_sha": "ddd", "scope": "whole", "evidence": ["x"]}]
+        result = self.run_workflow(replies)["result"]
+        s = result["summary"]
+        self.assertEqual([], s["drop"])
+        self.assertEqual(["bbbbbbbbb"], s["protectedAsk"])
+        self.assertEqual(["bbbbbbbbb"], [k for k in s["adapt"] if k.startswith("b")])
+        self.assertEqual([], sync.decisions(result)[0])
+
+    def test_a_short_sha_cannot_slip_a_protected_commit_past_the_check(self):
+        replies = self.replies()
+        replies["reader-2"]["superseded"] = [{"fork_sha": "bbbbbb", "upstream_sha": "d", "scope": "whole", "evidence": []}]
+        result = self.run_workflow(replies)["result"]
+        self.assertEqual([], result["summary"]["drop"])
+        self.assertIn("no usable fork sha", " ".join(result["groups"][0]["open_questions"]))
+
+    def test_a_superseded_claim_on_an_adapted_commit_is_no_drop(self):
+        replies = self.replies()
+        replies["reader-2"]["superseded"] = [
+            {"fork_sha": "cccccccccccc", "upstream_sha": "ddd", "scope": "whole", "evidence": ["x"]}]
+        out = self.run_workflow(replies)
+        self.assertEqual([], out["result"]["summary"]["drop"])
+        self.assertIn("ccccccccc: superseded claim overruled by keep-adapt", out["logs"])
+
+    @staticmethod
+    def rows_of(result, first):
+        return [c for c in result["groups"][0]["commits"] if c["sha"].startswith(first)]
+
+    @staticmethod
+    def claim(sha, scope="whole"):
+        return {"fork_sha": sha, "upstream_sha": "ddd", "scope": scope, "evidence": ["x"]}
+
+    def test_a_short_superseded_sha_makes_no_second_row_and_no_drop(self):
+        for sha in ("aaaaaaa", "aaaaaaaa", "AAAAAAA"):
+            replies = self.replies()
+            replies["resolver"]["stops"][0]["sha"] = "aaaaaaaaaaaa"
+            replies["reader-2"]["superseded"] = [self.claim(sha)]
+            result = self.run_workflow(replies)["result"]
+            self.assertEqual([], result["summary"]["drop"], sha)
+            self.assertEqual(["keep-resolve"], [c["verdict"] for c in self.rows_of(result, "a")], sha)
+            self.assertIn("no usable fork sha", " ".join(result["groups"][0]["open_questions"]), sha)
+
+    def test_a_short_resolver_sha_shares_the_row_of_a_longer_claim(self):
+        for sha in ("aaaaaaa", "aaaaaaaa"):
+            replies = self.replies()
+            replies["resolver"]["stops"][0]["sha"] = sha
+            replies["reader-2"]["superseded"] = [self.claim("aaaaaaaaaaaa")]
+            out = self.run_workflow(replies)
+            s = out["result"]["summary"]
+            self.assertEqual([], s["drop"], sha)
+            self.assertEqual(["aaaaaaaaa"], s["resolve"], sha)
+            self.assertEqual(["aaaaaaaaaaaa"], [c["sha"] for c in self.rows_of(out["result"], "a")], sha)
+            self.assertIn("aaaaaaaaa: superseded claim overruled by keep-resolve", out["logs"])
+
+    def test_a_short_adapt_stays_listed_and_makes_no_row(self):
+        replies = self.replies()
+        replies["reader-1"]["adapts"] = [self.adapt("ccccccc")]
+        result = self.run_workflow(replies)["result"]
+        self.assertEqual(["ccccccc"], [x["fork_sha"] for x in result["adapts"]])
+        self.assertEqual([], result["summary"]["adapt"])
+        self.assertEqual([], self.rows_of(result, "c"))
+        self.assertIn("An adapt names no usable fork sha (ccccccc)", " ".join(result["groups"][0]["open_questions"]))
+
+    def test_an_adapt_with_no_usable_sha_keeps_what_it_could_name_from_drop(self):
+        for sha in ("ccccc", "cccccc", "ccccccc", "cccccccc", "CCCCCCC", "the fork commit", ""):
+            replies = self.replies()
+            replies["reader-1"]["adapts"] = [self.adapt(sha)]
+            replies["reader-2"]["superseded"] = [self.claim("cccccccccccc")]
+            result = self.run_workflow(replies)["result"]
+            self.assertEqual([], result["summary"]["drop"], sha)
+            self.assertEqual(["ccccccccc"], result["summary"]["adapt"], sha)
+            self.assertEqual(["keep-adapt"], [c["verdict"] for c in self.rows_of(result, "c")], sha)
+
+    def test_a_short_adapt_leaves_other_commits_free_to_drop(self):
+        replies = self.replies()
+        replies["reader-1"]["adapts"] = [self.adapt("ccccccc")]
+        replies["reader-2"]["superseded"] = [self.claim("eeeeeeeeeeee")]
+        self.assertEqual(["eeeeeeeee"], self.summary(replies)["drop"])
+
+    def test_the_size_guard_stops_a_big_args_before_any_agent(self):
+        out = self.run_workflow(caps=["x" * 30000])
+        self.assertIn("the limit is 20000", out["error"])
+        self.assertEqual([], out["labels"])
+
+    def test_more_sets_than_readers_is_refused_rather_than_dropped(self):
+        out = self.run_workflow(sets=[["a"], ["b"], ["c"], ["d"]])
+        self.assertIn("args.sets has 4 sets", out["error"])
+
+    def test_the_old_overlap_json_is_refused(self):
+        args = {k: v for k, v in self.ARGS.items() if k != "mapPath"}
+        r = subprocess.run(["node", "runner.mjs"], cwd=self.dir, capture_output=True, text=True,
+                           input=json.dumps({"args": args, "replies": {}}))
+        self.assertIn("args.mapPath is missing", json.loads(r.stdout)["error"])
+
+    def test_every_cap_gets_a_log_line(self):
+        self.assertIn("Cap: 1 file went to no reader", self.run_workflow()["logs"])
+
+    def test_nothing_to_triage_runs_no_agent(self):
+        out = self.run_workflow(sets=[], stops=[], conflictFiles=[])
+        self.assertEqual([], out["labels"])
+        self.assertTrue(out["result"]["summary"]["complete"])
+        self.assertEqual(([], []), sync.decisions(out["result"]))
+
+    def test_no_stops_needs_no_resolver_and_the_reader_order_holds(self):
+        replies = self.replies()
+        del replies["resolver"]
+        out = self.run_workflow(replies, stops=[], conflictFiles=[])
+        self.assertEqual(["reader-1", "reader-2", "critic"], out["labels"])
+        self.assertTrue(out["result"]["summary"]["complete"])
+        self.assertEqual(["ccccccccc"], out["result"]["summary"]["adapt"])
+
+    def test_readers_get_only_their_own_files_and_the_checklist(self):
+        prompts = self.run_workflow()["prompts"]
+        self.assertIn("- a/Two.kt", prompts["reader-1"])
+        self.assertNotIn("- b/Three.kt", prompts["reader-1"])
+        self.assertIn("- b/Three.kt", prompts["reader-2"])
+        for label in ("reader-1", "reader-2", "resolver", "critic"):
+            self.assertIn("Transient state", prompts[label], label)
+            self.assertIn("git -C /r", prompts[label], label)
 
 
 class StopCheckRepoTest(RepoFixture, unittest.TestCase):
