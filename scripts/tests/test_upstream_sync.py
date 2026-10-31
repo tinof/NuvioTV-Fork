@@ -976,6 +976,209 @@ class ChecksWorkflowTest(unittest.TestCase):
         self.assertIn("continue-on-error: true", step)
 
 
+    def test_a_sync_dispatch_leaves_the_verdict_to_the_compare_job(self):
+        sync_branch = "github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/sync/')"
+        tests = re.search(r"- name: Run all unit tests\n(.*?)\n\n", self.TEXT, re.S).group(1)
+        self.assertIn(f"continue-on-error: ${{{{ {sync_branch} }}}}", tests)
+        self.assertIn(f"if: ${{{{ !cancelled() && {sync_branch} }}}}", self.TEXT)
+        self.assertIn("needs: [unit-tests, baseline]", self.TEXT)
+
+    def test_the_cache_keeps_only_a_baseline_that_was_checked(self):
+        save = re.search(r"- name: Keep the baseline for a rerun\n(.*?)\n\n", self.TEXT, re.S).group(1)
+        self.assertIn("steps.complete.outcome == 'success'", save)
+        keys = re.findall(r"key: (\S+)", self.TEXT)
+        self.assertEqual(2, len(keys))
+        self.assertEqual(keys[0], keys[1])
+        self.assertEqual({"baseline-results"}, set(re.findall(r"path: (baseline-results)$", self.TEXT, re.M)))
+
+    def test_the_upstream_sha_reaches_shell_code_only_through_the_environment(self):
+        for script in re.findall(r"run: (\|\n(?:\s{10}.*\n)+|.*)", self.TEXT):
+            self.assertNotIn("inputs.", script)
+
+
+class ResultsFixture:
+    FIRST, OTHER = "com.nuvio.FirstTest", "com.nuvio.OtherTest"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+
+    def results(self, name, classes, failed=(), sha="s", gradle_exit=None, crashed=False, source_classes=None):
+        """Write the directory ci_unit_tests.sh leaves. classes: names, failed: 'class.case' entries."""
+        d = self.dir / name
+        d.mkdir()
+        for cls in classes:
+            cases = [f.rsplit(".", 1)[1] for f in failed if f.rsplit(".", 1)[0] == cls]
+            body = "".join(f'<testcase name="{c}" classname="{cls}"><failure>x</failure></testcase>' for c in cases)
+            (d / f"TEST-{cls}.xml").write_text(f'<testsuite name="{cls}"><testcase name="ok" classname="{cls}"/>{body}</testsuite>')
+        code = (1 if failed else 0) if gradle_exit is None else gradle_exit
+        (d / "meta.json").write_text(json.dumps({
+            "sha": sha, "gradle_exit": code, "crashed": crashed,
+            "source_classes": len(classes) if source_classes is None else source_classes}))
+        return str(d)
+
+    def compare(self, baseline, candidate):
+        return sync.compare_results(baseline, "s", candidate, "s")
+
+
+class CompareResultsTest(ResultsFixture, unittest.TestCase):
+    def test_a_clean_run_on_both_sides_passes(self):
+        self.assertEqual(([], [], []), self.compare(self.results("b", [self.FIRST]), self.results("c", [self.FIRST])))
+
+    def test_a_new_failure_fails(self):
+        new, problems, _ = self.compare(self.results("b", [self.FIRST]),
+                                        self.results("c", [self.FIRST], [f"{self.FIRST}.broken"]))
+        self.assertEqual([f"{self.FIRST}.broken"], new)
+        self.assertEqual([], problems)
+
+    def test_a_failure_in_a_class_upstream_lacks_fails(self):
+        new, _, _ = self.compare(self.results("b", [self.FIRST]),
+                                 self.results("c", [self.FIRST, self.OTHER], [f"{self.OTHER}.broken"]))
+        self.assertEqual([f"{self.OTHER}.broken"], new)
+
+    def test_a_failure_upstream_also_has_passes_and_is_named(self):
+        known = f"{self.FIRST}.known"
+        new, problems, notes = self.compare(self.results("b", [self.FIRST], [known]),
+                                            self.results("c", [self.FIRST], [known]))
+        self.assertEqual(([], []), (new, problems))
+        self.assertEqual([f"known failure, upstream has it too: {known}"], notes)
+
+    def test_a_crashed_candidate_fails_whatever_xml_it_left(self):
+        _, problems, _ = self.compare(self.results("b", [self.FIRST]),
+                                      self.results("c", [self.FIRST], gradle_exit=1, crashed=True))
+        self.assertTrue(any("crashed" in p for p in problems), problems)
+
+    def test_a_crashed_baseline_fails_too(self):
+        _, problems, _ = self.compare(self.results("b", [self.FIRST], gradle_exit=1, crashed=True),
+                                      self.results("c", [self.FIRST]))
+        self.assertTrue(any("crashed" in p for p in problems), problems)
+
+    def test_a_crash_that_also_has_a_failed_test_still_counts_as_a_crash(self):
+        known = f"{self.FIRST}.known"
+        _, problems, _ = self.compare(self.results("b", [self.FIRST], [known]),
+                                      self.results("c", [self.FIRST], [known], crashed=True))
+        self.assertTrue(any("crashed" in p for p in problems), problems)
+
+    def test_gradle_failing_with_no_failed_test_is_incomplete(self):
+        # The only trace of a build error, or of a crash with an unknown message.
+        _, problems, _ = self.compare(self.results("b", [self.FIRST]), self.results("c", [self.FIRST], gradle_exit=1))
+        self.assertTrue(any("no test failed" in p for p in problems), problems)
+
+    def test_no_xml_is_incomplete(self):
+        _, problems, _ = self.compare(self.results("b", [self.FIRST]),
+                                      self.results("c", [], gradle_exit=1, crashed=True, source_classes=9))
+        self.assertTrue(any("no JUnit XML" in p for p in problems), problems)
+
+    def test_a_missing_directory_fails(self):
+        _, problems, _ = self.compare(self.results("b", [self.FIRST]), str(self.dir / "absent"))
+        self.assertEqual([f"{self.dir / 'absent'} is missing"], [p for p in problems if "is missing" in p])
+
+    def test_a_missing_meta_file_fails(self):
+        candidate = self.results("c", [self.FIRST])
+        (Path(candidate) / "meta.json").unlink()
+        _, problems, _ = self.compare(self.results("b", [self.FIRST]), candidate)
+        self.assertTrue(any("did not finish" in p for p in problems), problems)
+
+    def test_a_truncated_xml_file_fails(self):
+        candidate = self.results("c", [self.FIRST, self.OTHER])
+        (Path(candidate) / f"TEST-{self.OTHER}.xml").write_text("<testsuite><testc")
+        _, problems, _ = self.compare(self.results("b", [self.FIRST]), candidate)
+        self.assertTrue(any("not readable XML" in p for p in problems), problems)
+
+    def test_a_cached_result_of_another_commit_fails(self):
+        _, problems, _ = self.compare(self.results("b", [self.FIRST], sha="old"), self.results("c", [self.FIRST]))
+        self.assertTrue(any("expected s" in p for p in problems), problems)
+
+    def test_fewer_classes_than_test_files_by_a_clear_margin_fails(self):
+        classes = [f"com.nuvio.T{n}Test" for n in range(90)]
+        _, problems, _ = self.compare(self.results("b", classes), self.results("c", classes, source_classes=100))
+        self.assertTrue(any("90 test classes for 100 test files" in p for p in problems), problems)
+
+    def test_a_small_shortfall_passes(self):
+        classes = [f"com.nuvio.T{n}Test" for n in range(96)]
+        self.assertEqual(([], []), self.compare(self.results("b", classes),
+                                                self.results("c", classes, source_classes=100))[:2])
+
+    def test_many_upstream_classes_absent_from_the_candidate_fail(self):
+        classes = [f"com.nuvio.T{n}Test" for n in range(20)]
+        _, problems, _ = self.compare(self.results("b", classes), self.results("c", classes[:15]))
+        self.assertTrue(any("5 of 20 upstream test classes" in p for p in problems), problems)
+
+    def test_one_upstream_class_absent_from_the_candidate_is_only_a_note(self):
+        classes = [f"com.nuvio.T{n}Test" for n in range(30)]
+        new, problems, notes = self.compare(self.results("b", classes), self.results("c", classes[:29]))
+        self.assertEqual(([], []), (new, problems))
+        self.assertIn("com.nuvio.T29Test", notes[0])
+
+    def test_the_command_exits_1_on_a_new_failure_and_0_when_clean(self):
+        baseline = self.results("b", [self.FIRST])
+        args = ["compare-results", "--baseline", baseline, "--baseline-sha", "s", "--candidate-sha", "s"]
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            self.assertEqual(sync.OK, sync.main([*args, "--candidate", self.results("c", [self.FIRST])]))
+            self.assertEqual(sync.FAIL, sync.main(
+                [*args, "--candidate", self.results("d", [self.FIRST], [f"{self.FIRST}.broken"])]))
+        self.assertIn(f"FAIL: new failure: {self.FIRST}.broken", buf.getvalue())
+
+    def test_results_complete_judges_one_side(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(sync.OK, sync.main(["results-complete", self.results("b", [self.FIRST]), "--sha", "s"]))
+            self.assertEqual(sync.FAIL, sync.main(["results-complete", str(self.dir / "absent"), "--sha", "s"]))
+
+
+class CiUnitTestsScriptTest(unittest.TestCase):
+    """scripts/ci_unit_tests.sh over a fake gradlew, from a tree under test to a verdict."""
+
+    SCRIPT = SKILL.parents[2] / "scripts/ci_unit_tests.sh"
+    XML = '<testsuite name="com.nuvio.ATest"><testcase name="a" classname="com.nuvio.ATest"/></testsuite>'
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        run("git", "init", "-q", "-b", "main", cwd=self.dir)
+        run("git", "config", "user.email", "t@example.com", cwd=self.dir)
+        run("git", "config", "user.name", "t", cwd=self.dir)
+        (self.dir / "app/src/test/java").mkdir(parents=True)
+        (self.dir / "app/src/test/java/ATest.kt").write_text("class ATest\n")
+        (self.dir / "app/src/test/java/Helper.kt").write_text("object Helper\n")
+
+    def gate(self, gradlew):
+        """Run the script over a gradlew body -> (exit code, the verdict on its results)."""
+        (self.dir / "gradlew").write_text("#!/bin/sh\n" + gradlew)
+        (self.dir / "gradlew").chmod(0o755)
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "c", cwd=self.dir)
+        code = subprocess.run([self.SCRIPT, "out"], cwd=self.dir, capture_output=True).returncode
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.dir, capture_output=True, text=True).stdout.strip()
+        return code, sync.load_results(self.dir / "out", sha)
+
+    def writes_xml(self):
+        results = self.dir / "app/build/test-results/testFullDebugUnitTest"
+        return f"mkdir -p {results}\ncat > {results}/TEST-a.xml <<'X'\n{self.XML}\nX\n"
+
+    def test_a_clean_run_records_a_complete_result(self):
+        code, (classes, failures, problems) = self.gate(self.writes_xml())
+        self.assertEqual((0, {"com.nuvio.ATest"}, [], []), (code, classes, failures, problems))
+        self.assertEqual(1, json.loads((self.dir / "out/meta.json").read_text())["source_classes"])
+
+    def test_a_crashed_test_jvm_is_recorded_and_keeps_gradles_exit_code(self):
+        code, (_, _, problems) = self.gate(
+            "echo \"> Process 'Gradle Test Executor 1' finished with non-zero exit value 3\"\nexit 1\n")
+        self.assertEqual(1, code)
+        self.assertTrue(any("crashed" in p for p in problems), problems)
+        self.assertTrue(any("no JUnit XML" in p for p in problems), problems)
+
+    def test_a_build_error_is_incomplete(self):
+        code, (_, _, problems) = self.gate("echo 'Compilation error'\nexit 1\n")
+        self.assertEqual(1, code)
+        self.assertTrue(any("no test failed" in p for p in problems), problems)
+
+    def test_the_log_is_kept(self):
+        self.gate(self.writes_xml() + "echo from-gradle\n")
+        self.assertIn("from-gradle", (self.dir / "out/gradle.log").read_text())
+
+
 class MapOverlapRepoTest(RepoFixture, unittest.TestCase):
     """map-overlap on the fixture: the old fork on B edits shared.txt, which U also changed."""
 
