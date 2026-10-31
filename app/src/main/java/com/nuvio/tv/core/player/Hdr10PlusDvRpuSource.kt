@@ -4,6 +4,7 @@ import androidx.media3.common.util.UnstableApi
 import com.nuvio.tv.core.player.DoviRpuBuilder.Code
 import com.nuvio.tv.core.player.DoviRpuBuilder.Outcome
 import java.util.ArrayDeque
+import java.util.Locale
 import java.util.TreeMap
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -41,12 +42,14 @@ internal interface Hdr10PlusNative {
  * HDR10+ → Dolby Vision 8.1 (ROADMAP DV3.1, `docs/dv-conversion/DESIGN.md` 2.4): `dovi_tool generate
  * --hdr10plus-json` as `mkvdovi` runs it, per AU. A PQ track converts only when its hvcC or first AU
  * carries an HDR10+ payload the library accepts; without one it stays native (static HDR10 is DV3.3).
- * [enabled] is false when `debug.nuvio.dv_hdr10plus` is 0.
+ * [enabled] is false when `debug.nuvio.dv_hdr10plus` is 0; [seiStatic] is false when
+ * `debug.nuvio.dv_sei_static` is 0 (DV3.4).
  */
 @UnstableApi
 internal class Hdr10PlusDvRpuSource(
     private val enabled: Boolean = true,
     private val native: Hdr10PlusNative = Hdr10PlusNative.Library,
+    private val seiStatic: Boolean = true,
 ) : DvRpuSource {
 
     override fun prepare(target: DvSignallingDecision.Target, facts: DvTrackFacts): DvRpuSource.Prepared {
@@ -59,7 +62,8 @@ internal class Hdr10PlusDvRpuSource(
             is Outcome.Ok -> first.value
             is Outcome.Failed -> return unavailable("the first AU's HDR10+ SEI: ${first.code}")
         }
-        val params = params(facts, native)
+        val resolved = if (seiStatic) facts.filledFromSei() else facts
+        val params = params(resolved, native)
         val handle = when (val outcome = native.create(params)) {
             is Outcome.Ok -> outcome.value
             is Outcome.Failed -> return unavailable("create failed: ${outcome.code}")
@@ -71,7 +75,8 @@ internal class Hdr10PlusDvRpuSource(
                 return unavailable("renderShot failed: ${outcome.code}")
             }
         }
-        return DvRpuSource.Prepared.Ready(Hdr10PlusTrackRpus(native, handle, frame, shot), label(params, frame.l1))
+        val label = label(params, frame.l1, resolved, seiStatic)
+        return DvRpuSource.Prepared.Ready(Hdr10PlusTrackRpus(native, handle, frame, shot), label)
     }
 
     private fun unavailable(reason: String) = DvRpuSource.Prepared.Unavailable(reason)
@@ -79,6 +84,12 @@ internal class Hdr10PlusDvRpuSource(
     companion object {
         /** `adb shell setprop debug.nuvio.dv_hdr10plus 0`: every PQ track plays native. Read once per extractor. */
         const val SWITCH = "debug.nuvio.dv_hdr10plus"
+
+        /**
+         * `adb shell setprop debug.nuvio.dv_sei_static 0`: RPUs from the container and the defaults alone, as
+         * before DV3.4, and no extra read of the first AU. Read once per extractor.
+         */
+        const val SEI_STATIC_SWITCH = "debug.nuvio.dv_sei_static"
 
         val PEAK_SOURCE = DoviRpuBuilder.PeakSource.HISTOGRAM
         val CM_VERSION = DoviRpuBuilder.CmVersion.V40
@@ -111,19 +122,19 @@ internal class Hdr10PlusDvRpuSource(
          * `mkvdovi`'s 8.1 params for an HDR10+ title (DESIGN.md 2.4): CM v4.0 and its average floor, L6 from
          * the container with `mkvdovi`'s defaults for what it does not state (a zero MaxCLL or MaxFALL is
          * not stated, a zero mastering minimum is), each field capped at 10 000, and the source range of
-         * the final mastering values.
+         * the mastering values before that cap: a capped value must not turn plausible (DV3.4).
          */
         internal fun params(facts: DvTrackFacts, native: Hdr10PlusNative): DoviRpuBuilder.Params {
-            val level6 = level6(facts)
+            val uncapped = uncappedLevel6(facts)
             val range = native.sourceRange81(
-                level6.minDisplayMasteringLuminance / 10_000.0,
-                level6.maxDisplayMasteringLuminance.toDouble(),
+                uncapped.minDisplayMasteringLuminance / 10_000.0,
+                uncapped.maxDisplayMasteringLuminance.toDouble(),
             )
             return DoviRpuBuilder.Params(
                 profile = DoviRpuBuilder.Profile.P81(range),
                 cmVersion = CM_VERSION,
                 l1AvgCmVersion = CM_VERSION,
-                level6 = level6,
+                level6 = capped(uncapped),
                 sourcePrimaryIndex = sourcePrimaryIndex(facts),
             )
         }
@@ -145,11 +156,7 @@ internal class Hdr10PlusDvRpuSource(
          * P3), BT.2020 otherwise.
          */
         internal fun sourcePrimaryIndex(facts: DvTrackFacts): Int {
-            facts.masteringPrimaries?.takeIf { it.size >= 6 }?.let { primaries ->
-                GAMUTS.firstOrNull { (_, gamut) ->
-                    gamut.indices.all { abs(primaries[it] - gamut[it]) <= PRIMARIES_TOLERANCE }
-                }?.let { return it.first }
-            }
+            gamutOf(facts.masteringPrimaries)?.let { return it }
             return when (facts.containerPrimaries) {
                 1 -> DoviRpuBuilder.PRIMARIES_BT709
                 11, 12 -> DoviRpuBuilder.PRIMARIES_P3_D65
@@ -157,10 +164,38 @@ internal class Hdr10PlusDvRpuSource(
             }
         }
 
-        internal fun level6(facts: DvTrackFacts): DoviRpuBuilder.Level6 {
+        /** The L9 index of the gamut [primaries] name, or null when they name none. */
+        private fun gamutOf(primaries: FloatArray?): Int? {
+            if (primaries == null || primaries.size < 6) return null
+            return GAMUTS.firstOrNull { (_, gamut) ->
+                gamut.indices.all { abs(primaries[it] - gamut[it]) <= PRIMARIES_TOLERANCE }
+            }?.first
+        }
+
+        internal fun level6(facts: DvTrackFacts): DoviRpuBuilder.Level6 = capped(uncappedLevel6(facts))
+
+        private fun capped(level6: DoviRpuBuilder.Level6): DoviRpuBuilder.Level6 {
             fun cap(value: Int) = value.coerceIn(0, L6_MAX)
+            return DoviRpuBuilder.Level6(
+                cap(level6.maxDisplayMasteringLuminance),
+                cap(level6.minDisplayMasteringLuminance),
+                cap(level6.maxContentLightLevel),
+                cap(level6.maxFrameAverageLightLevel),
+            )
+        }
+
+        // A MaxFALL above MaxCLL, both stated, with at least one from the SEI (DV3.4). Two container
+        // values stay as they are, as mkvdovi keeps them.
+        private fun seiLowersMaxFall(facts: DvTrackFacts): Boolean {
+            val maxCll = facts.maxContentLightLevel?.takeIf { it > 0 } ?: return false
+            val maxFall = facts.maxFrameAverageLightLevel?.takeIf { it > 0 } ?: return false
+            val fromSei = DvStaticField.MAX_CLL in facts.fromSei || DvStaticField.MAX_FALL in facts.fromSei
+            return fromSei && maxFall > maxCll
+        }
+
+        private fun uncappedLevel6(facts: DvTrackFacts): DoviRpuBuilder.Level6 {
             // A float the container stated; NaN and negative values are not a mastering display.
-            fun stated(value: Float?) = value?.takeIf { it.isFinite() && it >= 0f }
+            fun stated(value: Float?) = value?.takeIf { DvTrackFacts.isLuminance(it) }
             val maxDml = stated(facts.masteringMaxNits)?.let { it.roundToInt() } ?: DEFAULT_MAX_DML
             val minDml = stated(facts.masteringMinNits)?.let { (it * 10_000.0).roundToInt() } ?: DEFAULT_MIN_DML
             val statedCll = facts.maxContentLightLevel?.takeIf { it > 0 }
@@ -171,11 +206,53 @@ internal class Hdr10PlusDvRpuSource(
             if ((statedCll == null || statedFall == null) && maxFall > maxCll) {
                 if (statedCll != null) maxFall = maxCll else maxCll = maxFall
             }
-            return DoviRpuBuilder.Level6(cap(maxDml), cap(minDml), cap(maxCll), cap(maxFall))
+            if (seiLowersMaxFall(facts)) maxFall = maxCll
+            return DoviRpuBuilder.Level6(maxDml, minDml, maxCll, maxFall)
         }
 
-        /** The `DV_INJECT` log line's provider part. */
-        internal fun label(params: DoviRpuBuilder.Params, l1: DoviRpuBuilder.L1): String {
+        private fun origin(facts: DvTrackFacts, field: DvStaticField, stated: Boolean) = when {
+            field in facts.fromSei -> "SEI"
+            stated -> "container"
+            else -> "default"
+        }
+
+        // Where each L6 and L9 value of [facts], already filled or not, came from.
+        private fun origins(facts: DvTrackFacts): String {
+            val luminance = DvStaticField.MASTERING_LUMINANCE
+            val named = gamutOf(facts.masteringPrimaries) != null
+            val primaries = when {
+                named && DvStaticField.MASTERING_PRIMARIES in facts.fromSei -> "SEI"
+                named || facts.containerPrimaries in setOf(1, 9, 11, 12) -> "container"
+                else -> "default"
+            }
+            return "mastering max " + origin(facts, luminance, DvTrackFacts.isLuminance(facts.masteringMaxNits)) +
+                ", mastering min " + origin(facts, luminance, DvTrackFacts.isLuminance(facts.masteringMinNits)) +
+                ", MaxCLL " + origin(facts, DvStaticField.MAX_CLL, (facts.maxContentLightLevel ?: 0) > 0) +
+                ", MaxFALL " + origin(facts, DvStaticField.MAX_FALL, (facts.maxFrameAverageLightLevel ?: 0) > 0) +
+                ", L9 " + primaries
+        }
+
+        // What the SEI states, whether or not it was used, so both sides of an A/B show the same inputs.
+        private fun seiStates(sei: DvSeiStatic?, used: Boolean): String {
+            val parts = listOfNotNull(
+                sei?.masteringMaxNits?.let { max ->
+                    String.format(Locale.US, "%.4f..%d nits", sei.masteringMinNits, max.roundToInt())
+                },
+                sei?.maxContentLightLevel?.let { "MaxCLL $it" },
+                sei?.maxFrameAverageLightLevel?.let { "MaxFALL $it" },
+                sei?.masteringPrimaries?.let { "primaries L9 ${gamutOf(it) ?: "none"}" },
+            )
+            if (parts.isEmpty()) return "no static SEI"
+            return "SEI states " + parts.joinToString(", ") + if (used) "" else " (ignored: $SEI_STATIC_SWITCH 0)"
+        }
+
+        /** The `DV_INJECT` log line's provider part; [facts] as [params] used them. */
+        internal fun label(
+            params: DoviRpuBuilder.Params,
+            l1: DoviRpuBuilder.L1,
+            facts: DvTrackFacts,
+            seiStatic: Boolean,
+        ): String {
             val l6 = params.level6
             val range = (params.profile as? DoviRpuBuilder.Profile.P81)?.sourceRange
                 ?.let { "${it.minPq}..${it.maxPq}" } ?: "from L6"
@@ -183,7 +260,9 @@ internal class Hdr10PlusDvRpuSource(
                 "L9 primaries ${params.sourcePrimaryIndex}, " +
                 "L6 ${l6?.maxDisplayMasteringLuminance}/${l6?.minDisplayMasteringLuminance}/" +
                 "${l6?.maxContentLightLevel}/${l6?.maxFrameAverageLightLevel}, source range $range, " +
-                "first L1 ${l1.minPq}/${l1.avgPq}/${l1.maxPq}"
+                "first L1 ${l1.minPq}/${l1.avgPq}/${l1.maxPq}, origin ${origins(facts)}, " +
+                seiStates(facts.seiStatic, seiStatic) +
+                if (seiLowersMaxFall(facts)) ", MaxFALL lowered to MaxCLL" else ""
         }
     }
 }
