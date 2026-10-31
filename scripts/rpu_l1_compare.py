@@ -16,7 +16,8 @@ Three results per frame:
   - The rest of the RPU (L2, L6, L9, L11, L254, the source range, the mapping): must be equal; a difference
     fails. The CRC is left out, as it follows from the rest.
   - scene_refresh_flag: reported, never a failure. The app's flag differs from dovi_tool's where
-    `docs/dv-conversion/DESIGN.md` 2.4 says it can (extra flags inside the reorder depth, starts and seeks).
+    `docs/dv-conversion/DESIGN.md` 2.4 says it can (extra flags up to an anchor's display lead after a
+    scene start, starts and seeks).
 
 Exit 0 when every compared frame has equal L1 and an equal rest, 1 otherwise, 2 on a usage error.
 """
