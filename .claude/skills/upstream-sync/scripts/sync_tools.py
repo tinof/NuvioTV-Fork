@@ -6,6 +6,7 @@ import re
 import subprocess
 import tempfile
 import time
+from pathlib import Path
 
 OK, FAIL, USAGE, NOTHING = 0, 1, 2, 3
 SCRATCH_IDENTITY = {"GIT_AUTHOR_NAME": "upstream-sync", "GIT_AUTHOR_EMAIL": "upstream-sync@invalid",
@@ -64,6 +65,11 @@ def due_verdict(behind, quiet_hours, age_days, settle_hours, max_age_days):
     return "wait", f"upstream may still be pushing: quiet under {settle_hours} h, oldest within {max_age_days} days"
 
 
+def declared_paths(text):
+    """A declared file: one path per line; blank lines and `#` comments are skipped."""
+    return {l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith("#")}
+
+
 # ---------------------------------------------------------------- git and gh
 
 def git(*args, check=True, binary=False, env=None):
@@ -80,6 +86,13 @@ def out(*args, env=None):
 
 def lines(*args, env=None):
     return [l for l in out(*args, env=env).splitlines() if l.strip()]
+
+
+def read_file(path):
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError as e:
+        raise RuntimeError(f"cannot read {path}: {e.strerror}")
 
 
 def gh_json(*args):
@@ -284,9 +297,43 @@ def cmd_official_preview(a, cfg):
     return OK
 
 
+# ---------------------------------------------------------------- judgement
+
+JUDGEMENT_STRATEGY = "git merge-tree -X theirs OLD NEW_BASE: the old tip is ours, so upstream wins a conflicting hunk"
+
+
+def cmd_judgement(a, cfg):
+    """Where the rebased tip differs from a mechanical merge is where someone made a call: the path must be declared."""
+    old = a.old or f"{cfg['remotes']['fork']}/{cfg['layers']['perf']}"
+    new_base = a.new_base or f"{cfg['remotes']['upstream']}/main"
+    new = a.new or "HEAD"
+    declared = declared_paths(read_file(a.declared)) if a.declared else None
+    with scratch_objects() as env:
+        tree, unsettled = merge_tree("-Xtheirs", old, new_base, env=env)
+        args = ("diff", "--no-renames", tree, new)
+        differ = lines(*args, "--name-only", env=env)
+        stat = git(*args, "--stat=100", env=env).stdout.rstrip()
+        if a.diff:
+            Path(a.diff).write_bytes(git(*args, env=env, binary=True).stdout)
+    print(f"judgement: {new} against the mechanical merge of {old} and {new_base}")
+    print(f"strategy: {JUDGEMENT_STRATEGY}")
+    if unsettled:
+        print(f"the strategy left {len(unsettled)} files conflicted: {', '.join(unsettled)}")
+    print(stat or "no difference")
+    if declared is None:
+        return OK
+    undeclared = [p for p in differ if p not in declared]
+    print(f"declared: {len(differ) - len(undeclared)} of {len(differ)} differing paths; "
+          "nothing inside a declared file is checked")
+    for path in undeclared:
+        print(f"FAIL: undeclared difference: {path}")
+    return FAIL if undeclared else OK
+
+
 # ---------------------------------------------------------------- registration
 
-COMMANDS = {"dry-run": cmd_dry_run, "due": cmd_due, "official-preview": cmd_official_preview}
+COMMANDS = {"dry-run": cmd_dry_run, "due": cmd_due, "official-preview": cmd_official_preview,
+            "judgement": cmd_judgement}
 
 
 def add_parsers(sub):
@@ -304,3 +351,9 @@ def add_parsers(sub):
     s.add_argument("--url", help="fetch from this URL or path instead of official_repo")
     s.add_argument("--upstream", help="default: upstream/main")
     s.add_argument("--fork", help="default: the fork's perf branch on the fork remote")
+    s = sub.add_parser("judgement", help="diff the rebased tip with a mechanical merge of the old tip and the new base")
+    s.add_argument("--old", help="default: the fork's perf branch on the fork remote")
+    s.add_argument("--new-base", help="default: upstream/main")
+    s.add_argument("--new", help="default: HEAD")
+    s.add_argument("--declared", help="a text file of paths; a differing path that is not listed fails")
+    s.add_argument("--diff", help="write the full diff here, for the reviewer")

@@ -755,6 +755,85 @@ class RenameRepoTest(unittest.TestCase):
         self.assertNotIn("fork change lost", report)
 
 
+class JudgementRepoTest(RepoFixture, unittest.TestCase):
+    """judgement: old on B, U on B, and a rebased tip on U. A mechanical merge of old and U conflicts on nothing but
+    shared.txt, line 20 against the line upstream appended."""
+
+    def judge(self, new="new", declared=None, diff=None):
+        path = None
+        if declared is not None:
+            path = self.dir / "declared.txt"
+            path.write_text(declared)
+        a = argparse.Namespace(old="old", new_base="U", new=new, declared=str(path) if path else None,
+                               diff=str(diff) if diff else None)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = tools.cmd_judgement(a, self.cfg)
+        return code, buf.getvalue()
+
+    def mechanical(self):
+        """The rebased tip that equals the mechanical merge, which keeps upstream's side of the conflict."""
+        self.new_branch([("fix: superseded top", {"shared.txt": {1: "TOP"}}),
+                         ("fix: retained bottom", {"fork-only.txt": {10: "line 10 fork"}})])
+
+    def test_a_tip_equal_to_the_merge_has_no_difference(self):
+        self.mechanical()
+        code, report = self.judge(declared="")
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("no difference", report)
+
+    def test_it_names_its_strategy(self):
+        self.mechanical()
+        _, report = self.judge()
+        self.assertIn("merge-tree -X theirs OLD NEW_BASE", report)
+        self.assertIn("upstream wins a conflicting hunk", report)
+
+    def test_the_kept_fork_hunk_in_a_conflict_differs(self):
+        # upstream wins the conflict in the merge, so a tip that keeps BOTTOM is the call the check must surface.
+        self.new_branch(self.FAITHFUL)
+        code, report = self.judge()
+        self.assertEqual(sync.OK, code, "without --declared it only reports")
+        self.assertIn("shared.txt", report)
+        self.assertIn("1 file changed", report)
+
+    def test_an_undeclared_path_fails_and_a_declared_one_passes(self):
+        self.new_branch(self.FAITHFUL)
+        code, report = self.judge(declared="# nothing yet\n\nfork-only.txt\n")
+        self.assertEqual(sync.FAIL, code)
+        self.assertIn("FAIL: undeclared difference: shared.txt", report)
+        code, report = self.judge(declared="shared.txt\n")
+        self.assertEqual(sync.OK, code, report)
+        self.assertIn("declared: 1 of 1 differing paths", report)
+        self.assertIn("nothing inside a declared file is checked", report)
+
+    def test_the_full_diff_goes_to_a_file_for_the_reviewer(self):
+        self.new_branch(self.FAITHFUL)
+        path = self.dir / "judgement.diff"
+        self.judge(diff=path)
+        self.assertIn("+BOTTOM", path.read_text())
+
+    def test_the_repository_gets_no_new_objects(self):
+        self.new_branch(self.FAITHFUL)
+        before = sorted(str(p) for p in (self.dir / ".git/objects").rglob("*") if p.is_file())
+        self.judge()
+        self.assertEqual(before, sorted(str(p) for p in (self.dir / ".git/objects").rglob("*") if p.is_file()))
+
+    def test_a_git_failure_exits_two(self):
+        self.mechanical()
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = sync.main(["judgement", "--old", "no-such-ref", "--new-base", "U", "--new", "new"])
+        self.assertEqual(sync.USAGE, code)
+
+    def test_a_missing_declared_file_is_a_usage_error_not_a_failed_check(self):
+        self.mechanical()
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = sync.main(["judgement", "--old", "old", "--new-base", "U", "--new", "new", "--declared", "nope"])
+        self.assertEqual(sync.USAGE, code)
+
+    def test_declared_paths_skip_comments_and_blanks(self):
+        self.assertEqual({"a.kt", "b c.kt"}, tools.declared_paths("# why\n a.kt \n\nb c.kt\n"))
+
+
 class OfficialPreviewRepoTest(RepoFixture, unittest.TestCase):
     """official-preview against a local repository that stands in for NuvioMedia/NuvioTV."""
 

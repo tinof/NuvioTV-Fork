@@ -167,14 +167,22 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
 
    **What verify cannot see:** outside the protected features, a file upstream also changed passes as long as it
    still differs from upstream, so losing one of two fork hunks in it is invisible to the script. The `!` hunks in
-   the report and the review in step 6.5 are the only check for that; read every `!` hunk of a commit with more
+   the report and the review in step 6.6 are the only check for that; read every `!` hunk of a commit with more
    than one hunk in such a file.
-3. Run the full gate in the worktree. Compare `sync.py test-failures` with the baseline: any new failure blocks.
-4. Build the APK in the worktree (`./gradlew :app:assembleFullDebug`, JDK 17): it is the only check that runs aapt
+3. Judgement check. Write `<scratch>/declared.txt`, one path per line: every path in `resolutions.md`, the paths of decided drops and adapts, and the files of `--allow-new` commits. Then run:
+   ```
+   python3 -I $S/sync.py judgement --old OLD_PERF --new-base NEW_BASE --new NEW_PERF \
+     --declared <scratch>/declared.txt --diff <scratch>/judgement.diff
+   ```
+   It computes `merge-tree -X theirs OLD_PERF NEW_BASE` and diffs that tree with `NEW_PERF`. The old tip is ours, so upstream wins a conflicting hunk, and the diff shows every place the rebase kept something upstream rewrote. A differing path that is not declared fails: find out what changed it. The diff goes to the reviewer below.
+
+   It says nothing inside a declared file, and it cannot see a fork hunk the rebase gave up to upstream, because the mechanical tree has the same text there. The independent review stays.
+4. Run the full gate in the worktree. Compare `sync.py test-failures` with the baseline: any new failure blocks.
+5. Build the APK in the worktree (`./gradlew :app:assembleFullDebug`, JDK 17): it is the only check that runs aapt
    (the locale trap) and the native builds. Then `python3 -I $S/sync.py protected-apk
    app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk` must pass: the DTS-HD MA writer in
    `libffmpegJNI.so` and `libnuvio_rpu.so` for the Dolby Vision conversion.
-5. Have one independent Opus `medium` reviewer read the `!` hunks from the verify report together with `resolutions.md`. Check its claims before acting on them.
+6. Have one independent Opus `medium` reviewer read the `!` hunks from the verify report together with `resolutions.md` and `judgement.diff`. Check its claims before acting on them.
 
 ## 7. CI on the pushed candidate
 
