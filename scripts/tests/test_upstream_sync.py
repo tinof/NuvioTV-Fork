@@ -243,6 +243,51 @@ def run(*args, cwd, env=None):
     subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True, env=env)
 
 
+class TestFailuresTest(unittest.TestCase):
+    OOM = ('<testsuite name="s"><testcase classname="a.B" name="big">'
+           '<failure message="java.lang.OutOfMemoryError: Java heap space" type="java.lang.OutOfMemoryError">'
+           'at a.B.big</failure></testcase><testcase classname="a.B" name="ok"/>'
+           '<system-out><![CDATA[]]></system-out><system-err><![CDATA[]]></system-err></testsuite>')
+    PLAIN = '<testsuite name="s"><testcase classname="a.C" name="bad"><failure message="boom">x</failure></testcase></testsuite>'
+    PRINTS = ('<testsuite name="s"><testcase classname="a.D" name="logs"/><system-out>OutOfMemoryError was simulated'
+              '</system-out></testsuite>')
+    IN_STDERR = ('<testsuite name="s"><testcase classname="a.E" name="ok"/><system-err>Exception in thread "x" '
+                 'java.lang.OutOfMemoryError: Java heap space</system-err></testsuite>')
+
+    def failures(self, *xml):
+        with tempfile.TemporaryDirectory() as d:
+            for i, text in enumerate(xml):
+                (Path(d) / f"TEST-{i}.xml").write_text(text)
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = sync.cmd_test_failures(argparse.Namespace(dir=d), CONFIG)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_stdout_stays_the_list_of_failures(self):
+        code, stdout, _ = self.failures(self.OOM, self.PLAIN)
+        self.assertEqual(sync.OK, code)
+        self.assertEqual("a.B.big\na.C.bad\n", stdout)
+
+    def test_an_out_of_memory_failure_prints_the_hint(self):
+        _, _, stderr = self.failures(self.OOM, self.PLAIN)
+        self.assertEqual(1, len(stderr.strip().splitlines()))
+        self.assertIn("OutOfMemoryError in 1 result file(s)", stderr)
+        self.assertIn("maxHeapSize in app/build.gradle.kts", stderr)
+        self.assertIn("'The unit test JVM'", stderr)
+
+    def test_an_error_on_a_background_thread_counts(self):
+        self.assertIn("OutOfMemoryError", self.failures(self.IN_STDERR)[2])
+
+    def test_other_results_print_no_hint(self):
+        self.assertEqual("", self.failures(self.PLAIN)[2])
+        self.assertEqual("", self.failures(self.PRINTS)[2], "a test's own stdout is not an error")
+
+    def test_the_hint_points_at_things_that_exist(self):
+        root = SKILL.parents[2]
+        self.assertIn("maxHeapSize", (root / "app/build.gradle.kts").read_text())
+        self.assertTrue(any(t.startswith("The unit test JVM") for t in CONFIG["traps"]))
+
+
 class ProtectedHelperTest(unittest.TestCase):
     def test_added_lines_per_file_skips_short_lines(self):
         diff = ("diff --git a/x.kt b/x.kt\n--- a/x.kt\n+++ b/x.kt\n@@ -1,0 +2,3 @@\n+val keep = 1\n+}\n+  \n"
