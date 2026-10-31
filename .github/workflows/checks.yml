@@ -7,12 +7,22 @@ name: Checks
 # A docs-only pull request still reports "Unit tests", because /ship's wait-checks.sh fails when a
 # head has no check at all. That is why this file has no paths-ignore: the job runs and skips its
 # steps. A failed detection leaves the output empty, so the full suite runs.
+#
+# A dispatch on a sync/* branch is the gate of an upstream sync (/upstream-sync step 7). It takes the
+# upstream SHA the candidate is rebased onto, runs the same tests there, and the compare job fails
+# on a new failure or on an incomplete run. Upstream's own failures do not block, so on such a
+# dispatch the test step itself never fails the run: the compare job decides.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [perf/shield-pass]
   workflow_dispatch:
+    inputs:
+      upstream_sha:
+        description: Full SHA of the upstream commit a sync/* candidate is rebased onto
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -62,13 +72,137 @@ jobs:
 
       - name: Run all unit tests
         if: steps.changes.outputs.skip != 'true'
-        run: ./gradlew :app:testFullDebugUnitTest --continue --stacktrace
+        continue-on-error: ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/sync/') }}
+        run: scripts/ci_unit_tests.sh gate-results
 
       - name: Upload unit test reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: unit-test-results
-          path: app/build/test-results/testFullDebugUnitTest/*.xml
+          path: gate-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  baseline:
+    name: Upstream baseline
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/sync/')
+    runs-on: ubuntu-latest
+    outputs:
+      cached: ${{ steps.cached.outputs.cache-hit }}
+
+    steps:
+      - name: Require the upstream SHA
+        env:
+          UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+        run: |
+          [[ "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::a sync/* dispatch needs upstream_sha, the full SHA of its upstream base"; exit 1; }
+
+      - name: Restore the baseline of this upstream SHA
+        id: cached
+        uses: actions/cache/restore@v6
+        with:
+          path: baseline-results
+          key: upstream-baseline-v1-${{ inputs.upstream_sha }}
+
+      - name: Checkout the upstream commit
+        if: steps.cached.outputs.cache-hit != 'true'
+        uses: actions/checkout@v6
+        with:
+          # In this repository because it is an ancestor of the pushed candidate.
+          ref: ${{ inputs.upstream_sha }}
+          persist-credentials: false
+
+      - name: Checkout the runner script
+        # Upstream's tree does not have it. After the upstream checkout, which cleans the workspace.
+        if: steps.cached.outputs.cache-hit != 'true'
+        uses: actions/checkout@v6
+        with:
+          path: gate
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - name: Set up Java
+        if: steps.cached.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Empty local properties
+        if: steps.cached.outputs.cache-hit != 'true'
+        run: touch local.properties local.dev.properties
+
+      - name: Run all unit tests on upstream
+        if: steps.cached.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: gate/scripts/ci_unit_tests.sh baseline-results
+
+      - name: Upload baseline test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: baseline-test-results
+          path: baseline-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  compare:
+    name: Compare with upstream
+    needs: [unit-tests, baseline]
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/sync/') }}
+    runs-on: ubuntu-latest
+    env:
+      SYNC: python3 -I .claude/skills/upstream-sync/scripts/sync.py
+      UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # History only, for the ancestor check.
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Download the candidate's results
+        # A missing artifact is the compare step's verdict, with the reason it prints.
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: unit-test-results
+          path: gate-results
+
+      - name: Download the baseline's results
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: baseline-test-results
+          path: baseline-results
+
+      - name: Check the baseline is complete
+        id: complete
+        continue-on-error: true
+        run: $SYNC results-complete baseline-results --sha "$UPSTREAM_SHA"
+
+      - name: Keep the baseline for a rerun
+        # Here, because only this job can tell a complete run from a crashed one. A cache entry is
+        # visible to this branch and the default branch, so a new sync branch misses it once.
+        if: steps.complete.outcome == 'success' && needs.baseline.outputs.cached != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: baseline-results
+          key: upstream-baseline-v1-${{ inputs.upstream_sha }}
+
+      - name: Check the candidate is built on that baseline
+        run: |
+          git merge-base --is-ancestor "$UPSTREAM_SHA" "$GITHUB_SHA" || {
+            echo "::error::$UPSTREAM_SHA is not an ancestor of $GITHUB_SHA, so it is not this candidate's base"; exit 1; }
+
+      - name: Compare the results
+        shell: bash
+        run: |
+          $SYNC compare-results --baseline baseline-results --baseline-sha "$UPSTREAM_SHA" \
+            --candidate gate-results --candidate-sha "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
