@@ -1614,7 +1614,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 hdmiRoutedDevice = hdmiRouteOverride?.takeIf { !isBluetoothAudioOutput },
                 // Read on the playback thread. The stream can change while this sink lives on (source
                 // switch, reused player), and a pin is written for the current stream.
-                outputRouteKey = { detectAudioOutputRouteForStream()?.key },
+                outputRouteKey = sinkOutputRouteKey(),
                 nativeFelActive = nativeFelActive,
                 onNativeSelectionChanged = { selected -> nativeVideoSelection.update(nativeSelectionOwner, selected) },
                 nativeMelEnabled = am9SystemProperty("debug.nuvio.native_dv7_mel") != "0",
