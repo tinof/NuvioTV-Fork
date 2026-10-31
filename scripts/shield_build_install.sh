@@ -44,8 +44,8 @@ done
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null)" || {
-  echo "JDK 17 not found (upstream's toolchain; Gradle 8.13 does not run on newer JDKs)" >&2; exit 1; }
+JAVA_HOME="${JAVA17_HOME:-$(/usr/libexec/java_home -v 17 2>/dev/null)}" || {
+  echo "JDK 17 not found, set JAVA17_HOME (upstream's toolchain; Gradle 8.13 does not run on newer JDKs)" >&2; exit 1; }
 export JAVA_HOME
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 
