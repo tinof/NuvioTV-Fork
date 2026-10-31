@@ -1468,7 +1468,6 @@ class BuildRpuScriptTest(unittest.TestCase):
         self.assertTrue(self.build()["dirty"])
 
 
-@unittest.skipUnless(Path("/usr/libexec/java_home").exists(), "the script finds JDK 17 through macOS java_home")
 class ShieldBuildScriptTest(unittest.TestCase):
     """shield_build_install.sh in a throwaway tree, over a fake gradlew and Android tools. Never --install."""
 
@@ -1497,9 +1496,10 @@ class ShieldBuildScriptTest(unittest.TestCase):
         self.tool(tools / "apksigner", "echo 'Signer #1 certificate SHA-256 digest: abc'\n")
         self.apk = self.dir.parent / "fixture.apk"
         target = "app/build/outputs/apk/full/debug"
-        self.tool(self.dir / "gradlew", f"mkdir -p {target}\ncp {self.apk} {target}/app-full-arm64-v8a-debug.apk\n")
+        self.tool(self.dir / "gradlew", f"mkdir -p {target}\ncp {self.apk} {target}/app-full-arm64-v8a-debug.apk\n"
+                  'echo "$JAVA_HOME" > java-home.txt\n')
         self.env = dict(os.environ, HOME=str(self.home), ANDROID_HOME=str(tools.parents[1]),
-                        PATH=f"{self.bin}:{os.environ['PATH']}")
+                        JAVA17_HOME=str(self.bin.parent / "jdk17"), PATH=f"{self.bin}:{os.environ['PATH']}")
         for name in ("NUVIO_DEBUG_STORE_FILE", "USE_LOCAL_FFMPEG_DECODER", "NUVIO_ALLOW_NATIVE_MISMATCH"):
             self.env.pop(name, None)
         (self.dir / "native/rpu_builder").mkdir(parents=True)
@@ -1534,6 +1534,17 @@ class ShieldBuildScriptTest(unittest.TestCase):
     def logged(self):
         log = self.dir / ".local/shield-builds.tsv"
         return log.read_text() if log.exists() else ""
+
+    def test_java17_home_comes_first(self):
+        self.assertEqual(0, self.build(self.GOOD).returncode)
+        self.assertEqual(self.env["JAVA17_HOME"], (self.dir / "java-home.txt").read_text().strip())
+
+    @unittest.skipUnless(Path("/usr/libexec/java_home").exists(), "macOS java_home is the fallback")
+    def test_without_java17_home_macos_names_the_jdk(self):
+        r = self.build(self.GOOD, JAVA17_HOME="")
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        jdk = subprocess.run(["/usr/libexec/java_home", "-v", "17"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(jdk, (self.dir / "java-home.txt").read_text().strip())
 
     def test_a_good_apk_is_built_and_logged(self):
         r = self.build(self.GOOD)
