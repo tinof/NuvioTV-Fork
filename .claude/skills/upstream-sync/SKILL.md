@@ -82,8 +82,8 @@ On a block, report it and stop. The owner merges, rebases or deletes such branch
    (`git merge-base origin/perf/shield-pass upstream/main`, where the fork's commits start). Add local tags
    `sync/<date>/old-perf`, `sync/<date>/old-main` and `sync/<date>/old-base`. `OLD_BASE` equals `OLD_MAIN` unless
    preflight warned that `origin/main` is not at the base of `perf/shield-pass`; the lease stays `OLD_MAIN` either way.
-3. Create the worktree: `git worktree add -b sync/<date>-perf ../NuvioTV-Fork-wt/upstream-sync OLD_PERF`, and copy `local.properties`, `app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so` and its `libnuvio_rpu.so.stamp` into it. All three are gitignored. Without the library an APK built there has Dolby Vision conversion off, and without the stamp step 6.4 stops. If the stamp is missing, `scripts/build_rpu_builder.sh` writes it.
-4. Diagnosis only: the `Upstream baseline` job in step 7 is the baseline that decides, so skip this until a failure there needs reproducing (step 6.3). Run the baseline gate on plain `upstream/main` in a second worktree. Use the contract's `gate` command (JDK 17 and `ANDROID_HOME` per `.claude/workflow.md`; the first run takes about 6 minutes). Save the failures to `<scratch>/baseline-failures.txt`: from the repository root, run `python3 -I $S/sync.py test-failures <baseline worktree>/app/build/test-results/testFullDebugUnitTest`. Use the absolute path; the baseline worktree has no skill, and a relative path would read this checkout's results. Upstream's own failures are not the sync's fault; `sync.json` lists the known ones.
+3. Create the worktree: `git worktree add -b sync/<date>-perf ../NuvioTV-Fork-wt/upstream-sync OLD_PERF`, and copy `local.properties`, `app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so` and its `libnuvio_rpu.so.stamp` into it. All three are gitignored. Without the library an APK built there has Dolby Vision conversion off, and without the stamp step 6.5 stops. If the stamp is missing, `scripts/build_rpu_builder.sh` writes it.
+4. Diagnosis only: the `Upstream baseline` job in step 7 is the baseline that decides, so skip this until a failure there needs reproducing (step 6.4). Run the baseline gate on plain `upstream/main` in a second worktree. Use the contract's `gate` command (JDK 17 and `ANDROID_HOME` per `.claude/workflow.md`; the first run takes about 6 minutes). Save the failures to `<scratch>/baseline-failures.txt`: from the repository root, run `python3 -I $S/sync.py test-failures <baseline worktree>/app/build/test-results/testFullDebugUnitTest`. Use the absolute path; the baseline worktree has no skill, and a relative path would read this checkout's results. Upstream's own failures are not the sync's fault; `sync.json` lists the known ones.
 
 ## 3. Map
 
@@ -199,8 +199,10 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
 4. CI in step 7 is the one full gate. The local gate is only for diagnosis: to reproduce a failure step 7 reports,
    run it in the worktree and compare `sync.py test-failures` with the baseline of step 2.4.
 5. Build the APK in the worktree beside step 7, not after it: `scripts/shield_build_install.sh`, never with
-   `--install`. CI builds no APK, so this is the only check that runs the native builds.
-   It stops unless `sync.py protected-apk --stamp` passes: the DTS-HD MA writer in `libffmpegJNI.so`, `libnuvio_rpu.so`
+   `--install`. CI builds no APK, so this is the only check that runs the native builds. The locale trap has two
+   other checks: `verify` finds a duplicate string with `duplicate_names` without running aapt, and the `Unit tests`
+   job in step 7 runs aapt in `mergeFullDebugResources` and `processFullDebugResources`.
+   The script stops unless `sync.py protected-apk --stamp` passes: the DTS-HD MA writer in `libffmpegJNI.so`, `libnuvio_rpu.so`
    for the Dolby Vision conversion, and where both came from. Without cargo-ndk, the library and stamp from step 2.3
    pass while `native/rpu_builder` is unchanged; a changed tree needs a rebuild. `NUVIO_ALLOW_NATIVE_MISMATCH=1` covers
    only an origin mismatch (exit 4), never a lost marker or a missing library. Use it only when the copied library is
