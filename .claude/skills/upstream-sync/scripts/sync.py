@@ -18,6 +18,8 @@ Commands:
   protected-apk <apk>
   test-failures <junit-xml-dir>
   gate-skip <base> <head>
+  results-complete <dir> --sha S
+  compare-results --baseline DIR --baseline-sha S --candidate DIR --candidate-sha S
 
 Exit codes: 0 ok, 1 a check failed or the sync is blocked, 2 usage or environment error, 3 nothing to do.
 """
@@ -40,6 +42,9 @@ from sync_tools import (FAIL, NOTHING, OK, USAGE, commits_with_files, feature_of
                         parse_merge_tree, protected_path)
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "sync.json"
+# How far a run's JUnit classes may fall short before the run counts as incomplete. A file can hold
+# several classes, so a whole run has more classes than test files (919 for 909 on 2026-10-31).
+CLASS_MARGIN = 0.05
 
 
 # ---------------------------------------------------------------- pure helpers (unit-tested)
@@ -318,6 +323,58 @@ def junit_out_of_memory(paths):
         hits += any("OutOfMemoryError" in " ".join([n.get("type") or "", n.get("message") or "", n.text or ""])
                     for n in nodes)
     return hits
+
+
+def load_results(path, sha):
+    """One result set of scripts/ci_unit_tests.sh -> (classes, failures, problems).
+
+    A problem means the set cannot be trusted. Everything unknown counts as one: a green comparison
+    must rest on a run that is known to have finished.
+    """
+    d = Path(path)
+    if not d.is_dir():
+        return set(), [], [f"{path} is missing"]
+    try:
+        meta = json.loads((d / "meta.json").read_text())
+    except (OSError, ValueError):
+        return set(), [], [f"{path}/meta.json is missing or unreadable: the run did not finish"]
+    problems, classes, parsed = [], set(), []
+    if meta.get("sha") != sha:
+        problems.append(f"{path} is from {meta.get('sha')}, expected {sha}")
+    if meta.get("crashed", True):
+        problems.append(f"{path}: the test JVM crashed")
+    for p in sorted(d.glob("*.xml")):
+        try:
+            classes.add(ET.parse(p).getroot().get("name", p.stem))
+            parsed.append(p)
+        except ET.ParseError:
+            problems.append(f"{path}: {p.name} is not readable XML")
+    if not parsed:
+        problems.append(f"{path} has no JUnit XML")
+    failures = junit_failures(parsed)
+    if meta.get("gradle_exit") != 0 and not failures:
+        problems.append(f"{path}: Gradle exited {meta.get('gradle_exit')} and no test failed: "
+                        "a crash or a build error")
+    expected = meta.get("source_classes", 0)
+    if expected < 1:
+        problems.append(f"{path}: meta.json names no test files")
+    elif len(classes) < expected * (1 - CLASS_MARGIN):
+        problems.append(f"{path}: {len(classes)} test classes for {expected} test files")
+    return classes, failures, problems
+
+
+def compare_results(baseline, baseline_sha, candidate, candidate_sha):
+    """Two result sets -> (new failures, problems, notes). Green needs both lists empty."""
+    base_classes, base_failures, base_problems = load_results(baseline, baseline_sha)
+    classes, failures, problems = load_results(candidate, candidate_sha)
+    lost = sorted(base_classes - classes)
+    all_problems = base_problems + problems
+    notes = [f"known failure, upstream has it too: {f}" for f in failures if f in base_failures]
+    if len(lost) > len(base_classes) * CLASS_MARGIN:
+        all_problems.append(f"{len(lost)} of {len(base_classes)} upstream test classes did not run, e.g. {lost[0]}")
+    elif lost:
+        notes.append(f"upstream test classes that did not run: {', '.join(lost)}")
+    return sorted(set(failures) - set(base_failures)), all_problems, notes
 
 
 def sha_matches(a, b):
@@ -756,6 +813,29 @@ def cmd_gate_skip(a, cfg):
     return OK
 
 
+def cmd_results_complete(a, cfg):
+    classes, failures, problems = load_results(a.dir, a.sha)
+    for problem in problems:
+        print(f"FAIL: {problem}")
+    if not problems:
+        print(f"{a.dir}: {len(classes)} test classes, {len(failures)} failures, complete")
+    return FAIL if problems else OK
+
+
+def cmd_compare_results(a, cfg):
+    new, problems, notes = compare_results(a.baseline, a.baseline_sha, a.candidate, a.candidate_sha)
+    for note in notes:
+        print(note)
+    for problem in problems:
+        print(f"FAIL: {problem}")
+    for failure in new:
+        print(f"FAIL: new failure: {failure}")
+    if new or problems:
+        return FAIL
+    print("no new failures, both runs complete")
+    return OK
+
+
 def main(argv):
     p = argparse.ArgumentParser(prog="sync.py", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -792,13 +872,19 @@ def main(argv):
     s = sub.add_parser("gate-skip")
     s.add_argument("base")
     s.add_argument("head")
+    s = sub.add_parser("results-complete")
+    s.add_argument("dir")
+    s.add_argument("--sha", required=True)
+    s = sub.add_parser("compare-results")
+    for name in ("--baseline", "--baseline-sha", "--candidate", "--candidate-sha"):
+        s.add_argument(name, required=True)
     a = p.parse_args(argv)
     cfg = load_config()
     try:
         return {"preflight": cmd_preflight, "map-overlap": cmd_map_overlap, "todo-edit": cmd_todo_edit, "drops": cmd_drops,
                 "stop-check": cmd_stop_check,
                 "verify": cmd_verify, "protected-apk": cmd_protected_apk,
-                "test-failures": cmd_test_failures, "gate-skip": cmd_gate_skip, **sync_tools.COMMANDS}[a.cmd](a, cfg)
+                "test-failures": cmd_test_failures, "gate-skip": cmd_gate_skip, "results-complete": cmd_results_complete, "compare-results": cmd_compare_results, **sync_tools.COMMANDS}[a.cmd](a, cfg)
     except RuntimeError as e:
         print(f"sync.py {a.cmd}: {e}", file=sys.stderr)
         return USAGE

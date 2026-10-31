@@ -46,6 +46,7 @@ scripts/*
 !scripts/shield_restore.sh
 !scripts/shield_build_install.sh
 !scripts/build_rpu_builder.sh
+!scripts/ci_unit_tests.sh
 !scripts/generate-release-notes.sh
 !scripts/generate_release_notes.py
 !scripts/release_notes/
