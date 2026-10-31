@@ -275,8 +275,10 @@ L1"), and what the extractor's decode order changes in them:
   presentation time to key, the last 64 AUs). When the true predecessor was already read, this is
   `dovi_tool`'s rule. When it was not, the AU is compared with an earlier frame. That gives an extra flag
   on an AU whose L1 equals its predecessor's (a B-pyramid whose scene starts on a B-frame: the anchors
-  read before it are flagged too), and misses a flag only when the keys go A, B, A within the reorder
-  depth. So every L1 change in presentation order carries the flag, except that A-B-A case. Extra flags
+  read before it are flagged too), and misses a flag only when the keys go A, B, A within an anchor's
+  display lead. The bound is that lead (the frames between two anchors), not `sps_max_num_reorder_pics`:
+  on the DV3.1 title the reorder depth is 2 and extra flags lie up to 4 frames after a scene start. So
+  every L1 change in presentation order carries the flag, except that A-B-A case. Extra flags
   carry an unchanged L1; this is the HDR10+ exception to "no mid-shot refresh" in 2.2.
   Leading pictures of an open-GOP cut compare with the old scene's trailing pictures and get no flag.
   Codex's review (2026-10-29) proposed the flag on every AU whose predecessor is not known to be read;
@@ -303,7 +305,9 @@ L1"), and what the extractor's decode order changes in them:
   then the container's Primaries (1, 9, 11 and 12), BT.2020 otherwise. The mastering minimum
   is rounded to 0.0001 nits, and each field is capped at 10 000 (`Level6::clamped`), where `mkvdovi`
   would refuse the title. A mastering display stated only in the stream's SEI is not read, so such a
-  title gets the defaults where `mkvdovi` (through MediaInfo) gets the SEI's values. A shot is rendered
+  title gets the defaults where `mkvdovi` (through MediaInfo) gets the SEI's values. That reaches L6, the
+  source range and L9, and it is common: the DV3.1 title has no MasteringMetadata in the container
+  (DV3.4). A shot is rendered
   when an L1 is new, and the last few are cached (scenes can alternate). The handle lives until the
   extractor is released: `release()` now reaches the transformer, and preparing a track again releases
   the injector it had.

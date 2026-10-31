@@ -23,7 +23,8 @@ playback and display chain, and links the log entry with the measurements.
 | G-C | all | L1 variants of one title | not run | | DV1.8 |
 | G-C | all | Pulse clip (L1 alternating, pixels constant) | not run | | DV7.7 |
 | G-C | DV7 candidates b, c | 8.1 mapping canary against identity control, on the recorded playback chain | not run | | DV7.7 |
-| G-C | all | Conversion in the app, per source type | partial: HLG → 8.4 bt2100 (BBC broadcast HLG, Matroska, 4K25, Shield → LG C9) shows Dolby Vision without tint (owner), RPUs validate and match `dovi_tool`; canary, frame-0 start and seeks not run; PQ sources not run (HDR10+ → 8.1 code in since 2026-10-29) | 2026-10-25 | DV3.2 session 1 in the log; DV3.1, DV3.3 |
+| G-C | all | Conversion in the app, per source type | partial: HLG → 8.4 bt2100 (BBC broadcast HLG, Matroska, 4K25, Shield → LG C9) shows Dolby Vision without tint (owner), RPUs validate and match `dovi_tool`; canary, frame-0 start and seeks not run; HDR10+ in the next row; static HDR10 not run | 2026-10-25 | DV3.2 session 1 in the log; DV3.3 |
+| G-C | all | Conversion in the app, HDR10+ → 8.1 | pass: 4K 23.976 fps HDR10+ web series, Matroska, Shield → LG C9 shows Dolby Vision (owner); an RPU in every AU; L1 equal to `dovi_tool` on 6115 frames from 0:00; L6, source range and L9 are the defaults for a title with static metadata only in its SEI (DV3.4); seeks not compared with `dovi_tool` | 2026-10-30 | DV3.1 in the log |
 | G-D | T1 server, T3 | Renderer replacement, Matroska | not run | | DV1.1, DV5.1 |
 | G-E | T0 HDR10, T1, T3 | Static HDR10 → 8.1 against native HDR10 | not run | | DV3.3 |
 | G-E | T1, T3 | Shot list against static | not run | | DV4.5 |

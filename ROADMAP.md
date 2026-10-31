@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-10-31 | DV3.1 closed: an HDR10+ series plays as Dolby Vision 8.1 on the owner's TV, with an RPU in every AU and L1 equal to `dovi_tool` on all 6115 compared frames; DV3.4 added for the static metadata that this title states only in its SEI. | DV3 | [log](docs/ROADMAP_LOG.md), PR #30 |
 | 2026-10-29 | DV3.1 code: a Matroska PQ track with HDR10+ in its hvcC or first AU converts to Dolby Vision 8.1, L1 from each AU's own HDR10+ SEI (`dovi_tool` parity, 16 fixtures byte for byte), the scene refresh in presentation order; plain HDR10 stays native; the setting becomes "Convert HLG and HDR10+ to Dolby Vision". Device gate open. | DV3 | [log](docs/ROADMAP_LOG.md), PR #30 |
 | 2026-10-29 | U1.8: `/upstream-sync` gains a light tier that skips classify for a sync with at most 3 conflicts and nothing protected, blocked or both-sided in Tier 2 (a version bump allowed); `stop-check` aborts a light rebase that goes past those limits. | U1 | [log](docs/ROADMAP_LOG.md), PR #28 |
 | 2026-10-29 | U1.6: a ruleset with a deploy-key bypass works on this personal repo; a cloud session cannot review a deployment (GitHub 403) but can push any branch, dispatch a workflow and merge a PR through REST; the clone is shallow; routines load `/upstream-sync`. | U1 | [log](docs/ROADMAP_LOG.md), issue #26 |
@@ -882,14 +883,8 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 #### DV3: T0, no pixels
 
-- **Status:** Open. DV3.1's code is in (2026-10-29, log): HDR10+ MKV titles convert to 8.1 with the setting
-  on; its device gate is open.
-- [DV3.1][device][owner][new-build] HDR10+ → 8.1 provider. Gate: an HDR10+ title plays as Dolby Vision
-  on the owner's TV; the debug log shows an RPU in every AU and L1 equal to `dovi_tool` for the same
-  frames. First write into `DESIGN.md` 2.4 the HDR10+ rules of hdr-analyze `docs/RPU_BUILDER.md`: the
-  scene rule runs in presentation order while the extractor reads in decode order; an AU without a
-  payload reuses the previous payload in decode order; non-HDR10+ T.35 messages are skipped. Needs:
-  DV2.7, DV2.8. Landed: PR #30; gate pending.
+- **Status:** Open. DV3.1 is done (PR #30, device gate 2026-10-30, log): HDR10+ MKV titles convert to 8.1
+  with the setting on, L1 equal to `dovi_tool` on the device.
 - [DV3.2][device][owner][new-build] HLG → 8.4 static provider: `DoviRpuBuilder.createStatic84(BT2100)`
   (the crate's `static_84_params`) with `static84L1()` (`STATIC_84_L1`, 0 / 1283 / 3079, V29 average
   floor). The RPU carries the default L6 and the crate's CM v4.0 L3 and
@@ -905,6 +900,13 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 - [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. The MaxCLL/MaxFALL heuristic is
   not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); where it lives is decided when this step
   starts. Gate: G-E A/B recorded; the default stays off unless the owner prefers it. Needs: DV2.7.
+- [DV3.4][device][owner][new-build] HDR10+ static metadata from the stream's SEI. The DV3.1 title states no
+  MasteringMetadata in the container, and S01E02's SEI has P3, 0.0001/1000 nits, MaxCLL 108, MaxFALL 53, so
+  its RPUs carry the defaults (L6 0.005/1000 nits, MaxCLL 1000, MaxFALL 400, source range 62..3079, L9
+  BT.2020). Read the mastering display (payloadType 137) and content light level (144) SEI of the hvcC or
+  the first AU into `DvTrackFacts` for what the container does not state. Gate: for S01E02 the debug
+  log and `rpu_l1_compare.py` show the SEI's values against a reference made with them, and the owner's A/B
+  on the TV is in the log. Needs: DV3.1.
 
 #### DV4: T1, shot lists made on a PC
 
