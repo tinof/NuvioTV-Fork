@@ -12,7 +12,7 @@ disable-model-invocation: true
 The user typed `/upstream-sync $ARGUMENTS`. With no argument, run every step in order. With one, start at
 that step, after checking that the earlier steps' outputs exist in the scratchpad. The open "Upstream drift"
 issue (label `upstream-drift`, kept current by `.github/workflows/upstream-drift.yml` on the default branch
-`perf/shield-pass`) says how far behind the fork is.
+`perf/shield-pass`) says how far behind the fork is, whether a sync is due and which stops the rebase should make.
 
 `S=.claude/skills/upstream-sync/scripts`, `<scratch>` is the session scratchpad, `<date>` is today
 (`YYYY-MM-DD`). Run scripts from the repository root as `python3 -I $S/<script>`. Every `gh` call takes
