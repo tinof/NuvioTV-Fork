@@ -30,7 +30,7 @@
   "baseline_known_failures": [
     "androidx.media3.datasource.LocalhostZeroCopyDataSourceTest.testHttpError404"
   ],
-  "owner_rule": "Where upstream changes a setting that the Shield plan (docs/shield-todo.md, ROADMAP.md) also sets, keep the fork's value, Nvidia-gated with a debug.nuvio.* revert switch, and add a row to docs/shield-todo.md. Otherwise take upstream's value and list it under '### Upstream defaults taken with the sync of <date>' in docs/shield-todo.md.",
+  "owner_rule": "Where upstream changes a setting that the Shield plan (docs/shield-todo.md, ROADMAP.md) also sets, keep the fork's value, Nvidia-gated with a debug.nuvio.* revert switch, and add a row to docs/shield-todo.md. Otherwise take upstream's value and list it under '### Upstream defaults taken with the sync of <date>' in docs/shield-todo.md. Retire question: where upstream now covers a fork change, prefer dropping the fork's version, except for protected features.",
   "traps": [
     "app/libs/lib-datasource-release.aar: always keep the fork's binary (sha256 692cae00...). Upstream's ba710a269 rebuild (44c07852...) still reports localhost 404/410 as 400; upstream's own testHttpError404 fails with it.",
     "MemoryBudget: the fork's RAM-based isLowRamTier must not feed tierMaxChunkMbFor or the trailer pool; those take the heap-only lowHeap.",
