@@ -120,6 +120,7 @@ Scale tiers:
 6. Show the owner the drop list (with the reason, e.g. "net-zero pair" or "upstream does it in <sha>"), the adapt list and every setting decision. Wait for answers where the owner rule does not settle a decision.
 7. Add each retire the owner approves to `summary.drop` in `<scratch>/classify.json`, and take it off its keep list. `sync.py drops` and `verify --decisions` read that list. A retire left out of it stays in the rebase, and a hand drop then fails `verify`.
 8. `summary.protectedAsk` lists drop and partial verdicts on protected-feature commits. Each one is the owner's decision; an approved drop is passed to `verify` as `--protected-drop <sha>`.
+9. In evaluation, not in use yet: the `upstream-sync-triage` workflow; its blind test is `reference/triage-eval.md`.
 
 ## 5. Rebase
 
