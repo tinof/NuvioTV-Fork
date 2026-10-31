@@ -14,6 +14,12 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
+# A `git rebase --exec` or a hook exports these, and every fixture's git then works on that repository. It once left
+# core.bare=true, a test identity and stray refs on the shared one. Keep this above all code that can run git.
+for variable in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+                 "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX", "GIT_NAMESPACE"):
+    os.environ.pop(variable, None)
+
 ROOT = Path(__file__).resolve().parents[2]
 SKILL = ROOT / ".claude/skills/upstream-sync"
 TRIAGE_WORKFLOW = ROOT / ".claude/workflows/upstream-sync-triage.js"
@@ -3004,6 +3010,54 @@ class DryRunRepoTest(RepoFixture, unittest.TestCase):
                             "--onto", "U", "--json"], cwd=self.dir, capture_output=True, text=True)
         self.assertEqual(0, r.returncode, r.stderr)
         self.assertEqual(2, json.loads(r.stdout)["clean"])
+
+
+class InheritedRepositoryTest(unittest.TestCase):
+    """This module, imported in a child python that inherits a repository from its parent."""
+
+    LOAD = """
+import importlib.util, json, os, subprocess, sys
+spec = importlib.util.spec_from_file_location("upstream_sync_suite", sys.argv[1])
+suite = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(suite)
+"""
+    FIXTURE = LOAD + """
+fixture = suite.RepoFixture()
+fixture.setUp()
+def git(*args):
+    return subprocess.run(("git", *args), cwd=fixture.dir, check=True, capture_output=True, text=True).stdout.strip()
+print(json.dumps({"git_dir": git("rev-parse", "--git-dir"), "subject": git("log", "-1", "--format=%s")}))
+fixture.tearDown()
+"""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.scratch = Path(tmp.name) / "scratch.git"
+        run("git", "init", "-q", "--bare", str(self.scratch), cwd=tmp.name)
+
+    def child(self, script, **env):
+        return subprocess.run([sys.executable, "-I", "-c", script, __file__], capture_output=True, text=True,
+                              env={**os.environ, **env}, cwd=self.scratch.parent)
+
+    def scratch_git(self, *args):
+        return subprocess.run(["git", "--git-dir", str(self.scratch), *args], capture_output=True, text=True)
+
+    def test_an_inherited_git_dir_gets_nothing_and_the_fixture_gets_the_commit(self):
+        r = self.child(self.FIXTURE, GIT_DIR=str(self.scratch))
+        self.assertEqual("", self.scratch_git("for-each-ref").stdout)
+        self.assertRegex(self.scratch_git("count-objects").stdout, r"^0 objects")
+        self.assertEqual("", self.scratch_git("config", "--local", "--get", "user.email").stdout)
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual({"git_dir": ".git", "subject": "fix: retained bottom"}, json.loads(r.stdout))
+
+    def test_every_variable_that_locates_a_repository_is_removed(self):
+        names = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+                 "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX", "GIT_NAMESPACE")
+        script = self.LOAD + f"print(json.dumps([n for n in {names!r} if n in os.environ]))\n"
+        r = self.child(script, **dict.fromkeys(names, str(self.scratch)))
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual([], json.loads(r.stdout))
 
 
 if __name__ == "__main__":
