@@ -3,6 +3,10 @@ name: Checks
 # Fork-only. Since 2026-10-22 the fork builds no APK or AAR on GitHub: binaries are built locally
 # (scripts/shield_build_install.sh, ffmpeg-decoder-downmix/README.md). CI checks the code only and
 # uploads nothing but test reports.
+#
+# A docs-only pull request still reports "Unit tests", because /ship's wait-checks.sh fails when a
+# head has no check at all. That is why this file has no paths-ignore: the job runs and skips its
+# steps. A failed detection leaves the output empty, so the full suite runs.
 
 on:
   pull_request:
@@ -25,8 +29,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # A pull request checks out a merge commit: depth 2 holds its base as the first parent.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      - name: Detect a docs-only change
+        id: changes
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        # The detector and its contract come from the base commit, so a pull request cannot widen its
+        # own gate-skip. That does not cover this file: a pull_request run uses the pull request's copy.
+        # The tar file replaces a pipe: the default shell has no pipefail. A base without the skill or
+        # the command fails here, which is how the first rollout reaches the full suite.
+        run: |
+          skill=.claude/skills/upstream-sync
+          git archive --output="$RUNNER_TEMP/base.tar" HEAD^1 "$skill"
+          tar -xf "$RUNNER_TEMP/base.tar" -C "$RUNNER_TEMP"
+          python3 -I "$RUNNER_TEMP/$skill/scripts/sync.py" gate-skip HEAD^1 HEAD >> "$GITHUB_OUTPUT"
 
       - name: Set up Java
+        if: steps.changes.outputs.skip != 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -34,10 +56,12 @@ jobs:
           cache: gradle
 
       - name: Empty local properties
+        if: steps.changes.outputs.skip != 'true'
         # The tests need no credentials; the build reads these files when they exist.
         run: touch local.properties local.dev.properties
 
       - name: Run all unit tests
+        if: steps.changes.outputs.skip != 'true'
         run: ./gradlew :app:testFullDebugUnitTest --continue --stacktrace
 
       - name: Upload unit test reports

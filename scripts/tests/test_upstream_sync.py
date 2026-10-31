@@ -786,6 +786,196 @@ class DriftWorkflowTest(unittest.TestCase):
         self.assertIn('sed -n 1p "$BODY"', self.step("Update the drift issue"))
 
 
+class GateSkipTest(unittest.TestCase):
+    """gate-skip decides whether a pull request runs the suite, and must agree with /ship's contract."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.dir)
+        run("git", "init", "-q", "-b", "main", cwd=self.dir)
+        run("git", "config", "user.email", "t@example.com", cwd=self.dir)
+        run("git", "config", "user.name", "t", cwd=self.dir)
+        (self.dir / ".claude").mkdir()
+        contract = (SKILL.parents[1] / "workflow.md").read_text()
+        (self.dir / ".claude/workflow.md").write_text(contract)
+        self.write({"app/Main.kt": "fun main() {}\n" * 20, "README.md": "r\n", "docs/a/b.txt": "b\n"})
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "base", cwd=self.dir)
+
+    def write(self, files):
+        for path, text in files.items():
+            (self.dir / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.dir / path).write_text(text)
+
+    def verdict(self):
+        """The verdict on everything staged, committed the way a pull request would add it."""
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "--allow-empty", "-m", "change", cwd=self.dir)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = sync.main(["gate-skip", "HEAD^1", "HEAD"])
+        self.assertEqual(sync.OK, code)
+        return buf.getvalue().strip()
+
+    def test_the_contract_line_is_parsed(self):
+        self.assertEqual(["*.md", "docs/**"], sync.gate_skip_specs("x\ngate-skip:      '*.md' 'docs/**'\ny\n"))
+        with self.assertRaises(RuntimeError):
+            sync.gate_skip_specs("gate: x\n")
+
+    def test_markdown_anywhere_and_files_under_docs_skip(self):
+        self.write({"README.md": "new\n", "app/deep/NOTES.md": "n\n", "docs/a/b.txt": "new\n", "docs/c.kt": "c\n"})
+        self.assertEqual("skip=true", self.verdict())
+
+    def test_one_source_file_runs_the_suite(self):
+        self.write({"README.md": "new\n", "app/Main.kt": "changed\n"})
+        self.assertEqual("skip=false", self.verdict())
+
+    def test_a_name_that_only_looks_like_docs_runs_the_suite(self):
+        self.write({"docs.txt": "x\n", "app/docs/x.kt": "x\n"})
+        self.assertEqual("skip=false", self.verdict())
+
+    def test_a_source_file_moved_into_docs_runs_the_suite(self):
+        (self.dir / "docs/Main.kt").write_text((self.dir / "app/Main.kt").read_text())
+        (self.dir / "app/Main.kt").unlink()
+        self.assertEqual("skip=false", self.verdict())
+
+    def test_deleting_a_source_file_runs_the_suite(self):
+        (self.dir / "app/Main.kt").unlink()
+        self.assertEqual("skip=false", self.verdict())
+
+    def test_an_empty_change_runs_the_suite(self):
+        self.assertEqual("skip=false", self.verdict())
+
+    def test_a_pull_request_cannot_widen_the_line_that_judges_it(self):
+        contract = self.dir / ".claude/workflow.md"
+        contract.write_text(contract.read_text().replace("gate-skip:      '*.md'", "gate-skip:      '*.kt' '*.md'"))
+        self.write({"app/Main.kt": "changed\n"})
+        self.assertEqual("skip=false", self.verdict())
+
+    def test_the_checkouts_contract_counts_for_nothing(self):
+        self.write({"app/Main.kt": "changed\n"})
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "source only", cwd=self.dir)
+        contract = self.dir / ".claude/workflow.md"
+        contract.write_text(contract.read_text().replace("gate-skip:      '*.md'", "gate-skip:      '*.kt' '*.md'"))
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            sync.main(["gate-skip", "HEAD^1", "HEAD"])
+        self.assertEqual("skip=false\n", buf.getvalue())
+
+    def test_the_files_that_run_the_gate_never_skip_it(self):
+        for path in (".github/NOTES.md", ".claude/NOTES.md", "scripts/NOTES.md"):
+            with self.subTest(path):
+                self.write({path: "n\n"})
+                self.assertEqual("skip=false", self.verdict())
+
+    def test_a_name_that_only_looks_guarded_still_skips(self):
+        self.write({"app/scripts/NOTES.md": "n\n", "docs/.github/x.txt": "n\n"})
+        self.assertEqual("skip=true", self.verdict())
+
+    def test_a_bad_ref_fails_so_the_workflow_runs_the_suite(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            code = sync.main(["gate-skip", "no-such-ref", "HEAD"])
+        self.assertEqual(sync.USAGE, code)
+        self.assertEqual("", buf.getvalue())
+
+
+class GateSkipStepTest(unittest.TestCase):
+    """The detection step's own text, on the merge commit a pull_request checkout leaves."""
+
+    STEP = re.search(r"- name: Detect a docs-only change\n.*?run: \|\n((?: {10}[^\n]*\n)+)",
+                     (SKILL.parents[2] / ".github/workflows/checks.yml").read_text(), re.S).group(1)
+    SCRIPT = ".claude/skills/upstream-sync/scripts/sync.py"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.temp = Path(tmp.name) / "runner-temp"
+        self.temp.mkdir()
+        self.dir = Path(tmp.name) / "repo"
+        self.dir.mkdir()
+        run("git", "init", "-q", "-b", "main", cwd=self.dir)
+        run("git", "config", "user.email", "t@example.com", cwd=self.dir)
+        run("git", "config", "user.name", "t", cwd=self.dir)
+        self.write({"app/Main.kt": "fun main() {}\n", "README.md": "r\n"})
+
+    def write(self, files):
+        for path, text in files.items():
+            (self.dir / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.dir / path).write_text(text)
+
+    def base_with_detector(self, script=None):
+        self.write({".claude/workflow.md": (SKILL.parents[1] / "workflow.md").read_text(),
+                    ".claude/skills/upstream-sync/sync.json": (SKILL / "sync.json").read_text(),
+                    self.SCRIPT: script or (SKILL / "scripts/sync.py").read_text()})
+
+    def detect(self, pull_request):
+        """Commit the base, merge the pull request into it, and run the step: (exit code, $GITHUB_OUTPUT)."""
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "base", cwd=self.dir)
+        run("git", "checkout", "-q", "-b", "pr", cwd=self.dir)
+        self.write(pull_request)
+        run("git", "add", "-A", cwd=self.dir)
+        run("git", "commit", "-q", "-m", "change", cwd=self.dir)
+        run("git", "checkout", "-q", "main", cwd=self.dir)
+        run("git", "merge", "-q", "--no-ff", "-m", "merge", "pr", cwd=self.dir)
+        output = self.temp.parent / "github-output"
+        output.write_text("")
+        r = subprocess.run(["bash", "-e", "-c", re.sub(r"(?m)^ {10}", "", self.STEP)], cwd=self.dir, capture_output=True,
+                           text=True, env=dict(os.environ, RUNNER_TEMP=str(self.temp), GITHUB_OUTPUT=str(output)))
+        return r.returncode, output.read_text()
+
+    def test_a_docs_only_pull_request_skips(self):
+        self.base_with_detector()
+        self.assertEqual((0, "skip=true\n"), self.detect({"README.md": "new\n"}))
+
+    def test_a_source_change_runs_the_suite(self):
+        self.base_with_detector()
+        self.assertEqual((0, "skip=false\n"), self.detect({"app/Main.kt": "changed\n"}))
+
+    def test_a_detector_replaced_by_the_pull_request_is_not_the_one_that_runs(self):
+        self.base_with_detector()
+        code, output = self.detect({self.SCRIPT: "print('skip=true')\n", "app/Main.kt": "changed\n"})
+        self.assertEqual((0, "skip=false\n"), (code, output))
+
+    def test_a_widened_gate_skip_line_runs_the_suite(self):
+        self.base_with_detector()
+        contract = (SKILL.parents[1] / "workflow.md").read_text()
+        widened = contract.replace("gate-skip:      '*.md'", "gate-skip:      '*.kt' '*.md'")
+        self.assertNotEqual(contract, widened)
+        self.assertEqual((0, "skip=false\n"), self.detect({".claude/workflow.md": widened, "app/Main.kt": "changed\n"}))
+
+    def test_a_base_that_has_no_such_command_leaves_the_output_empty(self):
+        self.base_with_detector((SKILL / "scripts/sync.py").read_text().replace('"gate-skip"', '"older-command"'))
+        code, output = self.detect({"README.md": "new\n"})
+        self.assertNotEqual(0, code)
+        self.assertEqual("", output)
+
+    def test_a_base_that_has_no_skill_leaves_the_output_empty(self):
+        code, output = self.detect({"README.md": "new\n"})
+        self.assertNotEqual(0, code)
+        self.assertEqual("", output)
+
+
+class ChecksWorkflowTest(unittest.TestCase):
+    """The parts of checks.yml that /ship depends on and no job can test."""
+
+    TEXT = (SKILL.parents[2] / ".github/workflows/checks.yml").read_text()
+
+    def test_a_docs_only_pull_request_still_reports_the_check(self):
+        self.assertIn("    name: Unit tests\n", self.TEXT)
+        self.assertNotIn("paths-ignore:", re.sub(r"^#.*$", "", self.TEXT, flags=re.M))
+        self.assertNotRegex(self.TEXT, r"(?m)^\s+paths:")
+
+    def test_detection_cannot_fail_the_job_or_skip_a_dispatch(self):
+        step = re.search(r"- name: Detect a docs-only change\n(.*?)\n\n", self.TEXT, re.S).group(1)
+        self.assertIn("if: github.event_name == 'pull_request'", step)
+        self.assertIn("continue-on-error: true", step)
+
+
 class MapOverlapRepoTest(RepoFixture, unittest.TestCase):
     """map-overlap on the fixture: the old fork on B edits shared.txt, which U also changed."""
 

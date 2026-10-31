@@ -17,6 +17,7 @@ Commands:
          [--protected-drop SHA,...] [--creation-factor N]
   protected-apk <apk>
   test-failures <junit-xml-dir>
+  gate-skip <base> <head>
 
 Exit codes: 0 ok, 1 a check failed or the sync is blocked, 2 usage or environment error, 3 nothing to do.
 """
@@ -27,6 +28,8 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -43,6 +46,14 @@ CONFIG_PATH = Path(__file__).resolve().parents[1] / "sync.json"
 
 def load_config(path=CONFIG_PATH):
     return json.loads(Path(path).read_text())
+
+
+def gate_skip_specs(workflow_md):
+    """The pathspecs on the contract's `gate-skip:` line in .claude/workflow.md."""
+    found = re.search(r"^gate-skip:\s*(.+)$", workflow_md, re.M)
+    if not found or not shlex.split(found.group(1)):
+        raise RuntimeError("no gate-skip line in .claude/workflow.md")
+    return shlex.split(found.group(1))
 
 
 def cherry_plus(text):
@@ -724,6 +735,27 @@ def cmd_test_failures(a, cfg):
     return OK
 
 
+# What decides a CI run, so a change here always runs the suite, whatever the contract's gate-skip says.
+GATE_GUARDED = (".github", ".claude", "scripts")
+
+
+def cmd_gate_skip(a, cfg):
+    """Print skip=true when every path changed from base to head matches the base's gate-skip.
+
+    The same pathspec test as /ship. Excludes apply before rename detection, so a source file moved into
+    docs/ stays in `left` as a deletion; --no-renames only makes that independent of diff.renames.
+    No change at all is not docs-only either. The contract comes from the base commit, and a change to
+    GATE_GUARDED never skips, so a pull request cannot judge itself.
+    """
+    specs = gate_skip_specs(out("show", f"{a.base}:.claude/workflow.md"))
+    diff = ["diff", "--name-only", "--no-renames", a.base, a.head]
+    changed = out(*diff)
+    left = out(*diff, "--", *[f":(exclude){spec}" for spec in specs])
+    guarded = out(*diff, "--", *GATE_GUARDED)
+    print(f"skip={'true' if changed and not left and not guarded else 'false'}")
+    return OK
+
+
 def main(argv):
     p = argparse.ArgumentParser(prog="sync.py", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -757,13 +789,16 @@ def main(argv):
     s = sub.add_parser("test-failures")
     s.add_argument("dir")
     sync_tools.add_parsers(sub)
+    s = sub.add_parser("gate-skip")
+    s.add_argument("base")
+    s.add_argument("head")
     a = p.parse_args(argv)
     cfg = load_config()
     try:
         return {"preflight": cmd_preflight, "map-overlap": cmd_map_overlap, "todo-edit": cmd_todo_edit, "drops": cmd_drops,
                 "stop-check": cmd_stop_check,
                 "verify": cmd_verify, "protected-apk": cmd_protected_apk,
-                "test-failures": cmd_test_failures, **sync_tools.COMMANDS}[a.cmd](a, cfg)
+                "test-failures": cmd_test_failures, "gate-skip": cmd_gate_skip, **sync_tools.COMMANDS}[a.cmd](a, cfg)
     except RuntimeError as e:
         print(f"sync.py {a.cmd}: {e}", file=sys.stderr)
         return USAGE
