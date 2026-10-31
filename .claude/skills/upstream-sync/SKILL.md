@@ -82,8 +82,8 @@ On a block, report it and stop. The owner merges, rebases or deletes such branch
    (`git merge-base origin/perf/shield-pass upstream/main`, where the fork's commits start). Add local tags
    `sync/<date>/old-perf`, `sync/<date>/old-main` and `sync/<date>/old-base`. `OLD_BASE` equals `OLD_MAIN` unless
    preflight warned that `origin/main` is not at the base of `perf/shield-pass`; the lease stays `OLD_MAIN` either way.
-3. Create the worktree: `git worktree add -b sync/<date>-perf ../NuvioTV-Fork-wt/upstream-sync OLD_PERF`, and copy `local.properties` and `app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so` into it (both are gitignored; without the library an APK built there has Dolby Vision conversion off).
-4. Run the baseline gate on plain `upstream/main` in a second worktree. Use the contract's `gate` command (JDK 17 and `ANDROID_HOME` per `.claude/workflow.md`; the first run takes about 6 minutes). Save the failures to `<scratch>/baseline-failures.txt`: from the repository root, run `python3 -I $S/sync.py test-failures <baseline worktree>/app/build/test-results/testFullDebugUnitTest`. Use the absolute path; the baseline worktree has no skill, and a relative path would read this checkout's results. Upstream's own failures are not the sync's fault; `sync.json` lists the known ones.
+3. Create the worktree: `git worktree add -b sync/<date>-perf ../NuvioTV-Fork-wt/upstream-sync OLD_PERF`, and copy `local.properties`, `app/src/main/jniLibs/arm64-v8a/libnuvio_rpu.so` and its `libnuvio_rpu.so.stamp` into it. All three are gitignored. Without the library an APK built there has Dolby Vision conversion off, and without the stamp step 6.4 stops. If the stamp is missing, `scripts/build_rpu_builder.sh` writes it.
+4. Diagnosis only: the `Upstream baseline` job in step 7 is the baseline that decides, so skip this until a failure there needs reproducing (step 6.3). Run the baseline gate on plain `upstream/main` in a second worktree. Use the contract's `gate` command (JDK 17 and `ANDROID_HOME` per `.claude/workflow.md`; the first run takes about 6 minutes). Save the failures to `<scratch>/baseline-failures.txt`: from the repository root, run `python3 -I $S/sync.py test-failures <baseline worktree>/app/build/test-results/testFullDebugUnitTest`. Use the absolute path; the baseline worktree has no skill, and a relative path would read this checkout's results. Upstream's own failures are not the sync's fault; `sync.json` lists the known ones.
 
 ## 3. Map
 
@@ -196,12 +196,15 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
    It computes `merge-tree -X theirs OLD_PERF NEW_BASE` and diffs that tree with `NEW_PERF`. The old tip is ours, so upstream wins a conflicting hunk, and the diff shows every place the rebase kept something upstream rewrote. A differing path that is not declared fails: find out what changed it. The diff goes to the reviewer below.
 
    It says nothing inside a declared file, and it cannot see a fork hunk the rebase gave up to upstream, because the mechanical tree has the same text there. The independent review stays.
-4. Run the full gate in the worktree. Compare `sync.py test-failures` with the baseline: any new failure blocks. Its stdout holds only test names; a heap hint goes to stderr.
-5. Build the APK in the worktree (`./gradlew :app:assembleFullDebug`, JDK 17): it is the only check that runs the
-   native builds. The locale trap has two earlier checks: `verify` finds a duplicate string with `duplicate_names`
-   without running aapt, and the gate runs aapt in `mergeFullDebugResources` and `processFullDebugResources`. Then `python3 -I $S/sync.py protected-apk
-   app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk` must pass: the DTS-HD MA writer in
-   `libffmpegJNI.so` and `libnuvio_rpu.so` for the Dolby Vision conversion.
+4. CI in step 7 is the one full gate. The local gate is only for diagnosis: to reproduce a failure step 7 reports,
+   run it in the worktree and compare `sync.py test-failures` with the baseline of step 2.4.
+5. Build the APK in the worktree beside step 7, not after it: `scripts/shield_build_install.sh`, never with
+   `--install`. CI builds no APK, so this is the only check that runs the native builds.
+   It stops unless `sync.py protected-apk --stamp` passes: the DTS-HD MA writer in `libffmpegJNI.so`, `libnuvio_rpu.so`
+   for the Dolby Vision conversion, and where both came from. Without cargo-ndk, the library and stamp from step 2.3
+   pass while `native/rpu_builder` is unchanged; a changed tree needs a rebuild. `NUVIO_ALLOW_NATIVE_MISMATCH=1` covers
+   only an origin mismatch (exit 4), never a lost marker or a missing library. Use it only when the copied library is
+   known to be current, and say so in the follow-up log.
 6. Have one independent Opus `medium` reviewer read the `!` hunks from the verify report together with `resolutions.md` and `judgement.diff`. Check its claims before acting on them.
 
 ## 7. CI on the pushed candidate
@@ -209,8 +212,14 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
 `Checks` (unit tests; the binary workflows are disabled since 2026-10-22) runs on the dispatched remote ref, so
 publish the candidate first:
 1. `git push origin NEW_PERF:refs/heads/sync/<date>-perf`
-2. Dispatch `gh workflow run Checks --ref sync/<date>-perf`.
+2. Dispatch `gh workflow run Checks --ref sync/<date>-perf -f upstream_sha=<NEW_BASE>`, with the full SHA.
 3. Find the run with `gh run list --workflow Checks --json databaseId,headSha`, and wait for green on the exact SHA.
+
+On a `sync/*` branch the run has three jobs. `Unit tests` runs the candidate, `Upstream baseline` runs NEW_BASE,
+and `Compare with upstream` decides: it fails on a new failure and on an incomplete run on either side (a crashed
+test JVM, a missing artifact, too few test classes). `Unit tests` stays green on a failing test here, so read the
+compare job. For the same reason, only a rerun of all jobs retests the candidate (`gh run rerun <run id>`). A rerun
+of failed jobs repeats the compare job over the old results. A rerun of all jobs takes the baseline from the Actions cache.
 
 ## 8. Publish (ask the owner first)
 
