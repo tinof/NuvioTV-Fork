@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 
 OK, FAIL, USAGE, NOTHING = 0, 1, 2, 3
 SCRATCH_IDENTITY = {"GIT_AUTHOR_NAME": "upstream-sync", "GIT_AUTHOR_EMAIL": "upstream-sync@invalid",
@@ -50,6 +51,17 @@ def stop_features(commit_files, stop_files, subject, features):
     """The protected features a predicted stop involves: by the replayed commit, or by a conflicting file."""
     return [f["key"] for f in features
             if feature_of(commit_files, [f], subject) or any(protected_path(p, [f]) for p in stop_files)]
+
+
+def due_verdict(behind, quiet_hours, age_days, settle_hours, max_age_days):
+    """-> (verdict, reason). Advisory: an owner can always sync, and nothing blocks on "wait"."""
+    if behind == 0:
+        return "level", "0 commits behind"
+    if quiet_hours >= settle_hours:
+        return "due", f"a settled batch waits: first-parent quiet for at least {settle_hours} h"
+    if age_days > max_age_days:
+        return "due", f"the oldest unsynced first-parent commit is older than {max_age_days} days"
+    return "wait", f"upstream may still be pushing: quiet under {settle_hours} h, oldest within {max_age_days} days"
 
 
 # ---------------------------------------------------------------- git and gh
@@ -170,9 +182,48 @@ def cmd_dry_run(a, cfg):
     return OK
 
 
+# ---------------------------------------------------------------- due
+
+OFFICIAL_MERGE = re.compile(r"^Merge official\b")
+
+
+def due_report(cfg, upstream, fork, now=None):
+    """Whether a sync is due, from local refs only; it never fetches. Ages count first-parent commits, because a
+    "Merge official" brings side commits weeks older than the base, which would read as overdue the hour it lands."""
+    now = time.time() if now is None else now
+    settle, max_age = cfg.get("settle_hours", 24), cfg.get("max_age_days", 7)
+    base = out("merge-base", fork, upstream)
+    behind = int(out("rev-list", "--count", f"{fork}..{upstream}"))
+    rows = [l.split("\t", 2) for l in lines("log", "--first-parent", "--format=%H\t%ct\t%s", f"{base}..{upstream}")]
+    tip_time = int(out("log", "-1", "--format=%ct", upstream))
+    quiet = max(0.0, (now - tip_time) / 3600)
+    age = max(0.0, (now - int(rows[-1][1])) / 86400) if rows else 0.0
+    merge = next((r for r in rows if OFFICIAL_MERGE.search(r[2])), None)
+    verdict, reason = due_verdict(behind, quiet, age, settle, max_age)
+    return {"verdict": verdict, "reason": reason, "behind": behind, "base": base, "upstream": out("rev-parse", upstream),
+            "newest_official_merge": {"sha": merge[0][:12], "subject": merge[2],
+                                      "hours_ago": round(max(0.0, (now - int(merge[1])) / 3600), 1)} if merge else None,
+            "quiet_hours": round(quiet, 1), "age_days": round(age, 1), "settle_hours": settle, "max_age_days": max_age}
+
+
+def due_line(r):
+    merge = r.get("newest_official_merge")
+    merged = f"newest official merge {merge['sha'][:9]}, {merge['hours_ago']} h ago" if merge else "no official merge"
+    return (f"due: {r['verdict']}: {r['reason']} ({r['behind']} behind, {merged}, first-parent quiet "
+            f"{r['quiet_hours']} h, oldest unsynced first-parent commit {r['age_days']} days)")
+
+
+def cmd_due(a, cfg):
+    upstream = a.upstream or f"{cfg['remotes']['upstream']}/main"
+    fork = a.fork or f"{cfg['remotes']['fork']}/{cfg['layers']['perf']}"
+    report = due_report(cfg, upstream, fork, a.now)
+    print(json.dumps(report, indent=1) if a.json else due_line(report))
+    return OK
+
+
 # ---------------------------------------------------------------- registration
 
-COMMANDS = {"dry-run": cmd_dry_run}
+COMMANDS = {"dry-run": cmd_dry_run, "due": cmd_due}
 
 
 def add_parsers(sub):
@@ -180,4 +231,9 @@ def add_parsers(sub):
     s.add_argument("--base", help="where the fork's commits start (default: the merge base of fork and onto)")
     s.add_argument("--fork", help="default: the fork's perf branch on the fork remote")
     s.add_argument("--onto", help="default: upstream/main")
+    s.add_argument("--json", action="store_true")
+    s = sub.add_parser("due", help="say whether a sync is due; advisory, it never blocks")
+    s.add_argument("--upstream", help="default: upstream/main")
+    s.add_argument("--fork", help="default: the fork's perf branch on the fork remote")
+    s.add_argument("--now", type=float, help="the time to judge at, in seconds since the epoch (default: the clock)")
     s.add_argument("--json", action="store_true")
