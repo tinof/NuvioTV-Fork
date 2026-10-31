@@ -33,8 +33,8 @@ These can be set in `local.properties` or environment variables. See `local.exam
 
 ## Typical workflow
 
-1. Build and test normally with the prebuilt AAR.
-2. Switch on `USE_LOCAL_FFMPEG_DECODER` only when working on native decoder changes.
+1. Compile and run unit tests through Gradle with the prebuilt AAR. `scripts/shield_build_install.sh` refuses that APK: the AAR in this repository has no DTS-HD MA writer (its `dcaxll` marker), and no override covers that.
+2. Switch on `USE_LOCAL_FFMPEG_DECODER` for any APK from that script, and when working on native decoder changes.
 3. Rebuild the patched AAR after validating local decoder changes with `:ffmpeg-decoder-downmix:assembleRelease`.
 4. Replace `app/libs/lib-decoder-ffmpeg-release.aar` with `ffmpeg-decoder-downmix/build/outputs/aar/ffmpeg-decoder-downmix-release.aar`.
 
