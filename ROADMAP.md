@@ -911,7 +911,7 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   BT.2020). Read the mastering display (payloadType 137) and content light level (144) SEI of the hvcC or
   the first AU into `DvTrackFacts` for what the container does not state. Gate: for S01E02 the debug
   log and `rpu_l1_compare.py` show the SEI's values against a reference made with them, and the owner's A/B
-  on the TV is in the log. Needs: DV3.1.
+  on the TV is in the log. Needs: DV3.1. Landed: PR #37; gate pending.
 
 #### DV4: T1, shot lists made on a PC
 
