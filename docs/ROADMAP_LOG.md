@@ -10,6 +10,75 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-01: DV3.4 HDR10+ static metadata from the stream's SEI (PR #37)
+
+- [DV3.4][device][owner][new-build] HDR10+ static metadata from the stream's SEI. The DV3.1 title states no
+  MasteringMetadata in the container, and S01E02's SEI has P3, 0.0001/1000 nits, MaxCLL 108, MaxFALL 53, so
+  its RPUs carry the defaults (L6 0.005/1000 nits, MaxCLL 1000, MaxFALL 400, source range 62..3079, L9
+  BT.2020). Read the mastering display (payloadType 137) and content light level (144) SEI of the hvcC or
+  the first AU into `DvTrackFacts` for what the container does not state. Gate: for S01E02 the debug
+  log and `rpu_l1_compare.py` show the SEI's values against a reference made with them, and the owner's A/B
+  on the TV is in the log. Needs: DV3.1.
+
+Resolution: passed on 2026-11-01 on build `38b3c09dd`, Shield to the owner's LG C9 (firmware 05.50.00).
+The RPUs equal real `mkvdovi` on all 7231 compared frames, and the owner saw no large difference on the TV.
+Commits after that build change only the roadmap and this log, so no rebuild was needed.
+
+**Against real `mkvdovi`.** The reference comes from `mkvdovi --keep-source --verify`, built from
+hdr-analyze `def6f03e6` (binary sha256 `af6f18f5…`), with `dovi_tool` 2.3.4, `hdr10plus_tool` 1.7.1,
+MediaInfo 26.01 and `mkvmerge` 103.0. The log shows the HDR10+ path, CM v4.0 with L9 primaries 0, source
+range 7..3079 on every frame and `Verification passed.` No mastering warning appears. Peak source histogram is
+`mkvdovi`'s default. The first row below was repeated on the Mac with its own `dovi_tool`, with the same result.
+
+| Compared with the `mkvdovi` RPU | Frames | L1 differences | Other differences | Flag differences |
+|---|---|---|---|---|
+| App, switch on | 7231 | **0** | **0** | 97 |
+| App, switch off (control) | 7030 | 0 | 7030 | 90 |
+| DV3.1 `dovi_tool` reference for S01E02 | 20055 | 0 | 20055 | 0 |
+
+- The last row's other differences are the static fields, because that reference used the defaults. Its 0
+  flag differences show `mkvdovi`'s scene starts equal `dovi_tool`'s.
+- All 97 flag differences are extra flags in the app, 1 to 4 frames after a reference scene start, with L1
+  unchanged. None of the 83 reference starts lacks a flag.
+- MediaInfo reports Display P3, 0.0001/1000 nits, MaxCLL 108 and MaxFALL 53, each with source Stream.
+
+**App, switch on against off.** Only L6 minimum, MaxCLL, MaxFALL, L9 and `source_min_pq` differ, plus the CRC,
+on all 7030 common frames. L1 and the flags have 0 differences. Off equals the DV3.1 RPUs on 6115 frames.
+
+| Field | On | Off |
+|---|---|---|
+| L6 max/min/MaxCLL/MaxFALL | 1000/1/108/53 | 1000/50/1000/400 |
+| Source range | 7..3079 | 62..3079 |
+| L9 primaries | 0 (P3) | 2 (BT.2020) |
+
+**Owner A/B.** Sighted, three rounds in the order off, on, off, from 0:00 and then a seek to 01:06. The
+`DV_INJECT` line confirms S1E2, the 8.1 conversion and the side for each. The first round's line had left the
+256 KiB log buffer, so its start was repeated to record it. The owner: "I did not see large differences between
+these two." The Dolby Vision picture mode was not recorded. A null shows no visible effect on this title and TV.
+It cannot show the values are right; the comparison above does that.
+
+**Owner observation, not part of the gate.** Around 04:10 to 04:25 the owner saw green seem to bleed into faces
+and a building wall in an outdoor scene. The source shows the same tilt before any Dolby Vision step. In 11
+sampled frames, in linear BT.2020, a white shirt sits 0.016 to 0.020 above D65 in `y`, and green is 1.40 to 1.43
+times the mean of red and blue across the frame, against 1.05 to 1.23 in two other scenes. The scene's RPU has the
+standard matrices and equals `mkvdovi`. This fits light from the grass or the grade; the file cannot show which.
+Whether the TV's Dolby Vision mode strengthens it against HDR10 was not tested: the owner chose not to run
+`debug.nuvio.dv_hdr10plus 0`.
+
+**Limits of this evidence.**
+
+- The reference comes from the first 1.5 GiB of S01E02, remuxed, 20055 frames. It covers every compared
+  frame. No full file ran through `mkvdovi`, and Oracle holds no full copy.
+- The comparison covers playback from 0:00. Post-seek RPUs were not compared with `dovi_tool`.
+- The known differences from `mkvdovi` in `DESIGN.md` 2.4 still apply to other titles.
+- The `DV_INJECT` files in the first Oracle bundle held tool help text. The values above come from the session
+  logcats and the A/B rounds.
+
+The session followed M2: snapshot `20261031-2029-dv34-sei`, both switches cleared. `shield_restore.sh` ended
+with exit 3 on one item: `system/nv_ir_non_audio_device_connected` went from 1 to 0 during the session. The
+session never wrote it, so it stays as the Shield set it. The logcat prune list was put back by hand, and
+`adb logcat -p` read `~! ~1000/!` afterwards.
+
 ## 2026-10-31: U1.5 sync onto upstream 1.1.0-nt.9 (PR #33)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `2b51aba36` onto `d9039df69`: 271 upstream commits behind, 262 fork
