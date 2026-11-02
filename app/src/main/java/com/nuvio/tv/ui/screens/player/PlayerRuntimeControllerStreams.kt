@@ -1882,6 +1882,7 @@ internal fun PlayerRuntimeController.switchToEpisodeStream(
     persistSelectedStreamForReuse(stream = stream, url = playbackUrl, headers = playbackHeaders)
     // Until the new file loads, MPV keeps reporting the old one, which is often at its end.
     hasRenderedFirstFrame = false
+    playbackStartedStage.arm()
     mpvView?.markMediaRequested(playbackUrl)
     endDetectionArmed = false
     mpvEofSeenClear = false
