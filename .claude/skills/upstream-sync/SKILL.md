@@ -43,6 +43,9 @@ issue (label `upstream-drift`, kept current by `.github/workflows/upstream-drift
   - dropping a commit;
   - any setting decision the owner rule does not settle;
   - the push in step 8.
+- **Ending a turn:** the last line follows `~/.claude/CLAUDE.md` *Ending a turn*. Step 7's CI wait ends with
+  `WAITING: CI on the sync candidate. Nothing for you to do; I continue when it finishes.`; every stop above and
+  the publish question end with `YOUR TURN: <the answer needed>`; step 10 ends with `DONE`.
 - **Never work around a block.** Never force-push without a lease, never push a SHA that CI has not built, and never edit the drift issue by hand.
 
 ## Check before you build
