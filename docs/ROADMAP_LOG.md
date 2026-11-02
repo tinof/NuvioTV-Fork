@@ -10,6 +10,29 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-02: U1.9 CI is the gate (PR #36)
+
+- [U1.9][desk] CI is the gate: Checks runs on pushed sync candidates with an upstream baseline job and a
+  compare job that fails on new or incomplete results; `shield_build_install.sh` runs `protected-apk` on every
+  local build. Gate: a scratch candidate with an injected failure, and one with a crashed test run, fail.
+
+Resolution: passed on three scratch candidates dispatched on 2026-10-31, before the rebase onto PRs #34 and #35
+(the rebase did not change the compare code):
+
+| Candidate | Run | Compare with upstream |
+|---|---|---|
+| `sync/ci-trial-clean` | 41249304077 | success |
+| `sync/ci-trial-inject` | 41249306321 | failure: `new failure: com.nuvio.tv.CiTrialInjectedTest.injectedFailure` |
+| `sync/ci-trial-crash` | 41249308132 | failure: the test JVM crashed, no JUnit XML, Gradle exited 1 with no failed test |
+
+The same PR landed U1.12 (`sync.py` `dry-run`, `due`, `official-preview`, `judgement`, `docs-entry`, the test heap
+hint, the rebase in one subagent; 289 script tests pass) and the U1.15 triage workflow. Both keep their lines with
+the gate pending: U1.12 needs the next sync to use the tools, and U1.15 needs a passing blind test and a shadow run.
+
+Review finding F1 (Codex, NEEDS-HUMAN): `compare_results` lets a candidate pass with up to 5 % of upstream's test
+classes missing, recorded only as a note. With 99 of 100 classes the comparison returned no problem. The test
+`test_one_upstream_class_absent_from_the_candidate_is_only_a_note` asserts that tolerance, so the owner decides.
+
 ## 2026-11-02: U1.14 Behavioural tests for fork attachments to upstream paths (PR #35)
 
 - [U1.14][desk] Behavioural tests for how fork code attaches to upstream paths: the IEC route key on a live
