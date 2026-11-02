@@ -10,6 +10,29 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-02: U1.14 Behavioural tests for fork attachments to upstream paths (PR #35)
+
+- [U1.14][desk] Behavioural tests for how fork code attaches to upstream paths: the IEC route key on a live
+  source switch, `swapRoom` through the public entry points, and Tracks-after-Clusters. Gate: each test fails
+  when its case is reverted.
+
+Resolution: passed. Each test went red when its case was reverted, and `:app:testFullDebugUnitTest` passed with
+7,784 tests and 0 failures after the rebase onto PR #34.
+
+- `SinkOutputRouteKeyTest`: the sink's route-key lambda moved out of `initializePlayer` into
+  `sinkOutputRouteKey()`. A url captured at build failed two of the four tests: a pin for B after a switch from
+  A to B gave the Bluetooth key, and a pin of the other stream gave the HDMI key.
+- `SwapRoomEntryPointsTest`: `swapRoom` is now a required argument of the memory governor's rule functions, so a
+  production call without it does not compile. Passing a literal `true` at `pressure()`, `allow()` and
+  `swapAllows()` failed all three tests; dropping the argument failed `compileFullDebugKotlin`. Upstream's tests
+  keep their old call shapes through test-source extensions and stay unchanged.
+- `MatroskaRpuInjectionTest`: a reader that follows `RESULT_SEEK` as Media3 does, over a fixture with Tracks
+  behind two Clusters. Three temporary extractor changes each turned it red: no detour, the Cluster position
+  set after the detour check, and the detour clearing `readingFromStart`.
+
+Not covered: the one `initializePlayer` call line, which no unit test reaches. The fixture exposed DV3.5, an
+older frame 0 loss on a seek back; it is a separate step.
+
 ## 2026-11-01: DV3.4 HDR10+ static metadata from the stream's SEI (PR #37)
 
 - [DV3.4][device][owner][new-build] HDR10+ static metadata from the stream's SEI. The DV3.1 title states no
