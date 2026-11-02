@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-02 | U1.14 closed: behavioural tests now cover the IEC route key on a live source switch, `swapRoom` at every memory governor entry point (now a required argument), and a real-extractor file with Tracks behind the Clusters; each went red when its case was reverted. | U1 | [log](docs/ROADMAP_LOG.md), PR #35 |
 | 2026-11-01 | DV3.4 closed: an HDR10+ title's static metadata comes from its SEI, its RPUs equal real `mkvdovi` on all 7231 compared frames, and the owner saw no large difference on the TV. | DV3 | [log](docs/ROADMAP_LOG.md), PR #37 |
 | 2026-10-31 | Sync cost study: 136 min on 10-31, spent on reading and hand execution, not conflicts; syncs now follow settled batches, at least weekly; U1.10 held; U1.12 to U1.15 added. | U1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-10-31 | U1.5: rebased onto upstream 1.1.0-nt.9 with no drop; both protected features kept every line; `mdarcy` keeps refusing upstream's new small-box swap room; a new base commit gives the unit test JVM 1 GB of heap, because upstream's suite alone reaches 488 of 512 MB. | U1, Q5 | [log](docs/ROADMAP_LOG.md), PR #33 |
@@ -686,9 +687,6 @@ because a wrong passthrough path is invisible until measured.
     per locale, with a new key instead of overriding `audio_tunneled_sub` in 38 locales. Move the fork README to
     `.github/README.md`. Gate: an identical tree for the fold, an identical key-to-value map per locale for the
     strings, and one local APK build. Needs: DV3.4.
-  - [U1.14][desk] Behavioural tests for how fork code attaches to upstream paths: the IEC route key on a live
-    source switch, `swapRoom` through the public entry points, and Tracks-after-Clusters. Gate: each test fails
-    when its case is reverted.
   - [U1.15][desk] Classify by exception: one resolver, up to 3 readers with an attachment checklist, and a short
     critic whose findings count. It replaces per-commit classify only after a blind test on frozen 2026-10-31
     state finds all 5 known adapts, and after one real sync run in shadow. Gate: that eval and that shadow run.
