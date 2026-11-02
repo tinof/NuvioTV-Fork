@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-02 | U1.9 closed: CI on a pushed `sync/*` candidate runs upstream's baseline and fails on a new failure or an incomplete run; local builds run `protected-apk` with library origins. U1.12 tooling and the U1.15 triage workflow landed with their gates pending on the next sync. | U1 | [log](docs/ROADMAP_LOG.md), PR #36 |
 | 2026-11-02 | U1.14 closed: behavioural tests now cover the IEC route key on a live source switch, `swapRoom` at every memory governor entry point (now a required argument), and a real-extractor file with Tracks behind the Clusters; each went red when its case was reverted. | U1 | [log](docs/ROADMAP_LOG.md), PR #35 |
 | 2026-11-01 | DV3.4 closed: an HDR10+ title's static metadata comes from its SEI, its RPUs equal real `mkvdovi` on all 7231 compared frames, and the owner saw no large difference on the TV. | DV3 | [log](docs/ROADMAP_LOG.md), PR #37 |
 | 2026-10-31 | Sync cost study: 136 min on 10-31, spent on reading and hand execution, not conflicts; syncs now follow settled batches, at least weekly; U1.10 held; U1.12 to U1.15 added. | U1 | [log](docs/ROADMAP_LOG.md) |
@@ -660,9 +661,6 @@ because a wrong passthrough path is invisible until measured.
     tests and a replay of the 2026-10-27 sync pass; then the default branch switches and `main` moves to the
     base, each with the owner's go. Landed: PR #25; gate passed 2026-10-28 (default branch `perf/shield-pass`,
     `main` at upstream `2b51aba36`, drift dry run green, preflight exits 3).
-  - [U1.9][desk] CI is the gate: Checks runs on pushed sync candidates with an upstream baseline job and a
-    compare job that fails on new or incomplete results; `shield_build_install.sh` runs `protected-apk` on every
-    local build. Gate: a scratch candidate with an injected failure, and one with a crashed test run, fail.
   - [U1.10][desk][owner] Held since 2026-10-31: the light path fired on 0 of 4 syncs, so this run would almost
     never start. Redefine it after U1.9 and U1.15 prove out, as a run that prepares every settled batch for the
     owner's tap. Until then, as first planned: nightly cloud run at 02:07 Helsinki time: light syncs only, pushed as
@@ -680,7 +678,7 @@ because a wrong passthrough path is invisible until measured.
   in conflicts. Steps:
   - [U1.12][desk] Tooling: `sync.py dry-run`, `due`, `official-preview`, `judgement` and `docs-entry`, a heap hint
     in `test-failures`, the rebase in one fresh subagent, and the docs follow-up on gate-skip paths. Gate: the
-    script tests, and the next sync uses them.
+    script tests, and the next sync uses them. Landed: PR #36; gate pending.
   - [U1.13][desk][owner] Clean the stack inside the next sync's rebase, after DV3.4 merges, so nothing is rewritten
     twice. Fold the superseded RPU dump chain into its replacement (the owner's narrow exception to one finding
     per commit, for superseded findings only, with an archive tag). Move Shield strings to `strings_shield.xml`
@@ -691,7 +689,8 @@ because a wrong passthrough path is invisible until measured.
     critic whose findings count. It replaces per-commit classify only after a blind test on frozen 2026-10-31
     state finds all 5 known adapts, and after one real sync run in shadow. Gate: that eval and that shadow run.
     The first eval failed on 2026-11-01: 4 of 5, 1.09M tokens and 30 min against 1.38M and 25, so per-commit classify
-    stays the default. A changed prompt needs a new blind test on the frozen 2026-10-26 state.
+    stays the default. A changed prompt needs a new blind test on the frozen 2026-10-26 state. Landed: PR #36;
+    gate pending.
 
 ## Docs
 
