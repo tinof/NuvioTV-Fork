@@ -2420,6 +2420,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 "userPaused=$userPausedManually"
                         )
                         _uiState.update { it.copy(isPlaying = isPlaying) }
+                        onPlaybackStartedIsPlaying(isPlaying)
                         if (isPlaying) {
                             userPausedManually = false
                             dropPausedThumbnail()
@@ -3629,6 +3630,7 @@ internal fun PlayerRuntimeController.resetLoadingOverlayForNewStream() {
         progress = null
     )
     hasRenderedFirstFrame = false
+    playbackStartedStage.arm()
     playerSession.streamStarting()
     endDetectionArmed = false
     mpvEofSeenClear = false
@@ -5049,6 +5051,7 @@ private fun PlayerRuntimeController.recordFirstFrameDiagnostics(
             "host=${currentStreamUrl.safeHost()} engine=$currentInternalPlayerEngine"
     playbackAnalyticsDiagnostics.recordRawEventLine(playbackStartupLine)
     TtffTrace.mirror(playbackStartupLine)
+    onPlaybackStartedFirstFrame()
     TtffTrace.mirror(
         "PLAYBACK_TUNNELING: requested=${playerSettings.effectiveTunnelingEnabled} applied=${player.isTunnelingEnabled}"
     )

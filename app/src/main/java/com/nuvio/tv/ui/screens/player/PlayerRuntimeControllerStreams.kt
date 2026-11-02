@@ -1946,6 +1946,7 @@ internal fun PlayerRuntimeController.switchToEpisodeStream(
     persistStreamRouteState(stream, isTorrent = false)
     // Until the new file loads, MPV keeps reporting the old one, which is often at its end.
     hasRenderedFirstFrame = false
+    playbackStartedStage.arm()
     mpvView?.markMediaRequested(playbackUrl)
     endDetectionArmed = false
     mpvEofSeenClear = false
