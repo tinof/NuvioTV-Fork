@@ -691,6 +691,9 @@ because a wrong passthrough path is invisible until measured.
     The first eval failed on 2026-11-01: 4 of 5, 1.09M tokens and 30 min against 1.38M and 25, so per-commit classify
     stays the default. A changed prompt needs a new blind test on the frozen 2026-10-26 state. Landed: PR #36;
     gate pending.
+  - [U1.16][desk] The compare step fails on any upstream test class the candidate did not run, unless the sync
+    names it as removed or renamed. Today up to 5 % may be missing with only a note (review finding F1 on PR #36:
+    99 of 100 classes passed). Gate: a run with one unexplained missing class fails, and a named removal passes.
 
 ## Docs
 
