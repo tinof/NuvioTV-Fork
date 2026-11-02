@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-02 | M1.1 closed: ExoPlayer logs `PLAYBACK_STARTED` once per playback, at the first real play after the first frame, with click and first-frame gaps, so a start held by AFR shows its wait. | M1 | [log](docs/ROADMAP_LOG.md), PR #40 |
 | 2026-11-02 | U1.9 closed: CI on a pushed `sync/*` candidate runs upstream's baseline and fails on a new failure or an incomplete run; local builds run `protected-apk` with library origins. U1.12 tooling and the U1.15 triage workflow landed with their gates pending on the next sync. | U1 | [log](docs/ROADMAP_LOG.md), PR #36 |
 | 2026-11-02 | U1.14 closed: behavioural tests now cover the IEC route key on a live source switch, `swapRoom` at every memory governor entry point (now a required argument), and a real-extractor file with Tracks behind the Clusters; each went red when its case was reverted. | U1 | [log](docs/ROADMAP_LOG.md), PR #35 |
 | 2026-11-01 | DV3.4 closed: an HDR10+ title's static metadata comes from its SEI, its RPUs equal real `mkvdovi` on all 7231 compared frames, and the owner saw no large difference on the TV. | DV3 | [log](docs/ROADMAP_LOG.md), PR #37 |
@@ -517,12 +518,11 @@ because a wrong passthrough path is invisible until measured.
 
 ### M1: measurement protocol and baselines
 
-- **Status:** Open.
+- **Status:** Open. M1.1 done (`PLAYBACK_STARTED` stage, see the log); the measurement script, the benchmark
+  build and the baselines (M1.2–M1.4) are open.
 - `scripts/perf_baseline.py` compiles the target (`:90`), and the macrobenchmark accepts only the v2 test
   packages (`NuvioNavigationBenchmark.kt:28`) at about 60 Hz (`:39-43`). Neither fits the daily apps or a
   24/25 Hz UI.
-- [M1.1][desk] Log a `PLAYBACK_STARTED` stage with the time since the click, next to the first frame, so the
-  playback baseline measures what the viewer sees. Gate: unit test on the stage helper.
 - [M1.2][desk][device] Write `scripts/shield_measure.py`. It takes `--serial` and wraps every adb call in a
   timeout. It runs D-pad journeys with `input keyevent` (Home row, rows down, sidebar, details, settings) and
   reads `dumpsys gfxinfo <pkg> reset` / `framestats`, `am start -W` and a JankStats summary. For playback it
