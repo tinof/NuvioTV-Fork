@@ -10,6 +10,20 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-02: M1.1 PLAYBACK_STARTED stage (PR #40)
+
+- [M1.1][desk] Log a `PLAYBACK_STARTED` stage with the time since the click, next to the first frame, so the
+  playback baseline measures what the viewer sees. Gate: unit test on the stage helper.
+
+Resolution: `PlaybackStartedStage` logs `PLAYBACK_STARTED: clickToPlayingMs=… firstFrameToPlayingMs=…
+afrTrackHeld=… pausedAtFirstFrame=… seq=…` to logcat tag `TTFF_STAGE` and the playback report buffer, once
+per playback session, at the first ExoPlayer `isPlaying` after the first frame. The first frame alone hides
+the track-AFR hold (1.8–2.7 s, S1). A later session on the same player (next episode) reports
+`clickToPlayingMs=-1`, because the click clock does not re-arm. ExoPlayer only, by the owner's scope; mpv is
+not wired. Evidence: `PlaybackStartedStageTest` (13 cases) and the full gate
+`:app:testFullDebugUnitTest` (7797 tests, 0 failures). Review: Gemini (substitute for Codex, which was at
+its usage limit), LGTM.
+
 ## 2026-11-02: U1.9 CI is the gate (PR #36)
 
 - [U1.9][desk] CI is the gate: Checks runs on pushed sync candidates with an upstream baseline job and a
