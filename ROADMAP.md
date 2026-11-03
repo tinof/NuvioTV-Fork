@@ -93,12 +93,11 @@ Steps that need a decision or a reading from the owner. Other steps of the same 
 
 - **UI refresh rate (S4.1).** 24/25 Hz against 50/60 Hz for the UI, decided from the M1 A/B on the Home
   journeys. It trades UI fluidity against mode switches at every start.
-- **AVR readings (Q1.2, Q1.3).** The Atmos, DTS:X and E-AC3 Atmos indicators during the passthrough
-  A/Bs, with the TV and AVR models recorded.
-- **`hbr_iec` default (Q1.2).** A listening A/B of the platform path against the fork's IEC61937 packer.
+- **AAC check on the packer route (Q1.2).** Before `fix/Q1.2-packer-default` merges: play an AAC title on
+  that build and read DTS-HD MSTR on the HT-A9.
 - **Hot-Stop session (R2.4).** The owner must be able to power-cycle the Shield during the session.
-- **Defaults after measuring (Q2.5, R2.4).** The AFR settle hold (600 or 1200 ms) and whether "keep the
-  content frame rate after playback" becomes the Nvidia default.
+- **Default after measuring (R2.4).** Whether "keep the content frame rate after playback" becomes the
+  Nvidia default.
 
 ## Progress log
 
@@ -106,6 +105,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-03 | Q1.3 closed: the HT-A9 shows Dolby Atmos for E-AC3 JOC passthrough. Q1.2 and Q2.5 readings done: the packer and a 600 ms settle hold become the defaults on their own branches; Q2.6 and Q2.7 added. | Q1, Q2 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-03 | U1.1 dropped by the owner (asking the upstream maintainer is not relevant); the "Merge into `main`" owner entry removed, since `main` mirrors upstream after U1.7. | U1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-03 | U1.5: rebased onto upstream 1.1.0-nt.9.2 with no drop; both protected features kept every line; upstream's new thumbnail swap lift reads `thumb_swap_room`, and `PLAYBACK_STARTED`'s `pausedAtFirstFrame` ignores a thumbnails hold. | U1, M1 | [log](docs/ROADMAP_LOG.md), PR #41 |
 | 2026-11-02 | M1.1 closed: ExoPlayer logs `PLAYBACK_STARTED` once per playback, at the first real play after the first frame, with click and first-frame gaps, so a start held by AFR shows its wait. | M1 | [log](docs/ROADMAP_LOG.md), PR #40 |
@@ -256,8 +256,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### Q1: audio passthrough correctness
 
-- **Status:** Partial. TrueHD reached the AVR as direct passthrough with 0 underruns on the HUD. The
-  `hbr_iec` default was never A/B tested and no AVR indicator was recorded. Findings A1–A3, A6, D2, D3.
+- **Status:** Partial. The AVR readings and the `hbr_iec` A/B ran on 2026-11-03 (LG OLED C9, Sony HT-A9;
+  see the log): the packer becomes the default. Findings A1–A3, A6, D2, D3.
 - [Q1.1][desk] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
   skipped and the first cluster time in `MKV_RESYNC` (A2); the delta and time since the last seek on
   `UnexpectedDiscontinuityException` (A3). Gate: tests on the log helpers.
@@ -265,8 +265,8 @@ because a wrong passthrough path is invisible until measured.
   (tunneling off), each with a seek and a pause: upstream 1.1.0-nt.7 keeps the TrueHD stream alive through
   them on the packer path only (3aeb1e180). Record the AVR indicator and whether it relocks, `HBR active
   payload=` against `HBR DIRECT`, `iec_keepalive_armed`, and `restartIfDisabled`. Gate: readings in the log; default decided. Needs: Q1.1.
-- [Q1.3][device][owner] E-AC3 Atmos: play an E-AC3 JOC stream and record the AVR indicator. Gate: reading in
-  the log.
+  Readings done 2026-11-03 and the packer chosen; the change is on `fix/Q1.2-packer-default`, which merges
+  after an AAC title plays as DTS-HD MSTR on it.
 - [Q1.4][device] `hbr_buffer_scale` 1 against 2 over 10 seeks: time from `SEEK_READY` to the first advance of
   the AudioTrack playback head (logcat), and underruns. Gate: numbers in the log; the ×2 cap kept or dropped.
 - [Q1.5][device][owner] TrueHD stress: 20 seeks and 10 pause/resume cycles, then switch the AVR input away and
@@ -292,7 +292,14 @@ because a wrong passthrough path is invisible until measured.
   its own rate. Needs: Q2.1.
 - [Q2.5][device][owner] Settle hold 600 against 1200 ms, three starts each of a TrueHD title whose rate
   differs from the UI mode. Gate: no AudioSink write errors, no `restartIfDisabled`, picture and sound locked;
-  default decided.
+  default decided. Readings done 2026-11-03 on a 25 fps DTS-HD MA title (no TrueHD title off 23.976 was at
+  hand); 600 ms chosen, the change is on `fix/Q2.5-settle-600`.
+- [Q2.6][device][new-build] A 24.000 fps title stays at 23.976 Hz: on 2026-11-03 AFR picked 24.000002 Hz,
+  then logged "stabilized at 23.976025Hz (modeId=21)" and played there. Find whether the Shield refused the
+  mode or the plan lost it. Gate: the cause in the log; a fix step added if the app is at fault.
+- [Q2.7][desk] The preflight "AFR settle complete" line logs 0.6–1.2 s after `PLAYBACK_STARTED`, so the hold may
+  not hold the start. Read `startPlaybackThroughAfrGates` and say what the hold delays. Gate: the answer in the
+  log, with a unit test if the hold is not applied.
 
 ### Q3: frame pacing and display-listener leak
 
