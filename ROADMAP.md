@@ -93,8 +93,6 @@ Steps that need a decision or a reading from the owner. Other steps of the same 
 
 - **UI refresh rate (S4.1).** 24/25 Hz against 50/60 Hz for the UI, decided from the M1 A/B on the Home
   journeys. It trades UI fluidity against mode switches at every start.
-- **AAC check on the packer route (Q1.2).** Before `fix/Q1.2-packer-default` merges: play an AAC title on
-  that build and read DTS-HD MSTR on the HT-A9.
 - **Hot-Stop session (R2.4).** The owner must be able to power-cycle the Shield during the session.
 - **Default after measuring (R2.4).** Whether "keep the content frame rate after playback" becomes the
   Nvidia default.
@@ -265,8 +263,8 @@ because a wrong passthrough path is invisible until measured.
   (tunneling off), each with a seek and a pause: upstream 1.1.0-nt.7 keeps the TrueHD stream alive through
   them on the packer path only (3aeb1e180). Record the AVR indicator and whether it relocks, `HBR active
   payload=` against `HBR DIRECT`, `iec_keepalive_armed`, and `restartIfDisabled`. Gate: readings in the log; default decided. Needs: Q1.1.
-  Readings done 2026-11-03 and the packer chosen; the change is on `fix/Q1.2-packer-default`, which merges
-  after an AAC title plays as DTS-HD MSTR on it.
+  Readings done 2026-11-03 and the packer chosen; the change is on `fix/Q1.2-packer-default`, and an AAC
+  title played as DTS-HD MA through the packer on that build.
 - [Q1.4][device] `hbr_buffer_scale` 1 against 2 over 10 seeks: time from `SEEK_READY` to the first advance of
   the AudioTrack playback head (logcat), and underruns. Gate: numbers in the log; the ×2 cap kept or dropped.
 - [Q1.5][device][owner] TrueHD stress: 20 seeks and 10 pause/resume cycles, then switch the AVR input away and
