@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-03 | Q1.2 closed: "System passthrough" reads as off unless saved, so TrueHD and DTS-HD take the IEC61937 packer, which played clean where the platform path restarted DTS-HD after a pause. | Q1 | [log](docs/ROADMAP_LOG.md), PR #42 |
 | 2026-11-03 | Q1.3 closed: the HT-A9 shows Dolby Atmos for E-AC3 JOC passthrough. Q1.2 and Q2.5 readings done: the packer and a 600 ms settle hold become the defaults on their own branches; Q2.6 and Q2.7 added. | Q1, Q2 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-03 | U1.1 dropped by the owner (asking the upstream maintainer is not relevant); the "Merge into `main`" owner entry removed, since `main` mirrors upstream after U1.7. | U1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-03 | U1.5: rebased onto upstream 1.1.0-nt.9.2 with no drop; both protected features kept every line; upstream's new thumbnail swap lift reads `thumb_swap_room`, and `PLAYBACK_STARTED`'s `pausedAtFirstFrame` ignores a thumbnails hold. | U1, M1 | [log](docs/ROADMAP_LOG.md), PR #41 |
@@ -254,17 +255,11 @@ because a wrong passthrough path is invisible until measured.
 
 ### Q1: audio passthrough correctness
 
-- **Status:** Partial. The AVR readings and the `hbr_iec` A/B ran on 2026-11-03 (LG OLED C9, Sony HT-A9;
-  see the log): the packer becomes the default. Findings A1–A3, A6, D2, D3.
+- **Status:** Partial. Q1.2 and Q1.3 are done: the IEC61937 packer is the TrueHD/DTS-HD default (PR #42, see
+  the log). Q1.1 and Q1.4–Q1.7 are open. Findings A1–A3, A6, D2, D3.
 - [Q1.1][desk] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
   skipped and the first cluster time in `MKV_RESYNC` (A2); the delta and time since the last seek on
   `UnexpectedDiscontinuityException` (A3). Gate: tests on the log helpers.
-- [Q1.2][device][owner][new-build] `hbr_iec` 0 against 1 on a TrueHD Atmos title and a DTS-HD MA title
-  (tunneling off), each with a seek and a pause: upstream 1.1.0-nt.7 keeps the TrueHD stream alive through
-  them on the packer path only (3aeb1e180). Record the AVR indicator and whether it relocks, `HBR active
-  payload=` against `HBR DIRECT`, `iec_keepalive_armed`, and `restartIfDisabled`. Gate: readings in the log; default decided. Needs: Q1.1.
-  Readings done 2026-11-03 and the packer chosen; the change is on `fix/Q1.2-packer-default`, and an AAC
-  title played as DTS-HD MA through the packer on that build.
 - [Q1.4][device] `hbr_buffer_scale` 1 against 2 over 10 seeks: time from `SEEK_READY` to the first advance of
   the AudioTrack playback head (logcat), and underruns. Gate: numbers in the log; the ×2 cap kept or dropped.
 - [Q1.5][device][owner] TrueHD stress: 20 seeks and 10 pause/resume cycles, then switch the AVR input away and
