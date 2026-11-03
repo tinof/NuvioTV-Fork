@@ -10,6 +10,48 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-03: Q1.2, Q1.3 and Q2.5 device session
+
+Chain: Shield (HEAD 36dcd7046 debug build, 1.1.0-nt.9.2) → Sony HT-A9 → LG OLED C9; UI at 3840x2160 23.976 Hz
+(mode 21); ExoPlayer, tunnelling off. Snapshot and logcat: `~/shield-snapshots/20261103-1131-q1-q2-session/`;
+the restore ended clean (drift 0).
+
+- [Q1.3][device][owner] E-AC3 Atmos: play an E-AC3 JOC stream and record the AVR indicator. Gate: reading in
+  the log.
+  - **Done.** E-AC-3 passthrough, 6 ch, 48 kHz (`AUDIO_START … Passthrough (E-AC-3)`; the HAL logs "treat the
+    format EAC3_JOC as EAC3"). The HT-A9 showed **Dolby Atmos**; the owner heard no fault. The HT-A9 shows the
+    same "Dolby Atmos" for TrueHD Atmos, so its indicator cannot tell the two apart.
+- [Q1.2] `hbr_iec` 0 against 1, each arm with one seek and at least one pause:
+
+  | Title | `hbr_iec` | Path in logcat | HT-A9 | Seek ready | Pause | `restartIfDisabled` | Owner |
+  |---|---|---|---|---|---|---|---|
+  | TrueHD Atmos, 23.976 | 0 | `HBR RAW` (platform) | Dolby Atmos | 86 ms | 2, clean | 0 | fine |
+  | TrueHD Atmos, 23.976 | 1 | `HBR active payload=IEC_BURST` | Dolby Atmos | 323 ms | 2, keep-alive filler up to 1487 bursts | 0 | fine |
+  | DTS-HD MA, 25 fps | 1 | `HBR active payload=IEC_BURST` | DTS-HD MSTR | 94 ms | 2, clean | 0 | fine |
+  | DTS-HD MA, 25 fps | 0 | `HBR RAW` (platform) | DTS-HD MSTR | 43 ms | stutter on resume | 3 (start, seek, resume) | stutter |
+
+  - Packer: 0 underruns on every `iec_health` line. Keep-alive arms for TrueHD only; DTS-HD keeps about 1 s queued
+    against about 0.25 s for TrueHD. On the platform path the DTS-HD audio ran on 224 ms after the pause, and the
+    HAL reconfigured about 0.8 s after the resume.
+  - **Decision (owner):** the packer becomes the default ("System passthrough" off unless saved), on
+    `fix/Q1.2-packer-default`. It merges after an AAC title plays as DTS-HD MSTR on that build, because the
+    protected AAC→DTS-HD MA transcode then takes the packer route (part of Q6.11).
+  - Q1.1's log renames did not land first; `HBR RAW` is the line Q1.1 renames to `HBR DIRECT`.
+- [Q2.5] Settle hold 600 against 1200 ms, three starts each. No TrueHD title off 23.976 was at hand, so
+  the 25 fps DTS-HD MA title (H.264 1080p) stood in, on the packer path. Each start switched 23.976 → 25 Hz;
+  Android reported the mode settled in 846–965 ms.
+
+  | Hold | Click to playing (ms) | AudioSink errors | `restartIfDisabled` | HT-A9 |
+  |---|---|---|---|---|
+  | 600 | 3453, 3524, 3378 | 0 | 0 | DTS-HD MSTR ×3 |
+  | 1200 | 3694, 4216, 4554 | 0 | 0 | DTS-HD MSTR ×3 |
+
+  - With both holds the LG C9 showed no picture for 2–4 s after the switch while sound played: the TV relocks
+    HDMI after Android reports the mode settled. The owner does not count it as a fault.
+  - **Decision (owner):** 600 ms on Nvidia, on `fix/Q2.5-settle-600`.
+- Side findings, now Q2.6 and Q2.7: a 24.000 fps E-AC3 title stayed at mode 21 (23.976 Hz) after AFR asked for
+  24 Hz; and the preflight "AFR settle complete" line logs after `PLAYBACK_STARTED`.
+
 ## 2026-11-03: U1.1 dropped, merge-into-main entry removed (owner)
 
 - [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
