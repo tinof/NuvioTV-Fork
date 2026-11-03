@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.local
 
+import com.nuvio.tv.ui.screens.player.hbrIecEnabled
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -7,10 +8,17 @@ import org.junit.Test
 class SystemPassthroughDefaultTest {
 
     @Test
-    fun `nvidia starts with system passthrough on, other boxes keep it off`() {
-        assertTrue(defaultUseSystemPassthrough("NVIDIA"))
-        assertTrue(defaultUseSystemPassthrough(" nvidia "))
-        assertFalse(defaultUseSystemPassthrough("Amlogic"))
-        assertFalse(defaultUseSystemPassthrough(null))
+    fun `unsaved settings take the packer for TrueHD and DTS-HD`() {
+        val settings = PlayerSettings()
+        assertFalse(settings.useSystemPassthrough)
+        assertTrue(
+            hbrIecEnabled(
+                switch = null,
+                useSystemPassthrough = settings.useSystemPassthrough,
+                forceOpticalPassthrough = false,
+                bluetoothForcePcm = false,
+                iecOff = false
+            )
+        )
     }
 }
