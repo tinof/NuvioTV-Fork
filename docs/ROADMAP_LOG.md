@@ -36,6 +36,10 @@ the restore ended clean (drift 0).
   - **Decision (owner):** the packer becomes the default ("System passthrough" off unless saved), on
     `fix/Q1.2-packer-default`. It merges after an AAC title plays as DTS-HD MSTR on that build, because the
     protected AAC→DTS-HD MA transcode then takes the packer route (part of Q6.11).
+  - **AAC check passed** on the `fix/Q1.2-packer-default` build (a61c9c99e), no debug switch set: an AAC title
+    (Blue Lights) went out as `HBR active payload=IEC_BURST mime=audio/vnd.dts.hd` at 192 kHz, 2 ch IEC; the
+    HT-A9 showed DTS-HD MA. 0 underruns, 0 `dtshdOverflows`, no `restartIfDisabled`, seek ready in 88 ms. The
+    owner has played many AAC titles this way without fault. Snapshot: `20261103-1303-q12-aac-check`.
   - Q1.1's log renames did not land first; `HBR RAW` is the line Q1.1 renames to `HBR DIRECT`.
 - [Q2.5] Settle hold 600 against 1200 ms, three starts each. No TrueHD title off 23.976 was at hand, so
   the 25 fps DTS-HD MA title (H.264 1080p) stood in, on the packer path. Each start switched 23.976 → 25 Hz;
