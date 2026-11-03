@@ -361,7 +361,7 @@ private fun PlayerRuntimeController.beginAfrSettleHold(player: ExoPlayer, userDe
  *    when the preflight actually changed the display mode, every start stands down
  *    while afrSettleHolding, so the A/V pipeline does not begin inside the HDMI mode
  *    transition. beginAfrSettleHold waits through AfrSettle with trackAfrSettleHoldMs
- *    as its minimum: 1.2 s on Nvidia from the stabilized switch, 2 s elsewhere from
+ *    as its minimum: 0.6 s on Nvidia from the stabilized switch, 2 s elsewhere from
  *    the request. debug.nuvio.afr_settle_ms overrides it, and the user's "Delay after
  *    refresh rate change" wins when longer. Then it waits for the HDMI audio link,
  *    capped at minimum + 3 s, and starts playback itself. No-switch starts are
