@@ -10,6 +10,20 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-03: Q1.2 `hbr_iec` default (PR #42)
+
+- [Q1.2][device][owner][new-build] `hbr_iec` 0 against 1 on a TrueHD Atmos title and a DTS-HD MA title
+  (tunneling off), each with a seek and a pause: upstream 1.1.0-nt.7 keeps the TrueHD stream alive through
+  them on the packer path only (3aeb1e180). Record the AVR indicator and whether it relocks, `HBR active
+  payload=` against `HBR DIRECT`, `iec_keepalive_armed`, and `restartIfDisabled`. Gate: readings in the log; default decided. Needs: Q1.1.
+
+- **Evidence:** the readings table and the AAC check in "Q1.2, Q1.3 and Q2.5 device session" below
+  (`~/shield-snapshots/20261103-1131-q1-q2-session/`, `20261103-1303-q12-aac-check/`); unit test
+  `SystemPassthroughDefaultTest`; full unit gate green (8107 tests).
+- **Resolution:** the owner chose the packer. "System passthrough" reads as off when nothing is saved, as
+  upstream has it; a saved choice and `debug.nuvio.hbr_iec` still win. Q1.1's log renames had not landed;
+  `HBR RAW` stood in for `HBR DIRECT`.
+
 ## 2026-11-03: Q1.2, Q1.3 and Q2.5 device session
 
 Chain: Shield (HEAD 36dcd7046 debug build, 1.1.0-nt.9.2) → Sony HT-A9 → LG OLED C9; UI at 3840x2160 23.976 Hz
