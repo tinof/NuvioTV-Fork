@@ -10,6 +10,50 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-03: U1.5 sync onto upstream 1.1.0-nt.9.2 (PR #41)
+
+- [U1.5][desk] Rebased `perf/shield-pass` from `105b247e4` onto `ccfd1d7b5`: 22 upstream commits behind, 304 fork
+  commits. The new tip is `0941cd2b8`, with 304 fork commits. Tags: `sync/2026-11-03/old-{perf,main,base}`.
+  `sync.py due` said `wait` (upstream quiet for 10 h); the owner synced anyway.
+
+**Classify (tier `fanout`, 9 analysts and a critic):** 5 files conflicted in the trial merge, one of them the protected
+`MatroskaExtractor.java`; 83 fork commits touched files upstream changed. Verdicts: 0 drops, 0 protected asks,
+8 keep-resolve, 1 keep-adapt, 74 keep-clean; 221 commits touched nothing upstream changed.
+
+**Dry-run (U1.12):** 9 predicted stops, 6 real. The protected `ff413586a`, `95422f7e4` and `71f5a813c` applied cleanly
+once `ed475941c` placed upstream's `DolbyVisionBaseLayerColor` import after the fork's imports.
+
+**Owner's decisions:** both went into the rebased commits.
+
+- `770b9c65d` (was `d6b53c406`, owner rule, keep the fork's value): upstream's `MemoryGovernor.afterHardwareClose`
+  (f28fb06c6) lifted a swap refusal without `swapRoom`. Its public overload now returns early when `swapRoomHardware`
+  is off, with a fourth `SwapRoomEntryPointsTest` case. On `mdarcy` the lift is off by default; it needs a low-RAM box,
+  so it never ran there after init.
+- `729cfbb39` (was `f12a8792d`): `pausedAtFirstFrame` reads `pausedByUser`. Upstream's 23ed72cfc made
+  `userPausedManually` true during a thumbnails hold too.
+
+**Evidence**
+
+- `verify`: 286 identical, 18 changed, 0 dropped, 0 new. Protected lines: aac-to-dts 45 commits, 5951 lines, 0 lost;
+  hlg-to-dv 99 commits, 14750 lines, 0 lost. Waived: `--allow-changed` on `PlayerRuntimeControllerPlaybackStarted.kt`
+  and `SwapRoomEntryPointsTest.kt`, the two owner decisions.
+- `judgement`: 8 paths differ from the mechanical merge, all declared resolutions.
+- APK: `protected-apk` passes for `libffmpegJNI.so` and `libnuvio_rpu.so`. The main checkout had no
+  `libnuvio_rpu.so.stamp`, so the library was rebuilt in the worktree (tree `3e8e2e9cb`).
+- Independent review: no fork hunk lost and no upstream change lost, by a per-file line-set comparison over the 64
+  files both sides changed. Its one finding was a wrong "default unchanged" note on `d6b53c406`, corrected above.
+- CI: `Checks` run 41541317062 green on `0941cd2b8`: no new failures against upstream's baseline, both runs complete.
+  Not run on the Shield.
+
+**Open, for the owner**
+
+- Upstream's 7abbc5ee3 adds its own colour helper (`DolbyVisionBaseLayerColor`) for Dolby Vision played as its HDR10
+  base layer. It does not overlap the fork's HDR10/HLG to Dolby Vision conversion, which runs only without a dvcC.
+- Upstream's ccfd1d7b5 can defer the player open behind the thumbnails screen. By reading, it is safe with the
+  track-AFR hold; it is not checked on the Shield.
+
+**Resolution:** the fork is level with upstream 1.1.0-nt.9.2, and `main` mirrors `ccfd1d7b5`.
+
 ## 2026-11-02: M1.1 PLAYBACK_STARTED stage (PR #40)
 
 - [M1.1][desk] Log a `PLAYBACK_STARTED` stage with the time since the click, next to the first frame, so the
