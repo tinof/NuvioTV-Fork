@@ -9,11 +9,14 @@ redirection is refused: the scripts filter on the host. Hooks in the state:
 - watchdog_after_home: HOME also logs a Watchdog line.
 - foreground_after: the foreground becomes this package after the first `dumpsys activity activities`.
 - stderr_serial: every shell call also prints a warning naming the serial on stderr, as adb can.
+For shield_measure.py: `input keyevent` appends to keys and the lines in lines_on_key[<key>] to the log;
+running lists the packages `pidof` finds; gfxinfo and framestats are the dumpsys texts.
 """
 
 import hashlib
 import json
 import os
+import re
 import shlex
 import sys
 import time
@@ -80,8 +83,13 @@ def shell(state, words):
             "ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)",
             f"    mResumedActivity: ActivityRecord{{24df0e6 u0 {state['foreground']}/.Main t16048}}",
         ]
+        if state.get("dream"):
+            out[1] = ("    mResumedActivity: ActivityRecord{e1b54a6 u0 com.neilturner.aerialviews/"
+                      "android.service.dreams.DreamActivity t16233}")
         if state.get("foreground_after"):
             state["foreground"] = state.pop("foreground_after")
+    elif cmd == "pm" and words[1:3] == ["list", "packages"] and len(words) == 4 and not words[3].startswith("-"):
+        out = [f"package:{p}" for p in state["packages"] if words[3] in p]
     elif cmd == "pm" and words[1:3] == ["list", "packages"]:
         out = [f"package:{p} versionCode:{v}" for p, v in state["packages"].items()]
     elif cmd == "pm" and words[1] == "path":
@@ -117,6 +125,32 @@ def shell(state, words):
             state["display"]["active"] = state["home_mode"]
         if state.get("watchdog_after_home"):
             state.setdefault("logcat_lines", []).append("W Watchdog: *** WATCHDOG KILLING SYSTEM PROCESS: Blocked in handler")
+    elif cmd == "input" and words[1] == "keyevent":
+        state.setdefault("keys", []).append(words[2])
+        if words[2] == "KEYCODE_WAKEUP":
+            state.pop("dream", None)
+        for line in state.get("lines_on_key", {}).get(words[2], []):
+            state.setdefault("logcat_lines", []).append(line)
+    elif cmd == "screencap":
+        state["files"][words[2]] = "png"
+    elif cmd == "rm":
+        state["files"].pop(words[-1], None)
+    elif cmd == "date":
+        out = [state.get("date", "11-03_12:00:00")]
+    elif cmd == "pidof":
+        if words[1] not in state.get("running", []):
+            return "", 1
+        out = ["4242"]
+    elif cmd == "dumpsys" and words[1] == "gfxinfo":
+        out = [state.get("framestats" if words[3:] == ["framestats"] else "gfxinfo", "")] if words[3:] != ["reset"] else []
+    elif cmd == "cmd" and words[1:3] == ["package", "resolve-activity"]:
+        out = ["priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false", f"{words[-1]}/.MainActivity"]
+    elif cmd == "am" and words[1:3] == ["start", "-W"]:
+        state.setdefault("running", []).append(words[-1].split("/")[0])
+        out = ["Starting: Intent { cmp=" + words[-1] + " }", "Status: ok", "LaunchState: COLD",
+               "Activity: " + words[-1], "TotalTime: 1834", "WaitTime: 1840", "Complete"]
+    elif cmd == "am" and words[1] == "force-stop":
+        state["running"] = [p for p in state.get("running", []) if p != words[2]]
     else:
         return f"/system/bin/sh: {cmd}: not found\n", 127
     return "".join(line + "\n" for line in out), 0
@@ -139,6 +173,23 @@ def main(argv):
         with open(rest[2], "w") as handle:
             handle.write(state["files"][rest[1]])
         return 0
+    if rest[:1] == ["logcat"]:
+        # A live `adb logcat`: prints each new log line until the caller stops it. Like logcat, it
+        # refuses a -T time that kept its shell quotes.
+        if "-T" in rest and not re.match(r"^\d\d-\d\d \d\d:\d\d:\d\d\.\d+$", rest[rest.index("-T") + 1]):
+            sys.stderr.write(f"logcat: -T '{rest[rest.index('-T') + 1]}' not in time format.\n")
+            return 1
+        printed = 0
+        while True:
+            try:
+                lines = load().get("logcat_lines", [])
+            except ValueError:  # the state file is being rewritten
+                lines = []
+            for line in lines[printed:]:
+                sys.stdout.write(line + "\n")
+            printed = max(printed, len(lines))
+            sys.stdout.flush()
+            time.sleep(0.05)
     if rest[:1] != ["shell"]:
         sys.stderr.write(f"fake adb: unsupported {rest}\n")
         return 1
