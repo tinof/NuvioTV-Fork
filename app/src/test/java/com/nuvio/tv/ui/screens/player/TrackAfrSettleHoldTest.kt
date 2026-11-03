@@ -12,8 +12,8 @@ class TrackAfrSettleHoldTest {
     }
 
     @Test
-    fun `unset switch holds 1200 ms on nvidia`() {
-        assertEquals(1_200L, trackAfrSettleHoldMs(null, manufacturer = "NVIDIA"))
+    fun `unset switch holds 600 ms on nvidia`() {
+        assertEquals(600L, trackAfrSettleHoldMs(null, manufacturer = "NVIDIA"))
     }
 
     @Test
