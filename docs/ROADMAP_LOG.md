@@ -10,6 +10,16 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-03: U1.1 dropped, merge-into-main entry removed (owner)
+
+- [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
+  theme. Official NuvioTV (`NuvioMedia/NuvioTV`) merged 284 of its last 400 PRs and ysosrs merged 1 of 4, so
+  try one small every-device fix on official first, though 18 of 20 candidates need porting there. Gate: the
+  answer recorded in the log.
+- **Resolution:** dropped by the owner on 2026-11-03 as not relevant. U1.3 no longer needs it.
+- The "Merge into `main`" entry left the owner's list the same day. Since U1.7 (PR #25), `main` mirrors
+  upstream at the last synced base and `perf/shield-pass` is the default branch, so there is nothing to merge.
+
 ## 2026-11-03: U1.5 sync onto upstream 1.1.0-nt.9.2 (PR #41)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `105b247e4` onto `ccfd1d7b5`: 22 upstream commits behind, 304 fork
