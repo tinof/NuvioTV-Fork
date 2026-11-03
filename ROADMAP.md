@@ -99,10 +99,6 @@ Steps that need a decision or a reading from the owner. Other steps of the same 
 - **Hot-Stop session (R2.4).** The owner must be able to power-cycle the Shield during the session.
 - **Defaults after measuring (Q2.5, R2.4).** The AFR settle hold (600 or 1200 ms) and whether "keep the
   content frame rate after playback" becomes the Nvidia default.
-- **Merge into `main`.** Criteria: the R2 mitigation shipped, Q2 done, CI green. R1 counts as
-  done: R1.1 shipped and R1.3 was deferred (2026-10-18).
-- **Ask the upstream maintainer (U1.1).** Whether Shield work is wanted upstream and in what form; the
-  owner decides how and when to ask.
 
 ## Progress log
 
@@ -110,6 +106,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-03 | U1.1 dropped by the owner (asking the upstream maintainer is not relevant); the "Merge into `main`" owner entry removed, since `main` mirrors upstream after U1.7. | U1 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-03 | U1.5: rebased onto upstream 1.1.0-nt.9.2 with no drop; both protected features kept every line; upstream's new thumbnail swap lift reads `thumb_swap_room`, and `PLAYBACK_STARTED`'s `pausedAtFirstFrame` ignores a thumbnails hold. | U1, M1 | [log](docs/ROADMAP_LOG.md), PR #41 |
 | 2026-11-02 | M1.1 closed: ExoPlayer logs `PLAYBACK_STARTED` once per playback, at the first real play after the first frame, with click and first-frame gaps, so a start held by AFR shows its wait. | M1 | [log](docs/ROADMAP_LOG.md), PR #40 |
 | 2026-11-02 | U1.9 closed: CI on a pushed `sync/*` candidate runs upstream's baseline and fails on a new failure or an incomplete run; local builds run `protected-apk` with library origins. U1.12 tooling and the U1.15 triage workflow landed with their gates pending on the next sync. | U1 | [log](docs/ROADMAP_LOG.md), PR #36 |
@@ -203,8 +200,7 @@ because a wrong passthrough path is invisible until measured.
 10. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4).
 11. **Media3 backports** (E1), only on a symptom; the ready grace is startable.
 12. **Diagnostics and docs** (M3, D1).
-13. **Upstream pull requests** (U1). The commit sorting and the question to the maintainer can start any
-    time; the pull requests follow the items they carry.
+13. **Upstream pull requests** (U1). The commit sorting can start any time; the pull requests follow the items they carry.
 
 ## Reliability
 
@@ -629,17 +625,13 @@ because a wrong passthrough path is invisible until measured.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
   unlikely to land.
-- [U1.1][owner] Ask the upstream maintainer whether Shield work is wanted, and whether as one pull request per
-  theme. Official NuvioTV (`NuvioMedia/NuvioTV`) merged 284 of its last 400 PRs and ysosrs merged 1 of 4, so
-  try one small every-device fix on official first, though 18 of 20 candidates need porting there. Gate: the
-  answer recorded in the log.
 - [U1.2][desk] Sort the commits in `git log upstream/main..perf/shield-pass` into fork-only and upstreamable,
   and list the every-device changes with the reason each applies everywhere (audio route under a Bluetooth
   pin, lossless track default, controller buttons, native libraries loaded from the APK). Gate: the table in
   the log; fork-only commits named.
 - [U1.3][desk] For each theme, one branch from `upstream/main` with the upstreamable commits cherry-picked
   (themes: AFR and display, audio passthrough, UI and performance, engine AARs with their rebuild recipes).
-  Gate: each branch builds and passes the unit tests in CI. Needs: U1.2, U1.1.
+  Gate: each branch builds and passes the unit tests in CI. Needs: U1.2.
 - [U1.4][desk] Pull request text per theme with the M1 numbers it rests on and the revert switches. Gate: the
   numbers come from the log. Needs: U1.3, M1.4.
 - [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves: run `/upstream-sync`
