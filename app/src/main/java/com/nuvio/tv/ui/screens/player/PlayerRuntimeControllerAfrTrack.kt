@@ -35,8 +35,9 @@ internal fun trackAfrDeadlineMs(
 ): Long =
     TRACK_AFR_SWITCH_WAIT_MS + com.nuvio.tv.core.player.AfrSettle.capMs(userDelayMs, floorMs) + TRACK_AFR_MARGIN_MS
 
-// Shorter hold on Nvidia boxes, so the Shield starts sooner after a switch.
-private const val TRACK_AFR_SETTLE_HOLD_NVIDIA_MS = 1_200L
+// Shorter hold on Nvidia boxes, so the Shield starts sooner after a switch. 600 and
+// 1200 ms both started a 25 fps DTS-HD title cleanly three times; 600 starts sooner (Q2.5).
+private const val TRACK_AFR_SETTLE_HOLD_NVIDIA_MS = 600L
 
 // Ceiling for the debug.nuvio.afr_settle_ms test switch. trackAfrDeadlineMs grows with the
 // floor, so the deadline still covers the mode-switch wait and the whole settle wait.
@@ -44,7 +45,7 @@ private const val TRACK_AFR_SETTLE_HOLD_MAX_MS = 4_000L
 
 /**
  * Minimum settle hold after a real switch (the [com.nuvio.tv.core.player.AfrSettle] floor), on
- * this path and the preflight one (beginAfrSettleHold): 1.2 s on Nvidia, upstream's 2 s elsewhere.
+ * this path and the preflight one (beginAfrSettleHold): 0.6 s on Nvidia, upstream's 2 s elsewhere.
  * `adb shell setprop debug.nuvio.afr_settle_ms <ms>` overrides it for A/B tests.
  */
 internal fun trackAfrSettleHoldMs(overrideMs: Int?, manufacturer: String? = Build.MANUFACTURER): Long =
