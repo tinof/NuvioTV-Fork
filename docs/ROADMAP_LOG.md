@@ -10,6 +10,18 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-03: Q2.5 settle hold default (PR #43)
+
+- [Q2.5][device][owner] Settle hold 600 against 1200 ms, three starts each of a TrueHD title whose rate
+  differs from the UI mode. Gate: no AudioSink write errors, no `restartIfDisabled`, picture and sound locked;
+  default decided.
+
+- **Evidence:** the Q2.5 table in "Q1.2, Q1.3 and Q2.5 device session" below
+  (`~/shield-snapshots/20261103-1131-q1-q2-session/`): a 25 fps DTS-HD MA title stood in for TrueHD; unit test
+  `TrackAfrSettleHoldTest`; full unit gate green (8107 tests).
+- **Resolution:** the owner chose 600 ms on Nvidia; other boxes keep 2 s and `debug.nuvio.afr_settle_ms` still
+  overrides it.
+
 ## 2026-11-03: Q1.2 `hbr_iec` default (PR #42)
 
 - [Q1.2][device][owner][new-build] `hbr_iec` 0 against 1 on a TrueHD Atmos title and a DTS-HD MA title

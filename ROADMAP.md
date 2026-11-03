@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-03 | Q2.5 closed: the settle hold after an AFR mode switch is 600 ms on Nvidia; 600 and 1200 ms were both clean over three starts each, and 600 ms starts sooner. | Q2 | [log](docs/ROADMAP_LOG.md), PR #43 |
 | 2026-11-03 | Q1.2 closed: "System passthrough" reads as off unless saved, so TrueHD and DTS-HD take the IEC61937 packer, which played clean where the platform path restarted DTS-HD after a pause. | Q1 | [log](docs/ROADMAP_LOG.md), PR #42 |
 | 2026-11-03 | Q1.3 closed: the HT-A9 shows Dolby Atmos for E-AC3 JOC passthrough. Q1.2 and Q2.5 readings done: the packer and a 600 ms settle hold become the defaults on their own branches; Q2.6 and Q2.7 added. | Q1, Q2 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-03 | U1.1 dropped by the owner (asking the upstream maintainer is not relevant); the "Merge into `main`" owner entry removed, since `main` mirrors upstream after U1.7. | U1 | [log](docs/ROADMAP_LOG.md) |
@@ -272,7 +273,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### Q2: AFR plan and settle correctness
 
-- **Status:** Open. Findings B1, B4, B5, D1, D5.
+- **Status:** Partial. Q2.5 is done: the Nvidia settle hold is 600 ms (PR #43, see the log). Q2.1–Q2.4,
+  Q2.6 and Q2.7 are open. Findings B1, B4, B5, D1, D5.
 - [Q2.1][desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that
   the display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
   `FrameRateUtils.kt:681`). Gate: unit test of the plan.
@@ -283,10 +285,6 @@ because a wrong passthrough path is invisible until measured.
 - [Q2.4][device][new-build] Re-entry: Stop a title whose rate differs from the UI mode, then start another of
   the same rate while the restore to the UI mode is issued but not yet reached. Gate: the new title plays at
   its own rate. Needs: Q2.1.
-- [Q2.5][device][owner] Settle hold 600 against 1200 ms, three starts each of a TrueHD title whose rate
-  differs from the UI mode. Gate: no AudioSink write errors, no `restartIfDisabled`, picture and sound locked;
-  default decided. Readings done 2026-11-03 on a 25 fps DTS-HD MA title (no TrueHD title off 23.976 was at
-  hand); 600 ms chosen, the change is on `fix/Q2.5-settle-600`.
 - [Q2.6][device][new-build] A 24.000 fps title stays at 23.976 Hz: on 2026-11-03 AFR picked 24.000002 Hz,
   then logged "stabilized at 23.976025Hz (modeId=21)" and played there. Find whether the Shield refused the
   mode or the plan lost it. Gate: the cause in the log; a fix step added if the app is at fault.
