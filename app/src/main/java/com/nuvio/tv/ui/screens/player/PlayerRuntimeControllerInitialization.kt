@@ -3542,8 +3542,9 @@ internal fun videoCodecQueueing(switch: Boolean?, manufacturer: String?, sdkInt:
 /**
  * Whether the fork's IEC61937 packer may claim TrueHD/DTS-HD. Optical, a Bluetooth route
  * and a stream whose IEC path already failed always keep it off. debug.nuvio.hbr_iec=1/0
- * forces it on or off; unset, the "System passthrough" setting decides (on by default on
- * Nvidia, see defaultUseSystemPassthrough).
+ * forces it on or off; unset, the "System passthrough" setting decides. It is off unless
+ * saved, so the packer is the default on every box: on the Shield the platform path
+ * restarted a DTS-HD track after a seek and a pause, the packer did not (Q1.2).
  */
 internal fun hbrIecEnabled(
     switch: Boolean?,
