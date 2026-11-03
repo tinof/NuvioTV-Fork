@@ -315,7 +315,7 @@ private fun PlayerRuntimeController.disposeExoPlayerBeforeRebuild(): Boolean {
  *    its own settle delay) resumes playback when the gate releases.
  *  - Display-AFR settle hold:
  *    when the preflight actually changed the display mode, hold the first start
- *    for trackAfrSettleHoldMs (1.2 s on Nvidia, 2 s elsewhere,
+ *    for trackAfrSettleHoldMs (0.6 s on Nvidia, 2 s elsewhere,
  *    debug.nuvio.afr_settle_ms overrides it), the same hold as the track-AFR
  *    path, so the A/V pipeline does not begin inside the HDMI mode transition. On
  *    QMS-capable chains the seamless switch reports complete almost instantly, so
