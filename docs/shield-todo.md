@@ -53,7 +53,7 @@ lists). Restart playback, or the app for the rows marked *app*.
 | HDR video ignores the view-scaling aspect modes and plays at Fit (ExoPlayer) | `hdr_zoom` (`1` = allow) | `dumpsys SurfaceFlinger` keeps the video on an overlay plane |
 | mpv decodes with direct MediaCodec (`mediacodec,mediacodec-copy`; a saved mode wins) | Setting "Hardware decoding (MPV-only)" | HUD `hwdec` row shows `mediacodec` |
 | mpv tone mapping `bt.2446a` with no peak detection | `mpv_tonemap` (`0`) | HDR on an SDR TV through mpv |
-| Full swap refuses a single thumbnail decode even with MemAvailable 200 MB above the decode floor (`mdarcy` only). NuvioTV 1.1.0-nt.7.1 (4f7c16200) allows that on 3 GB boxes; the fork's device data from round 3 says no on this box. The refusal also covers the small-box room of upstream's e8cec44a6 (SwapFree 48 MB or more, floor + 300 MB). Other boxes now log `swapRoom=true`. | `thumb_swap_room` (`1` = allow; `0` turns it off on every box) *app* | Logcat `ThumbMem init … swapRoom=false`, refusals `SwapFree … MB < 64` |
+| Full swap refuses a single thumbnail decode even with MemAvailable 200 MB above the decode floor (`mdarcy` only). NuvioTV 1.1.0-nt.7.1 (4f7c16200) allows that on 3 GB boxes; the fork's device data from round 3 says no on this box. The refusal also covers the small-box room of upstream's e8cec44a6 (SwapFree 48 MB or more, floor + 300 MB), and the lift after a 4K hardware decoder closes from upstream's f28fb06c6 (sync of 2026-11-03), which needs a low-RAM box and so never runs on `mdarcy`. Other boxes now log `swapRoom=true`. | `thumb_swap_room` (`1` = allow; `0` turns it off on every box) *app* | Logcat `ThumbMem init … swapRoom=false`, refusals `SwapFree … MB < 64` |
 | AV1 trailers need a hardware decoder, so the Shield takes H.264 or VP9, or the HLS or progressive source when YouTube offers only AV1. NuvioTV 1.1.0-beta.7 accepts any decoder that claims the format, Android's software AV1 one included. | `trailer_av1_hw` (`0`) *app* | Logcat `Trailer adaptive: …/<height>p/<codec>` never shows AV1 |
 | The image disk cache keeps 300 MB with 4 GB or more free, where upstream's rule (126b4b389, sync of 2026-10-26) gives a box under 3.3 GB of RAM 200 MB. The Shield TV Pro 2019 reports 2946 MB. | `image_cache_tier` (`0` = upstream's rule; `1` gives the tier to any box) *app* | `du -sh /data/data/<package>/cache/image_cache` stays under 300 MB; posters reload less after a reboot |
 | Low-RAM tier comes from device RAM when buffers are off-heap | `lowram_from_ram` (`0`) *app* | Logcat `BACK_BUFFER_RESOLVED: … lowRam=` |
@@ -182,6 +182,21 @@ Measurements taken before 2026-10-27 predate these defaults.
   (9495cb83e).
 
 Measurements taken before 2026-10-31 predate these defaults.
+
+### Upstream defaults taken with the sync of 2026-11-03
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.1.0-nt.9.2. The one value this pass sets that upstream touched is the
+`thumb_swap_room` row above: upstream's new lift after a 4K hardware decoder closes now reads it too. These apply on
+the Shield too, with no fork switch unless a row says so:
+- Seek thumbnails use the hardware decoder by default outside playback, behind the new setting "Hardware decoder for
+  thumbnails" (`seek_thumbnails_hardware`, default on) (f28fb06c6). `setprop debug.nuvio.thumb.hw 0` still turns it
+  off. S2's thumbnail CPU numbers predate it.
+- Thumbnails come from a lighter copy first, and the `seek_thumbnails_from_copy` setting is gone. A second decode lane
+  stays on while it gives 1.2 times the pictures per second (f28fb06c6).
+- While the stream list is up, the thumbnail copy opens early and its servers count as idle, so more thumbnail
+  connections run before a pick (3ef13c226). Early decodes still pass the swap rule.
+
+Measurements taken before 2026-11-03 predate these defaults.
 
 ## History
 

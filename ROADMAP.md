@@ -110,6 +110,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-03 | U1.5: rebased onto upstream 1.1.0-nt.9.2 with no drop; both protected features kept every line; upstream's new thumbnail swap lift reads `thumb_swap_room`, and `PLAYBACK_STARTED`'s `pausedAtFirstFrame` ignores a thumbnails hold. | U1, M1 | [log](docs/ROADMAP_LOG.md), PR #41 |
 | 2026-11-02 | M1.1 closed: ExoPlayer logs `PLAYBACK_STARTED` once per playback, at the first real play after the first frame, with click and first-frame gaps, so a start held by AFR shows its wait. | M1 | [log](docs/ROADMAP_LOG.md), PR #40 |
 | 2026-11-02 | U1.9 closed: CI on a pushed `sync/*` candidate runs upstream's baseline and fails on a new failure or an incomplete run; local builds run `protected-apk` with library origins. U1.12 tooling and the U1.15 triage workflow landed with their gates pending on the next sync. | U1 | [log](docs/ROADMAP_LOG.md), PR #36 |
 | 2026-11-02 | U1.14 closed: behavioural tests now cover the IEC route key on a live source switch, `swapRoom` at every memory governor entry point (now a required argument), and a real-extractor file with Tracks behind the Clusters; each went red when its case was reverted. | U1 | [log](docs/ROADMAP_LOG.md), PR #35 |
@@ -622,8 +623,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### U1: upstream pull requests
 
-- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-10-31 (onto
-  1.1.0-nt.9). The open "Upstream drift" issue (label `upstream-drift`)
+- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-11-03 (onto
+  1.1.0-nt.9.2). The open "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
