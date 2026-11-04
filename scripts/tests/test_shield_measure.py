@@ -1,10 +1,14 @@
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
 import tempfile
+import time
+import types
 import unittest
+from unittest import mock
 from pathlib import Path
 
 SCRIPT = Path(__file__).parents[1] / "shield_measure.py"
@@ -123,6 +127,80 @@ class ParserTest(unittest.TestCase):
         line = sm.scrub("host=streams.example.org ip 10.99.88.77/24", SERIAL)
         self.assertNotIn("example.org", line)
         self.assertNotIn("10.99.88.77", line)
+
+
+LIVE_WRITER = """import os, sys, time
+sys.stdout.write("11-03 12:00:01.000  4242  4242 I JankStats: one\\n"); sys.stdout.flush()
+open(os.environ["LS_READY"], "w").close()
+open(os.environ["LS_GO"]).read()
+sys.stdout.write("11-03 12:00:01.000  4242  4242 I JankStats: two\\n"); sys.stdout.flush()
+open(os.environ["LS_DONE"], "w").close()
+time.sleep(60)
+"""
+
+FAILING_LOGCAT = """import sys
+sys.stderr.write("logcat: Unable to open log device: logd is not running\\n")
+sys.exit(1)
+"""
+
+
+def wait_for(path):
+    deadline = time.monotonic() + 10
+    while not path.exists():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"{path.name} never appeared")
+        time.sleep(0.01)
+
+
+class LogStreamTest(unittest.TestCase):
+    """LogStream with a scripted `adb logcat` child, synchronised by files and a FIFO, never by timing."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def device(self, body):
+        child = self.root / "child.py"
+        child.write_text(body)
+        shim = self.root / "adb"
+        shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{child}" "$@"\n')
+        shim.chmod(0o755)
+        return types.SimpleNamespace(adb=str(shim), serial=SERIAL)
+
+    def test_a_line_written_while_lines_reads_keeps_the_earlier_ones(self):
+        ready, go, done = self.root / "ready", self.root / "go", self.root / "done"
+        os.mkfifo(go)
+        env = {"LS_READY": str(ready), "LS_GO": str(go), "LS_DONE": str(done)}
+        with mock.patch.dict(os.environ, env):
+            stream = sm.LogStream(self.device(LIVE_WRITER), "11-03 12:00:00.000", ("JankStats",))
+        wait_for(ready)
+
+        class WriteDuringRead:
+            """The child writes its second line after lines() has positioned the file and before it reads."""
+
+            def __init__(self, inner):
+                self.inner, self.fired = inner, False
+
+            def read(self, *a):
+                if not self.fired:
+                    self.fired = True
+                    with open(go, "w") as fifo:
+                        fifo.write("x")
+                    wait_for(done)
+                return self.inner.read(*a)
+
+            def __getattr__(self, name):
+                return getattr(self.inner, name)
+
+        stream.file = WriteDuringRead(stream.file)
+        try:
+            got = [sm.logcat_message(line)[1] for line in stream.lines()]
+        finally:
+            stream.stop()
+        self.assertEqual(got, ["one", "two"])
 
 
 def state(**extra):
