@@ -60,10 +60,15 @@ class MatroskaSeiHlgScanTest {
             logs += secondArg<String>()
             0
         }
+        // Upstream's alternative-transfer SEI peek logs through Media3's Log, which needs TextUtils
+        // (a stub on the JVM).
+        mockkStatic(TextUtils::class)
+        every { TextUtils.isEmpty(any()) } answers { firstArg<CharSequence?>().isNullOrEmpty() }
     }
 
     @After
     fun releaseLogs() {
+        unmockkStatic(TextUtils::class)
         unmockkStatic(Log::class)
     }
 

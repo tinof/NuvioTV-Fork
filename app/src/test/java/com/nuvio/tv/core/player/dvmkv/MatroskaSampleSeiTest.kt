@@ -1,5 +1,6 @@
 package com.nuvio.tv.core.player.dvmkv
 
+import android.text.TextUtils
 import android.util.SparseArray
 import androidx.media3.common.C
 import androidx.media3.common.DataReader
@@ -15,10 +16,14 @@ import com.nuvio.tv.core.player.HevcColourFixtures
 import com.nuvio.tv.core.player.HlgDecision
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import java.io.ByteArrayOutputStream
+import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -26,6 +31,19 @@ import org.junit.Test
  * (ROADMAP DV2.4): recorded and logged, never acted on.
  */
 class MatroskaSampleSeiTest {
+
+    // Upstream's alternative-transfer SEI peek logs through Media3's Log, which needs TextUtils
+    // (a stub on the JVM).
+    @Before
+    fun mockTextUtils() {
+        mockkStatic(TextUtils::class)
+        every { TextUtils.isEmpty(any()) } answers { firstArg<CharSequence?>().isNullOrEmpty() }
+    }
+
+    @After
+    fun releaseTextUtils() {
+        unmockkStatic(TextUtils::class)
+    }
 
     /** The JVM stub SparseArray keeps nothing; the extractor needs one that does to reach a Cluster. */
     private class MapSparseArray<E> : SparseArray<E>() {
