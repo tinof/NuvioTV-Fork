@@ -357,14 +357,22 @@ class LogStream:
 
     def __init__(self, device, since, tags):
         import tempfile
-        self.file = tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace")
+        # The child appends through its own O_APPEND handle and the reader has another one: a shared
+        # file offset would let a line written while lines() reads land on top of the earlier ones.
+        fd, path = tempfile.mkstemp(prefix="shield_measure_", suffix=".log")
+        os.close(fd)
+        try:
+            writer = open(path, "ab")
+            self.file = open(path, encoding="utf-8", errors="replace")
+        finally:
+            os.unlink(path)
         filters = [f"{tag}:V" for tag in (*tags, "Watchdog")] + ["*:S"]
         # `adb logcat` passes each argument as is: quotes around the -T time reach logcat and fail.
-        self.proc = subprocess.Popen([device.adb, "-s", device.serial, "logcat", "-v", "threadtime",
-                                      "-T", since, *filters], stdout=self.file, stderr=subprocess.DEVNULL)
+        with writer:
+            self.proc = subprocess.Popen([device.adb, "-s", device.serial, "logcat", "-v", "threadtime",
+                                          "-T", since, *filters], stdout=writer, stderr=subprocess.DEVNULL)
 
     def lines(self):
-        self.file.flush()
         self.file.seek(0)
         return [line.rstrip("\n") for line in self.file.read().splitlines() if line.strip()]
 
