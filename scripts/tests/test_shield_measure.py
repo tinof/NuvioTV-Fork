@@ -202,6 +202,13 @@ class LogStreamTest(unittest.TestCase):
             stream.stop()
         self.assertEqual(got, ["one", "two"])
 
+    def test_a_live_logcat_that_failed_fails_the_measurement(self):
+        stream = sm.LogStream(self.device(FAILING_LOGCAT), "11-03 12:00:00.000", ("JankStats",))
+        stream.proc.wait(timeout=10)
+        with self.assertRaises(sm.Refused) as caught:
+            stream.stop()
+        self.assertIn("logd is not running", str(caught.exception))
+
 
 def state(**extra):
     s = {
