@@ -31,8 +31,11 @@ def load():
 
 
 def save(state):
-    with open(os.environ["FAKE_ADB_STATE"], "w") as handle:
+    # Atomic: a live `adb logcat` started in parallel must never load a half-written state.
+    path = os.environ["FAKE_ADB_STATE"]
+    with open(f"{path}.{os.getpid()}", "w") as handle:
         json.dump(state, handle)
+    os.replace(f"{path}.{os.getpid()}", path)
 
 
 def log(argv):

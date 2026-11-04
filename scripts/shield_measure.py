@@ -368,17 +368,22 @@ class LogStream:
             os.unlink(path)
         filters = [f"{tag}:V" for tag in (*tags, "Watchdog")] + ["*:S"]
         # `adb logcat` passes each argument as is: quotes around the -T time reach logcat and fail.
+        self.errors = tempfile.TemporaryFile()
+        self.redact = getattr(device, "redact", lambda text: text)
         with writer:
             self.proc = subprocess.Popen([device.adb, "-s", device.serial, "logcat", "-v", "threadtime",
-                                          "-T", since, *filters], stdout=writer, stderr=subprocess.DEVNULL)
+                                          "-T", since, *filters], stdout=writer, stderr=self.errors)
 
     def lines(self):
         self.file.seek(0)
         return [line.rstrip("\n") for line in self.file.read().splitlines() if line.strip()]
 
     def stop(self):
+        """The lines so far. A live logcat ends only when stopped here: one that exited by itself
+        captured nothing after that, so the run fails with its stderr instead of reporting zeros."""
         time.sleep(0.3)
-        if self.proc.poll() is None:
+        ended = self.proc.poll()
+        if ended is None:
             self.proc.terminate()
             try:
                 self.proc.wait(timeout=5)
@@ -386,6 +391,11 @@ class LogStream:
                 self.proc.kill()
         lines = self.lines()
         self.file.close()
+        self.errors.seek(0)
+        stderr = self.errors.read().decode("utf-8", "replace").strip()
+        self.errors.close()
+        if ended is not None:
+            raise Refused(f"the live logcat ended early ({ended}): {self.redact(stderr) or 'no stderr'}")
         return lines
 
 
