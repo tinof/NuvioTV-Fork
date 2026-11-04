@@ -10,6 +10,51 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-04: U1.5 sync onto upstream 1.1.0-nt.10 (PR #47)
+
+- [U1.5][desk] Rebased `perf/shield-pass` from `17b2029e3` onto `d1d47c8ca`: 122 upstream commits behind (14
+  first-parent, among them the merge of official 1.1.0-beta.10), 320 fork commits. The new tip is `3ec934aae`, with
+  321 fork commits. Tags: `sync/2026-11-04/old-{perf,main,base}`. `sync.py due` said `wait` (the official merge was
+  2.8 h old); the owner synced anyway.
+
+**Classify (tier `fanout`, 9 analysts and a critic):** 3 files conflicted in the trial merge, one of them the protected
+`MatroskaExtractor.java`; 83 fork commits touched files upstream changed. Verdicts: 0 drops, 0 protected asks,
+3 keep-resolve, 0 keep-adapt, 80 keep-clean; 237 commits touched nothing upstream changed.
+
+**Dry-run (U1.12):** 3 predicted stops, 3 real: `c0ff750d9` (`MetaRepositoryImpl.kt`: upstream's `flightKey` with the
+fork's lazy start), `e034d8f03` (pt-BR strings: upstream's moved line first, then the Shield notes) and the protected
+`42f4e5ac1` (`MatroskaExtractor.java`: upstream's alternative-transfer SEI block, then the fork's logging block).
+
+**Owner's decisions:** none were needed. The one new commit, `3ec934aae`, is test-only. Upstream's SEI peek
+(553548679) logs through Media3's `Log`, which calls `TextUtils.isEmpty`, a stub on the JVM. Nine HLG SEI tests failed
+on a native track, so the two test classes now mock `TextUtils`, as the zlib case already did.
+
+**Evidence**
+
+- `verify`: 317 identical, 3 changed, 0 dropped, 1 new. Protected lines on `299f598ad` (before the test commit):
+  aac-to-dts 45 commits, 5951 lines, 0 lost; hlg-to-dv 99 commits, 14750 lines, 0 lost. On `3ec934aae` with
+  `--allow-new 3ec934aae` and `--allow-changed` on `MatroskaSampleSeiTest.kt` and `MatroskaSeiHlgScanTest.kt`:
+  13958 hlg-to-dv lines, 0 lost. The waiver leaves the two test files out of the line check; the test commit only
+  adds lines to them (23 added, 0 removed).
+- `judgement`: 5 paths differ from the mechanical merge, all declared: the 3 resolutions and the 2 test files.
+- APK: `protected-apk` passes for `libffmpegJNI.so` and `libnuvio_rpu.so` (tree `3e8e2e9cb`) on `299f598ad`; the
+  test commit changes no APK input.
+- Independent review: all 3 resolutions are correct, and no fork hunk in those files was lost, by comparing each
+  commit's added and removed lines before and after the rebase. Upstream's peek runs only on a track the fork leaves
+  native, so a converted track still publishes only Dolby Vision formats.
+- CI: `Checks` run 41829298674 on `299f598ad` failed the compare job with the 9 new failures above. Run 41832356577
+  green on `3ec934aae`: no new failures against upstream's baseline, both runs complete. Locally the `dvmkv` suite
+  passed, 143 tests. Not run on the Shield.
+
+**Open, for the owner**
+
+- The fork's DV2.4 block (`42f4e5ac1`) and upstream's peek both read the first sample's alternative-transfer SEI.
+  The fork's log could reuse upstream's peek. The fork's block is protected, so it stays as it is for now.
+- On a native HEVC track with HLG only in a first-sample SEI, upstream now publishes the format again as HLG. The
+  fork's decision at track init stays as it was. It is not checked on the TV.
+
+**Resolution:** the fork is level with upstream 1.1.0-nt.10, and `main` mirrors `d1d47c8ca`.
+
 ## 2026-11-04: M1.2 `shield_measure.py` and its Shield dry run (PR #45)
 
 - [M1.2][desk][device] Write `scripts/shield_measure.py`. It takes `--serial` and wraps every adb call in a
