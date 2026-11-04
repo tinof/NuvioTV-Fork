@@ -13,8 +13,9 @@
             <pkg> reset`, the keys, then the gfxinfo summary and framestats, the JankStats JANK lines and the
             NuvioDetails stages of the details journey. --shots saves where each journey ended: the key
             sequences fit this app's Home, and a journey that ends elsewhere measures the wrong screen.
-- playback  click -> PLAYBACK_STARTED (the owner starts a title on the TV), SEEK_READY per seek, dropped
-            frames, iec_health underruns, AudioTrack restartIfDisabled and NuvioPosFreeze stalls.
+- playback  click -> PLAYBACK_STARTED (the owner starts a title on the TV), SEEK_READY per seek (seek -> first
+            frame only from via=first_frame lines; a seek that reached READY first is counted as ready_only),
+            dropped frames, iec_health underruns, AudioTrack restartIfDisabled and NuvioPosFreeze stalls.
 
 The device-safety protocol (ROADMAP M2) holds: start, ui and playback need --session, a folder that
 scripts/shield_snapshot.sh completed (before/complete), and write their results to its measure/. The script
@@ -581,11 +582,23 @@ def cmd_playback(args, device):
         missing["seek_ready"] = f"{len(seeks)} SEEK_READY lines for {args.seeks} seeks"
     if parsed["iec_underruns_max"] is None:
         missing["iec_underruns_max"] = "no iec_health line: the IEC packer was not in use"
-    result = {"command": "playback", "package": args.package, **parsed, "missing": missing}
+    # The app logs one SEEK_READY per seek, at READY or at the first frame, whichever comes first
+    # (logSeekReady clears its flag). Only via=first_frame measures seek -> first frame; a READY-only seek
+    # has no first-frame time and is counted, never averaged in.
+    seek_ms = [s["ms"] for s in seeks if s["via"] == "first_frame"]
+    ready_only = sum(1 for s in seeks if s["via"] != "first_frame")
+    seek_first_frame = {
+        "ms": seek_ms,
+        "median_ms": statistics.median(seek_ms) if seek_ms else None,
+        "ready_only": ready_only,
+        "reason": (f"{ready_only} seeks reached READY before their first frame; the app logs no first-frame "
+                   "time for them" if ready_only else None),
+    }
+    result = {"command": "playback", "package": args.package, **parsed, "seek_first_frame": seek_first_frame,
+              "missing": missing}
     first = started[0] if started else {}
-    seek_ms = [s["ms"] for s in seeks]
-    print(f"click->playing={first.get('click_to_playing_ms')}ms seek_ready_median="
-          f"{statistics.median(seek_ms) if seek_ms else None}ms dropped={result['dropped_frames']} "
+    print(f"click->playing={first.get('click_to_playing_ms')}ms seek_first_frame_median="
+          f"{seek_first_frame['median_ms']}ms (ready_only={ready_only}) dropped={result['dropped_frames']} "
           f"underruns={result['iec_underruns_max']} restartIfDisabled={result['restart_if_disabled']} "
           f"freezes={result['freezes']}" + (f" missing={','.join(missing)}" if missing else ""))
     print(save(out, "playback", result, mine, args.serial))
