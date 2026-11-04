@@ -528,6 +528,13 @@ def cmd_ui(args, device):
                 kept += lines
                 if device.foreground() != args.package:
                     raise Refused(f"{args.package} left the front after {journey}; stopping")
+    except DeviceStop as error:
+        # M2: after a stop no further adb call goes out, so the property stays as this run set it.
+        if old_prop is not None:
+            old_prop = None
+            raise DeviceStop(f"{error}; {DETAILS_PROP} stays VERBOSE, and the next run of this session "
+                             "puts back the value saved in measure/details-prop-before.txt") from error
+        raise
     finally:
         if old_prop is not None:
             device.out(f"setprop {DETAILS_PROP} {shq(old_prop)}")
