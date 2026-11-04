@@ -37,12 +37,12 @@ lists). Restart playback, or the app for the rows marked *app*.
 
 | What changed on Nvidia | Switch (revert value) | What to look at |
 |---|---|---|
-| TrueHD/DTS-HD go to the platform sink, not through the fork's IEC61937 packer. The HAL refuses raw TrueHD, so AudioFlinger's SPDIF encoder wraps it as IEC61937 at 192 kHz. The "System Passthrough" setting now defaults to on (a saved value wins). Upstream 1.1.0-nt.7's TrueHD keep-alive through seek, pause and resume (3aeb1e180) runs only on the packer path, so this default does not get it (ROADMAP Q1.2). | `hbr_iec` (`1` = packer) | The AVR's Atmos / DTS:X indicator, A/V sync, the HUD underrun row, the AVR relocking after a seek or pause |
+| TrueHD/DTS-HD take the fork's IEC61937 packer by default, as on every box: since PR #42 "System Passthrough" reads as off unless saved, as upstream has it. Upstream's TrueHD keep-alive through seek, pause and resume (3aeb1e180, tightened in 2064a052d) runs on this path. A saved "System Passthrough" on sends them to the platform sink instead, where AudioFlinger's SPDIF encoder wraps them as IEC61937 at 192 kHz (ROADMAP Q1.2). | `hbr_iec` (`0` = platform sink, `1` = packer) | The AVR's Atmos / DTS:X indicator, A/V sync, the HUD underrun row, the AVR relocking after a seek or pause |
 | TrueHD/DTS-HD passthrough buffer caps ×2 | `hbr_buffer_scale` (`1`) | Underruns, `dumpsys media.audio_flinger` |
 | A TrueHD/DTS-HD track that the platform sink plays keeps tunneling. Inert on mdarcy SE 9.2.4 (no decoder tunnels) | `hbr_tunnel` (`0`) | `PLAYBACK_TUNNELING: requested=… applied=`, stalls |
 | The surround decision uses the stereo / 5.1 / 7.1 probe union and the HDMI channel count | `audio_probe_union` (`0`) | Settings > Advanced > Source & hardware |
 | A track-AFR mode switch under tunneling with TrueHD/DTS-HD takes audio and video down and up together. Inert on mdarcy SE 9.2.4 (no decoder tunnels); `1` now forces it without tunneling too | `afr_quiesce_av` (`0`) | First play of a 24p TrueHD title: `Track AFR settle complete: … quiesced=AUDIO_AND_VIDEO`, and no stuck loading screen |
-| AFR settle hold of 1.2 s instead of 2 s, on the track-AFR path and (since round 3) the pre-start path | `afr_settle_ms` (`2000`) | Logcat `Switching display mode` → `Display mode switch stabilized at … after N ms` → `Track AFR settle complete:` / `Preflight AFR settle complete: holdMs=` |
+| AFR settle hold of 0.6 s instead of 2 s (Q2.5, PR #43), on the track-AFR path and (since round 3) the pre-start path | `afr_settle_ms` (`2000`) | Logcat `Switching display mode` → `Display mode switch stabilized at … after N ms` → `Track AFR settle complete:` / `Preflight AFR settle complete: holdMs=` |
 | A tunneled start waits for the real first frame (only for decoders seen reporting frames) | `tunnel_real_first_frame` (`0`) | The loading screen ends with the picture |
 | Dolby Vision plays untunneled | `dv_no_tunnel` (`0`) | DV signalling on the TV, sync |
 | With "Convert HLG and HDR10+ to Dolby Vision" on, an HDR10+ MKV plays as Dolby Vision 8.1 with L1 from each AU's HDR10+ SEI (ROADMAP DV3.1) | `dv_hdr10plus` (`0` keeps PQ native) | The TV's Dolby Vision badge; logcat `DV_INJECT track N: HDR10+ 8.1`; the DV2.8 dump compared with `dovi_tool` (`scripts/rpu_dump_to_bin.py --order pts`) |
@@ -197,6 +197,20 @@ the Shield too, with no fork switch unless a row says so:
   connections run before a pick (3ef13c226). Early decodes still pass the swap rule.
 
 Measurements taken before 2026-11-03 predate these defaults.
+
+### Upstream defaults taken with the sync of 2026-11-04
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.1.0-nt.10 (official 1.1.0-beta.10). Upstream touched no value this
+pass sets. These apply on the Shield too, with no fork switch:
+- Subtitle edges are split into an outline size and a shadow. Shadow opacity defaults to 70; outline size and shadow
+  follow the old edge choice when nothing is saved (8cc02f73e).
+- A new DNS over HTTPS setting (Cloudflare, Google, Quad9, AdGuard or a custom server) defaults to the system resolver
+  (32674052c). The playback OkHttp clients resolve through it too, so with DoH chosen the lookup time counts toward
+  the `NET_CONN` time to headers.
+- Upstream's TrueHD keep-alive now sends filler only once the sound has really run out (2064a052d). Since PR #42 the
+  packer is the Shield's default path, so this applies to TrueHD here.
+
+Measurements taken before 2026-11-04 predate these defaults.
 
 ## History
 
