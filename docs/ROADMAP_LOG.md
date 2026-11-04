@@ -10,6 +10,40 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-04: M1.2 dry run of the merged `shield_measure.py` (PR #44)
+
+- [M1.2][desk][device] Write `scripts/shield_measure.py` (journeys, playback, cold start; safe on the daily
+  apps). Gate: dry run against the Shield.
+
+- **Evidence:** dry run of the merged script on `com.nuvio.tv.test.shield` (the installed local build of
+  55f446193), in `~/shield-snapshots/20261104-1245-m1-2-dry-run-merged/`. The run on the night of 2026-11-03 used the
+  head before the review fixes, so it did not count. M2 snapshot first; `shield_restore.sh` verdict clean
+  (drift 0, owner 0). Every command exited 0, also a first playback run that measured nothing (CENTER
+  opened the stream picker; its `missing` named the gap). No Watchdog or `flush_work`.
+- **Cold start** (`start --force-cold`): 2406 ms (`am start -W` TotalTime, COLD).
+- **UI** (`ui --journey all --shots --details-trace`, one repeat). Each shot shows Home with focus on the
+  first Continue watching card.
+
+  | Journey | Frames | Janky % | p50 ms | p90 ms | p99 ms | JANK lines |
+  |---|---|---|---|---|---|---|
+  | home-row | 377 | 2.39 | 10 | 21 | 61 | 8 |
+  | rows-down | 134 | 0.75 | 9 | 21 | 32 | 1 |
+  | sidebar | 84 | 11.9 | 14 | 48 | 150 | 8 |
+  | details | 84 | 13.1 | 7 | 57 | 150 | 11 |
+  | settings | 66 | 15.15 | 13 | 97 | 350 | 11 |
+
+- **Details stages missing.** The details journey (DOWN, CENTER) lands on the second Home row, which on this
+  Home is a collection: CENTER opens `folder_detail`, not a title's details, so `DetailEntryTrace.begin()`
+  (`NuvioNavHost.kt:245`) never runs. The device logcat had no NuvioDetails line; a second details-only run
+  gave the same. The script's `missing` reason names only "trace off" or "no DetailEntryTrace". This is a
+  Home-layout fit problem for M1.5, like the one-card Home.
+- **Playback** (`playback --seeks 3`): a 4K Dolby Vision, DD+ 5.1 episode, started from Continue watching
+  and its stream picker. Click → `PLAYBACK_STARTED` 3537 ms (first frame → playing 613 ms, AFR track hold
+  off). Seek → first frame 75, 66, 69 ms (median 69, all `via=first_frame`, none READY-only). Dropped frames 3;
+  `restartIfDisabled` 0; freezes 0. IEC underruns null: DD+ does not use the packer.
+- **Not covered:** a daily app (`com.nuvio.tv.test`), the upstream app, and repeats; those are M1.4.
+- **Resolution:** gate met. The details stages wait for M1.5.
+
 ## 2026-11-03: Q2.5 settle hold default (PR #43)
 
 - [Q2.5][device][owner] Settle hold 600 against 1200 ms, three starts each of a TrueHD title whose rate
