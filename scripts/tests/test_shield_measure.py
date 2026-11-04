@@ -359,6 +359,15 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(self.final["props"][sm.DETAILS_PROP], "")
 
+    def test_details_trace_sends_nothing_after_a_device_stop(self):
+        watchdog = [log("Watchdog", "*** WATCHDOG KILLING SYSTEM PROCESS: Blocked in handler", "W")]
+        proc = self.run_measure("ui", "--session", str(self.session), "--package", SHIELD, "--journey", "sidebar",
+                                "--details-trace", initial=state(lines_on_key={"KEYCODE_DPAD_LEFT": watchdog}))
+        self.assertEqual(proc.returncode, 5, proc.stderr)
+        props = [c for c in self.shell_calls() if c.startswith(f"setprop {sm.DETAILS_PROP}")]
+        self.assertEqual(props, [f"setprop {sm.DETAILS_PROP} VERBOSE"])
+        self.assertIn("details-prop-before.txt", proc.stderr)
+
     def test_details_trace_is_refused_on_a_daily_app(self):
         proc = self.run_measure("ui", "--session", str(self.session), "--package", DAILY, "--details-trace",
                                 initial=state(foreground=DAILY))
