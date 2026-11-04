@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-04 | U1.5: rebased onto upstream 1.1.0-nt.10 (official 1.1.0-beta.10) with no drop; both protected features kept every line; a new test commit mocks `TextUtils` in the HLG SEI tests, which upstream's new SEI peek logs through. | U1 | [log](docs/ROADMAP_LOG.md), PR #47 |
 | 2026-11-04 | M1.2 closed: a Shield dry run of the merged `shield_measure.py` measured cold start, five UI journeys and playback with seeks; the details journey opens a collection on this Home, which M1.5 now covers. | M1 | [log](docs/ROADMAP_LOG.md), PR #45 |
 | 2026-11-03 | Q2.5 closed: the settle hold after an AFR mode switch is 600 ms on Nvidia; 600 and 1200 ms were both clean over three starts each, and 600 ms starts sooner. | Q2 | [log](docs/ROADMAP_LOG.md), PR #43 |
 | 2026-11-03 | Q1.2 closed: "System passthrough" reads as off unless saved, so TrueHD and DTS-HD take the IEC61937 packer, which played clean where the platform path restarted DTS-HD after a pause. | Q1 | [log](docs/ROADMAP_LOG.md), PR #42 |
@@ -617,8 +618,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### U1: upstream pull requests
 
-- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-11-03 (onto
-  1.1.0-nt.9.2). The open "Upstream drift" issue (label `upstream-drift`)
+- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-11-04 (onto
+  1.1.0-nt.10). The open "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
