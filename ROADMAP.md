@@ -931,13 +931,22 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 #### DV4: T1, shot lists made on a PC
 
-- **Status:** Open.
+- **Status:** Open. DV4.4 started 2026-11-04 as hdr-analyze P15 (P15.1 to P15.4; design in hdr-analyze
+  `docs/PLAYBACK_MANIFEST.md`). The owner's titles stream from NzbDAV through AIOStreams. The manifest is
+  made ahead of time on the Windows PC and served over HTTP by `lookup_key`; there is no local sidecar.
+  hdr-analyze P15.1 (the AU table) merged in its PR #91 on 2026-11-04; P15.2 is next.
 - [DV4.4][desk] In hdr-analyze, the playback manifest of `DESIGN.md` 2.8 around the L1 payload, written
   by `mkvdovi` and accepted for imported `RPU.bin` files. Gate: tests with variable frame rate, a
   non-zero start, an open-GOP start, a different encode and a mismatched composer. Needs: DV2.1.
+  Done when hdr-analyze P15.3 passes; P15.4 covers the `RPU.bin` import, limited to RPUs that rebuild
+  byte for byte from the manifest.
 - [DV4.1][desk] Shot-list provider in the fork: load a manifest from a file or URL, check identity
   incrementally as AUs are read, inject in the extractor. Gate: unit tests; a different encode of the
-  same title is rejected. Needs: DV4.4, DV2.2, DV2.3; for HLG also DV2.4.
+  same title is rejected. Needs: DV4.4, DV2.2, DV2.3; for HLG also DV2.4. Inputs the extractor must
+  gain: raw Matroska ticks (Cluster timecode + block timecode, not rounded µs), the block's lace count
+  (any laced video sample rejects the manifest), and a decode index. The matcher is hdr-analyze's
+  `dovi_rpu_builder::manifest` over JNI, which bumps the `nuvio_rpu` pin. The 8.1 path needs a fallback
+  RPU for AUs before the first validated IRAP and after a rejection, so it waits for DV3.3; HLG first.
 - [DV4.5][device][owner][new-build] A local sidecar end to end. Gate: every AU of the title carries the
   sidecar's L1 (debug log), no added dropped frames, the owner's G-E reading. Needs: DV4.1, DV1.8.
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
