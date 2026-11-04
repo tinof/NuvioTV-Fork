@@ -10,10 +10,16 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
-## 2026-11-04: M1.2 dry run of the merged `shield_measure.py` (PR #44)
+## 2026-11-04: M1.2 `shield_measure.py` and its Shield dry run (PR #45)
 
-- [M1.2][desk][device] Write `scripts/shield_measure.py` (journeys, playback, cold start; safe on the daily
-  apps). Gate: dry run against the Shield.
+- [M1.2][desk][device] Write `scripts/shield_measure.py`. It takes `--serial` and wraps every adb call in a
+  timeout. It runs D-pad journeys with `input keyevent` (Home row, rows down, sidebar, details, settings) and
+  reads `dumpsys gfxinfo <pkg> reset` / `framestats`, `am start -W` and a JankStats summary. For playback it
+  reads click → `PLAYBACK_STARTED`, seek → first frame, drops, underruns and `restartIfDisabled`. On a daily
+  app it never compiles, force-stops or clears: it measures a cold start only when the app is not running. No
+  `dumpsys meminfo` during audio (it caused an underrun restart in the report). The details journey reads the
+  `DetailEntryTrace` stages the app already logs (`viewmodel_setup` to `controls_focus`, tag `NuvioDetails`).
+  Gate: dry run against the Shield. Needs: M2.1. Landed: PR #44; gate pending.
 
 - **Evidence:** dry run of the merged script on `com.nuvio.tv.test.shield` (the installed local build of
   55f446193), in `~/shield-snapshots/20261104-1245-m1-2-dry-run-merged/`. The run on the night of 2026-11-03 used the
@@ -42,7 +48,8 @@ on name the step ID and the PR.
   off). Seek → first frame 75, 66, 69 ms (median 69, all `via=first_frame`, none READY-only). Dropped frames 3;
   `restartIfDisabled` 0; freezes 0. IEC underruns null: DD+ does not use the packer.
 - **Not covered:** a daily app (`com.nuvio.tv.test`), the upstream app, and repeats; those are M1.4.
-- **Resolution:** gate met. The details stages wait for M1.5.
+- **Resolution:** the script landed in PR #44 and its gate is met here (PR #45). The details stages wait for
+  M1.5, whose step now names the details journey.
 
 ## 2026-11-03: Q2.5 settle hold default (PR #43)
 
