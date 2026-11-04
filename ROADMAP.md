@@ -513,8 +513,8 @@ because a wrong passthrough path is invisible until measured.
 
 ### M1: measurement protocol and baselines
 
-- **Status:** Open. M1.1 done (`PLAYBACK_STARTED` stage, see the log); the measurement script, the benchmark
-  build and the baselines (M1.2–M1.4) are open.
+- **Status:** Open. M1.1 done (see the log); `scripts/shield_measure.py` landed (PR #44) and waits for a
+  dry run of the fixed head; the Home-focus check (M1.5), the benchmark build and the baselines are open.
 - `scripts/perf_baseline.py` compiles the target (`:90`), and the macrobenchmark accepts only the v2 test
   packages (`NuvioNavigationBenchmark.kt:28`) at about 60 Hz (`:39-43`). Neither fits the daily apps or a
   24/25 Hz UI.
@@ -525,7 +525,12 @@ because a wrong passthrough path is invisible until measured.
   app it never compiles, force-stops or clears: it measures a cold start only when the app is not running. No
   `dumpsys meminfo` during audio (it caused an underrun restart in the report). The details journey reads the
   `DetailEntryTrace` stages the app already logs (`viewmodel_setup` to `controls_focus`, tag `NuvioDetails`).
-  Gate: dry run against the Shield. Needs: M2.1.
+  Gate: dry run against the Shield. Needs: M2.1. Landed: PR #44; gate pending.
+- [M1.5][device] Check that each UI journey of `scripts/shield_measure.py` starts and ends on Home with
+  focus on the first Continue watching card, also on a Home with one card and no other rows (a review
+  finding on PR #44: RIGHT cannot move there, LEFT opens the sidebar, and the next journey measures the
+  sidebar). Run `ui --shots` on such a Home. Gate: the shots show each journey's end, and the script
+  restores focus or refuses a Home it cannot measure. Needs: M1.2.
 - [M1.3][desk] Build the `benchmark` variant of this branch for the UI journeys (`:app:assembleFullBenchmark`;
   minified, shrunk, with the baseline profile, signed with the debug key). It installs as its own app with the
   `.debug` suffix and needs one login. Gate: the APK installs on the Shield and passes the M1 dry run. Needs:
