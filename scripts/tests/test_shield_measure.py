@@ -408,6 +408,20 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(self.final["keys"], ["KEYCODE_DPAD_RIGHT"] * 2)
         self.assert_clean(proc)
 
+    def test_a_seek_seen_only_at_ready_has_no_first_frame_time(self):
+        # The app logs SEEK_READY once, at READY or at the first frame, whichever comes first; READY is not
+        # the first frame, so only via=first_frame lines measure seek -> first frame.
+        lines = [log("PlayerViewModel", "SEEK_READY: ms=88 targetMs=130000 via=ready"),
+                 log("PlayerViewModel", "SEEK_READY: ms=140 targetMs=150000 via=first_frame")]
+        proc = self.run_measure("playback", "--session", str(self.session), "--package", SHIELD, "--seeks", "2",
+                                "--play", "0", "--already-playing", initial=state(logcat_lines=lines))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("=114", proc.stdout)
+        self.assertIn("seek_first_frame_median=140ms", proc.stdout)
+        first = self.results("playback")["seek_first_frame"]
+        self.assertEqual((first["ms"], first["median_ms"], first["ready_only"]), ([140], 140, 1))
+        self.assertIn("READY", first["reason"])
+
     def test_playback_without_the_stage_says_why(self):
         proc = self.run_measure("playback", "--session", str(self.session), "--package", DAILY, "--wait-start", "0",
                                 "--play", "0", initial=state(foreground=DAILY))
