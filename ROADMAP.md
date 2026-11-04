@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-04 | M1.2 closed: a Shield dry run of the merged `shield_measure.py` measured cold start, five UI journeys and playback with seeks; the details journey opens a collection on this Home, which M1.5 now covers. | M1 | [log](docs/ROADMAP_LOG.md), PR #45 |
 | 2026-11-03 | Q2.5 closed: the settle hold after an AFR mode switch is 600 ms on Nvidia; 600 and 1200 ms were both clean over three starts each, and 600 ms starts sooner. | Q2 | [log](docs/ROADMAP_LOG.md), PR #43 |
 | 2026-11-03 | Q1.2 closed: "System passthrough" reads as off unless saved, so TrueHD and DTS-HD take the IEC61937 packer, which played clean where the platform path restarted DTS-HD after a pause. | Q1 | [log](docs/ROADMAP_LOG.md), PR #42 |
 | 2026-11-03 | Q1.3 closed: the HT-A9 shows Dolby Atmos for E-AC3 JOC passthrough. Q1.2 and Q2.5 readings done: the packer and a 600 ms settle hold become the defaults on their own branches; Q2.6 and Q2.7 added. | Q1, Q2 | [log](docs/ROADMAP_LOG.md) |
@@ -513,23 +514,17 @@ because a wrong passthrough path is invisible until measured.
 
 ### M1: measurement protocol and baselines
 
-- **Status:** Open. M1.1 done (see the log); `scripts/shield_measure.py` landed (PR #44) and waits for a
-  dry run of the fixed head; the Home-focus check (M1.5), the benchmark build and the baselines are open.
+- **Status:** Open. M1.1 and M1.2 are done (`scripts/shield_measure.py`, see the log); the Home-focus
+  check (M1.5), the benchmark build and the baselines are open.
 - `scripts/perf_baseline.py` compiles the target (`:90`), and the macrobenchmark accepts only the v2 test
   packages (`NuvioNavigationBenchmark.kt:28`) at about 60 Hz (`:39-43`). Neither fits the daily apps or a
   24/25 Hz UI.
-- [M1.2][desk][device] Write `scripts/shield_measure.py`. It takes `--serial` and wraps every adb call in a
-  timeout. It runs D-pad journeys with `input keyevent` (Home row, rows down, sidebar, details, settings) and
-  reads `dumpsys gfxinfo <pkg> reset` / `framestats`, `am start -W` and a JankStats summary. For playback it
-  reads click → `PLAYBACK_STARTED`, seek → first frame, drops, underruns and `restartIfDisabled`. On a daily
-  app it never compiles, force-stops or clears: it measures a cold start only when the app is not running. No
-  `dumpsys meminfo` during audio (it caused an underrun restart in the report). The details journey reads the
-  `DetailEntryTrace` stages the app already logs (`viewmodel_setup` to `controls_focus`, tag `NuvioDetails`).
-  Gate: dry run against the Shield. Needs: M2.1. Landed: PR #44; gate pending.
 - [M1.5][device] Check that each UI journey of `scripts/shield_measure.py` starts and ends on Home with
   focus on the first Continue watching card, also on a Home with one card and no other rows (a review
   finding on PR #44: RIGHT cannot move there, LEFT opens the sidebar, and the next journey measures the
-  sidebar). Run `ui --shots` on such a Home. Gate: the shots show each journey's end, and the script
+  sidebar). The details journey has the same problem: on the owner's Home its DOWN lands on a
+  collection row, CENTER opens `folder_detail`, and no NuvioDetails stage is logged (M1.2 log). Run
+  `ui --shots` on such a Home. Gate: the shots show each journey's end, and the script
   restores focus or refuses a Home it cannot measure. Needs: M1.2.
 - [M1.3][desk] Build the `benchmark` variant of this branch for the UI journeys (`:app:assembleFullBenchmark`;
   minified, shrunk, with the baseline profile, signed with the debug key). It installs as its own app with the
