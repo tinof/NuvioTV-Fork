@@ -85,7 +85,7 @@ class ConvertedTrackInjectorTest {
         for (fieldLength in 1..4) {
             val sample = lengthPrefixed(listOf(sps, idr), fieldLength)
             val out = ExposedByteArrayOutputStream(16)
-            assertTrue(injector.inject(sample, sample.size, fieldLength, streamStart = false, timeUs = 0, out = out))
+            assertTrue(injector.inject(sample, sample.size, fieldLength, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = out))
             assertArrayEquals("$fieldLength", lengthPrefixed(listOf(sps, idr, plainRpu), fieldLength), out.toByteArray())
         }
     }
@@ -96,7 +96,7 @@ class ConvertedTrackInjectorTest {
         val sample = lengthPrefixed(listOf(idr))
         val buffer = sample + ByteArray(32) { 0x7F }
         val out = ExposedByteArrayOutputStream(16)
-        assertTrue(injector.inject(buffer, sample.size, 4, streamStart = false, timeUs = 0, out = out))
+        assertTrue(injector.inject(buffer, sample.size, 4, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = out))
         assertArrayEquals(lengthPrefixed(listOf(idr, plainRpu)), out.toByteArray())
     }
 
@@ -113,12 +113,12 @@ class ConvertedTrackInjectorTest {
         val sample = lengthPrefixed(listOf(idr))
         val out = ExposedByteArrayOutputStream(16)
         // A length that runs past the sample, a truncated length field, a 4-byte length above Int.MAX_VALUE.
-        assertFalse(injector.inject(sample, sample.size - 1, 4, streamStart = false, timeUs = 0, out = out))
-        assertFalse(injector.inject(sample + byteArrayOf(0, 0), sample.size + 2, 4, streamStart = false, timeUs = 0, out = out))
+        assertFalse(injector.inject(sample, sample.size - 1, 4, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = out))
+        assertFalse(injector.inject(sample + byteArrayOf(0, 0), sample.size + 2, 4, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = out))
         val huge = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()) + idr
-        assertFalse(injector.inject(huge, huge.size, 4, streamStart = false, timeUs = 0, out = out))
-        assertFalse(injector.inject(sample, sample.size, 0, streamStart = false, timeUs = 0, out = out))
-        assertFalse(injector.inject(sample, sample.size, 5, streamStart = false, timeUs = 0, out = out))
+        assertFalse(injector.inject(huge, huge.size, 4, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = out))
+        assertFalse(injector.inject(sample, sample.size, 0, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = out))
+        assertFalse(injector.inject(sample, sample.size, 5, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = out))
     }
 
     @Test
@@ -126,11 +126,47 @@ class ConvertedTrackInjectorTest {
         val long = DoviRpuBuilder.ShotRpu(ByteArray(300) { 0x7C }, ByteArray(256) { 0x7C })
         val injector = ConvertedTrackInjector(StaticTrackRpus(long), refreshEveryStart = false)
         val sample = lengthPrefixed(listOf(idr), 1)
-        assertFalse(injector.inject(sample, sample.size, 1, streamStart = false, timeUs = 0, out = ExposedByteArrayOutputStream(16)))
+        assertFalse(injector.inject(sample, sample.size, 1, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = ExposedByteArrayOutputStream(16)))
         val wide = lengthPrefixed(listOf(idr), 2)
         val out = ExposedByteArrayOutputStream(16)
-        assertTrue(injector.inject(wide, wide.size, 2, streamStart = false, timeUs = 0, out = out))
+        assertTrue(injector.inject(wide, wide.size, 2, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = out))
         assertEquals(wide.size + 2 + 256, out.size())
+    }
+
+    @Test
+    fun `a seek ends the refresh window of a provider switch`() {
+        val rpus = SwitchingRpus(switchAt = 0)
+        val injector = ConvertedTrackInjector(rpus, refreshEveryStart = false)
+        assertArrayEquals(lengthPrefixed(listOf(trail, refreshRpu)), inject(injector, listOf(trail), streamStart = false, timeUs = 320))
+        assertArrayEquals(lengthPrefixed(listOf(trail, refreshRpu)), inject(injector, listOf(trail), streamStart = false, timeUs = 200))
+        assertArrayEquals(lengthPrefixed(listOf(trail, plainRpu)), inject(injector, listOf(trail), streamStart = false, timeUs = 280))
+        // After a seek the fallback goes on; an earlier picture is no switch any more.
+        injector.onReset()
+        assertArrayEquals(lengthPrefixed(listOf(idr, plainRpu)), inject(injector, listOf(idr), streamStart = false, timeUs = 160))
+        assertArrayEquals(lengthPrefixed(listOf(trail, plainRpu)), inject(injector, listOf(trail), streamStart = false, timeUs = 80))
+    }
+
+    @Test
+    fun `an AU the injector refuses still takes its place in decode order`() {
+        val rpus = SwitchingRpus()
+        val injector = ConvertedTrackInjector(rpus, refreshEveryStart = false)
+        inject(injector, listOf(idr), streamStart = false)
+        val broken = lengthPrefixed(listOf(trail)).copyOf(3)
+        assertFalse(injector.inject(broken, broken.size, 4, streamStart = false, timeUs = 0, ticks = 0, laceCount = 1, out = ExposedByteArrayOutputStream(16)))
+        inject(injector, listOf(trail), streamStart = false)
+        assertEquals(listOf(0L, 2L), rpus.indices)
+    }
+
+    /** One shot; marks the AU of call [switchAt] as a provider switch and records each decode index. */
+    private inner class SwitchingRpus(private val switchAt: Int = -1) : TrackRpus {
+        val indices = mutableListOf<Long>()
+        override val first = shot
+
+        override fun next(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int, au: AuInput): AuRpu {
+            val switch = indices.size == switchAt
+            indices += au.decodeIndex
+            return AuRpu(shot, sceneRefresh = false, providerSwitch = switch)
+        }
     }
 
     @Test
@@ -150,10 +186,10 @@ class ConvertedTrackInjectorTest {
         assertFalse(ConvertedTrackInjector.fits(shot, 5))
     }
 
-    private fun inject(injector: ConvertedTrackInjector, nals: List<ByteArray>, streamStart: Boolean): ByteArray {
+    private fun inject(injector: ConvertedTrackInjector, nals: List<ByteArray>, streamStart: Boolean, timeUs: Long = 0): ByteArray {
         val sample = lengthPrefixed(nals)
         val out = ExposedByteArrayOutputStream(16)
-        assertTrue(injector.inject(sample, sample.size, 4, streamStart, timeUs = 0, out = out))
+        assertTrue(injector.inject(sample, sample.size, 4, streamStart, timeUs = timeUs, ticks = timeUs, laceCount = 1, out = out))
         return out.toByteArray()
     }
 

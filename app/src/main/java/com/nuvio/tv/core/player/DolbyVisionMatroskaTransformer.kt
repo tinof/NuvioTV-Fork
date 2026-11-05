@@ -304,13 +304,15 @@ internal class DolbyVisionMatroskaTransformer(
         sampleLength: Int,
         nalUnitLengthFieldLength: Int,
         streamStart: Boolean,
-        timeUs: Long
+        timeUs: Long,
+        ticks: Long,
+        laceCount: Int
     ): ByteArray? {
         val sample = sampleLengthDelimitedData ?: return null
         val injector = convertedTracks[trackId] ?: return null
         lastTransformedLength = sampleLength
         // The HDR10+ payload is read here, before the strip mode below removes it.
-        if (!injector.inject(sample, sampleLength, nalUnitLengthFieldLength, streamStart, timeUs, scratch)) {
+        if (!injector.inject(sample, sampleLength, nalUnitLengthFieldLength, streamStart, timeUs, ticks, laceCount, scratch)) {
             // The extractor's Annex B writer refuses the same sample; the RPU cannot go anywhere.
             if (!injectFailureLogged) {
                 injectFailureLogged = true
