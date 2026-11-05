@@ -320,7 +320,8 @@ internal class Hdr10PlusTrackRpus(
         shots[firstFrame.l1] = first
     }
 
-    override fun next(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int, timeUs: Long): AuRpu {
+    override fun next(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int, au: AuInput): AuRpu {
+        val timeUs = au.timeUs
         val own = try {
             ownFrame(HevcInitNals.hdr10PlusPayloadsInAu(sample, length, nalUnitLengthFieldLength))
         } catch (e: RuntimeException) {

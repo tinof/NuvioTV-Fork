@@ -185,13 +185,20 @@ that shot, including the scene-refresh variant and any reconfiguration prefix; c
 is not enough. If the guarantee cannot be established, the whole shot keeps its fallback. A test covers a
 later AU with less headroom than the first; no fallback inside a shot is allowed.
 
-**Open: a rejected manifest inside a shot (2026-11-04).** The manifest matcher (section 2.8) can reject
+**A rejected manifest inside a shot (settled in DV4.7).** The manifest matcher (section 2.8) can reject
 on any AU. At that point the manifest is no longer admissible, so the provider changes inside the
 shot: the one exception to the rule above. With B-frames, the AU that fails can be a reference picture
-decoded ahead of earlier-presented B-pictures. Refreshing only that AU can leave the first presented
-fallback picture without a scene refresh. DV4.1 settles the rule, for example a refresh on the
-lowest-pts AU queued after the rejection. It also needs a test where the rejection comes on a future
-reference followed by earlier B-pictures.
+decoded ahead of earlier-presented B-pictures, so refreshing only that AU can leave the first presented
+fallback picture without a scene refresh. The rule: the source marks the first AU it writes from the
+fallback (`AuRpu.providerSwitch`); `ConvertedTrackInjector` sets the refresh on that AU and on every
+later AU of the generation whose presentation time is lower than that of every AU written since the
+switch. AUs are written one by one, so this running minimum is how the lowest-pts AU queued after the
+rejection gets the flag; the price is a refresh on a few more fallback AUs inside the reorder window,
+all with the fallback's L1. A seek or resync ends the window. The source gives the fallback's RPU from
+the switch on, never the rejected manifest's last one. AUs decoded before the rejection keep the
+manifest's L1 even when they are presented after fallback pictures; they are already written. Tests:
+`MatroskaRpuInjectionTest` (a rejection on a future reference followed by earlier B-pictures) and
+`ConvertedTrackInjectorTest`.
 
 ### 2.3 AU identity and invalidation
 
@@ -593,8 +600,15 @@ start time, an open-GOP start, a different cut or encode, and a mismatched compo
 **Bridged in DV4.6.** `libnuvio_rpu.so` pins hdr-analyze `eb727a0` (P15.2 is its PR #93) and exposes the
 parser, the source, track and composer checks, the manifest's own RPU builder and `AuMatcher` over JNI,
 on the builders' handle table (code 8 for a refusal; the matcher's reject reasons 1 to 6 arrive in its
-verdict). `PlaybackManifestSession` owns one playback's handles. Fetching by `lookup_key` and the
-extractor inputs are DV4.1 and DV4.7. Calls and codes: `native/rpu_builder/README.md`.
+verdict). `PlaybackManifestSession` owns one playback's handles. Fetching by `lookup_key` is DV4.1.
+Calls and codes: `native/rpu_builder/README.md`.
+
+**Extractor inputs (DV4.7).** `TrackRpus.next` gets an `AuInput` per AU: the presentation time, the
+raw ticks (Cluster timestamp plus the block's signed relative timestamp, in TimestampScale units, not
+rounded to microseconds; every frame of a laced block has the block's), the block's lace count, and a
+decode index among the track's AUs since the extractor's last start, seek or resync. The DV4.1 provider
+gives the matcher `ticks` as its `pts` and `laced` (lace count above 1); the matcher keeps its own
+decode index into the manifest's table, and refuses laced video.
 
 ### 2.9 Measuring on the Shield
 
