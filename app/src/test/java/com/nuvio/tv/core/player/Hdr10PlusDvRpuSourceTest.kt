@@ -459,7 +459,7 @@ class Hdr10PlusDvRpuSourceTest {
 
     private fun read(rpus: TrackRpus, vararg aus: Au): List<Written> = aus.map { au ->
         val sample = sample(au.payloads)
-        val rpu = rpus.next(sample, sample.size, 4, au.timeUs)
+        val rpu = rpus.next(sample, sample.size, 4, AuInput(au.timeUs, ticks = au.timeUs, laceCount = 1, decodeIndex = 0))
         Written(au.timeUs, rpu.sceneRefresh, avgOf(rpu.shot))
     }
 
