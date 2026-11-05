@@ -12,6 +12,12 @@ import android.util.Log
  *
  * Nothing here throws. Every call returns an [Outcome] or a [Code]; a builder lives in the native
  * handle table until [release], and a stale [Handle] is [Code.UNKNOWN_HANDLE], never a crash.
+ *
+ * DV4.6 adds hdr-analyze's playback manifest (`dovi_rpu_builder::manifest`, `docs/PLAYBACK_MANIFEST.md`
+ * there): [parseManifest], the candidate and track checks, the manifest's own builder, and the AU
+ * matcher ([createMatcher], [matchAu], [resetMatcher]). A manifest and a matcher live in the same table
+ * as builders, and one counter numbers all three, so a handle of the wrong kind is
+ * [Code.UNKNOWN_HANDLE] too. [PlaybackManifestSession] owns them for one playback.
  */
 internal object DoviRpuBuilder {
     private const val TAG = "DoviRpuBuilder"
@@ -33,6 +39,8 @@ internal object DoviRpuBuilder {
         HDR10_PLUS_NO_PEAK(6),
         /** The crate failed after its own checks passed: an internal failure. */
         RPU(7),
+        /** The playback manifest does not parse, or does not describe this file, track or composer. */
+        MANIFEST(8),
         /** A null or wrong-length array, an unknown enum value, a value that does not fit its field. */
         BAD_ARGUMENT(20),
         /** Never created, or already released. */
@@ -61,6 +69,63 @@ internal object DoviRpuBuilder {
     /** A builder in the native table. */
     @JvmInline
     value class Handle internal constructor(val value: Long)
+
+    /** A parsed playback manifest in the native table (DV4.6). */
+    @JvmInline
+    value class ManifestHandle internal constructor(val value: Long)
+
+    /** A manifest's AU matcher in the native table; it keeps its own copy of the AU table. */
+    @JvmInline
+    value class MatcherHandle internal constructor(val value: Long)
+
+    /** The manifest coverage class of an injected AU. */
+    enum class QualityClass { FULL, APPROXIMATE }
+
+    /** Why the matcher rejected the manifest: `RejectReason::code` of the crate, stable. */
+    enum class RejectReason(val value: Int) {
+        UNKNOWN_PTS(1),
+        SIZE(2),
+        CRC(3),
+        ORDER(4),
+        LACED(5),
+        PAST_END(6),
+        /** Kotlin only: a number the library should not return. */
+        UNKNOWN(-2);
+
+        companion object {
+            fun fromNative(value: Long): RejectReason =
+                entries.firstOrNull { it.value.toLong() == value && it.value > 0 } ?: UNKNOWN
+        }
+    }
+
+    /** The matcher's answer for one AU. */
+    sealed interface AuVerdict {
+        /** Write [l1] into the AU's RPU; [sceneRefresh] on the shot's first picture only. */
+        data class Inject(
+            val l1: L1,
+            val sceneRefresh: Boolean,
+            val shot: Int,
+            val quality: QualityClass
+        ) : AuVerdict
+
+        /** The player's own RPU: waiting for an IRAP, a non-picture AU, or a picture not covered. */
+        data object Fallback : AuVerdict
+
+        /**
+         * The manifest does not describe this stream, for the rest of the playback (resets too).
+         * [decodeIndex] is the table's AU the read was checked against, when there is one.
+         */
+        data class Rejected(val reason: RejectReason, val decodeIndex: Long?) : AuVerdict
+    }
+
+    /** A SHA-256 digest, as the manifest checks take them: 32 raw bytes. */
+    const val DIGEST_BYTES = 32
+
+    /** `MAX_MANIFEST_BYTES` of the library: a longer manifest is refused unread. */
+    const val MAX_MANIFEST_BYTES = 64 shl 20
+
+    /** The length of `nativeMatcherNext`'s out array (`VERDICT_LEN`, `native/rpu_builder/src/manifest.rs`). */
+    internal const val VERDICT_LEN = 9
 
     enum class HlgComposer(internal val value: Int) {
         /** The `dolby_vision` crate's Profile 8.4 preset (`dovi_tool generate`). */
@@ -277,9 +342,135 @@ internal object DoviRpuBuilder {
     private fun halves(high: Int, low: Int): Long =
         (high.toLong() shl 32) or (low.toLong() and 0xFFFF_FFFFL)
 
-    fun release(handle: Handle): Code =
-        native("nativeRelease") { nativeRelease(handle.value) }?.let(Code::fromNative)
+    fun release(handle: Handle): Code = releaseValue(handle.value)
+
+    private fun releaseValue(value: Long): Code =
+        native("nativeRelease") { nativeRelease(value) }?.let(Code::fromNative)
             ?: Code.UNAVAILABLE
+
+    /** The manifest's UTF-8 JSON, parsed and checked by the crate's strict parser ([Code.MANIFEST]). */
+    fun parseManifest(json: ByteArray): Outcome<ManifestHandle> {
+        if (json.size > MAX_MANIFEST_BYTES) return Outcome.Failed(Code.BAD_ARGUMENT)
+        return when (val outcome = handleOutcome(native("nativeManifestParse") { nativeManifestParse(json) })) {
+            is Outcome.Ok -> Outcome.Ok(ManifestHandle(outcome.value.value))
+            is Outcome.Failed -> outcome
+        }
+    }
+
+    /**
+     * The candidate step: the file's size, the SHA-256 of its first and last MiB, and the `lookup_key`
+     * the player computed from them and fetched the manifest by. [Code.MANIFEST] when any differs.
+     */
+    fun checkManifestSource(
+        manifest: ManifestHandle,
+        sizeBytes: Long,
+        headSha256: ByteArray,
+        tailSha256: ByteArray,
+        lookupKey: ByteArray
+    ): Code {
+        if (sizeBytes < 0 || !isDigest(headSha256) || !isDigest(tailSha256) || !isDigest(lookupKey)) {
+            return Code.BAD_ARGUMENT
+        }
+        return code(native("nativeManifestCheckSource") {
+            nativeManifestCheckSource(manifest.value, sizeBytes, headSha256, tailSha256, lookupKey)
+        })
+    }
+
+    /**
+     * The track step: the SHA-256 of the track's CodecPrivate, its dimensions and its time base
+     * ([timeBaseNum] / [timeBaseDen] seconds per tick; for Matroska `TimestampScale / 1_000_000_000`,
+     * which the library reduces to lowest terms before comparing). [Code.MANIFEST] when any differs.
+     */
+    fun checkManifestTrack(
+        manifest: ManifestHandle,
+        codecPrivateSha256: ByteArray,
+        width: Int,
+        height: Int,
+        timeBaseNum: Int,
+        timeBaseDen: Int
+    ): Code {
+        if (!isDigest(codecPrivateSha256) || width < 0 || height < 0) return Code.BAD_ARGUMENT
+        return code(native("nativeManifestCheckTrack") {
+            nativeManifestCheckTrack(manifest.value, codecPrivateSha256, width, height, timeBaseNum, timeBaseDen)
+        })
+    }
+
+    /** [Code.MANIFEST] unless the manifest is 8.4 with the [composer] the player writes. */
+    fun checkManifestComposer(manifest: ManifestHandle, composer: HlgComposer): Code =
+        code(native("nativeManifestCheckComposer") { nativeManifestCheckComposer(manifest.value, composer.value) })
+
+    /** A builder for the manifest's `rpu`: its RPUs equal mkvdovi's for the same title. Release it. */
+    fun createManifestBuilder(manifest: ManifestHandle): Outcome<Handle> =
+        handleOutcome(native("nativeManifestCreateBuilder") { nativeManifestCreateBuilder(manifest.value) })
+
+    /** A matcher for the manifest, waiting for its first IRAP. It outlives a released manifest. */
+    fun createMatcher(manifest: ManifestHandle): Outcome<MatcherHandle> =
+        when (val outcome = handleOutcome(native("nativeMatcherCreate") { nativeMatcherCreate(manifest.value) })) {
+            is Outcome.Ok -> Outcome.Ok(MatcherHandle(outcome.value.value))
+            is Outcome.Failed -> outcome
+        }
+
+    /**
+     * The verdict for the next AU in decode order: [pts] in the track's ticks (cluster plus block
+     * timecode), the AU's bytes as the container stores them ([length] bytes of [data] from [offset]),
+     * and whether its block was [laced]. A refused call ([Code.BAD_ARGUMENT]) leaves the matcher as it
+     * was; any other failure may come after the matcher moved on, so stop using the manifest.
+     */
+    fun matchAu(
+        matcher: MatcherHandle,
+        pts: Long,
+        data: ByteArray,
+        offset: Int,
+        length: Int,
+        laced: Boolean
+    ): Outcome<AuVerdict> {
+        if (offset < 0 || length < 0 || offset > data.size - length) return Outcome.Failed(Code.BAD_ARGUMENT)
+        val out = LongArray(VERDICT_LEN)
+        val code = native("nativeMatcherNext") {
+            nativeMatcherNext(matcher.value, pts, data, offset, length, laced, out)
+        } ?: return Outcome.Failed(Code.UNAVAILABLE)
+        if (code != Code.OK.value) return Outcome.Failed(Code.fromNative(code))
+        return auVerdictOf(out)?.let { Outcome.Ok(it) } ?: Outcome.Failed(Code.UNKNOWN)
+    }
+
+    /** After a seek or a flush: the matcher waits for an IRAP again. A rejection stays. */
+    fun resetMatcher(matcher: MatcherHandle): Code =
+        code(native("nativeMatcherReset") { nativeMatcherReset(matcher.value) })
+
+    fun releaseManifest(manifest: ManifestHandle): Code = releaseValue(manifest.value)
+
+    fun releaseMatcher(matcher: MatcherHandle): Code = releaseValue(matcher.value)
+
+    /** The verdict in `nativeMatcherNext`'s out array, or null when the fields make no sense. */
+    internal fun auVerdictOf(out: LongArray): AuVerdict? {
+        if (out.size != VERDICT_LEN) return null
+        return when (out[0]) {
+            0L -> {
+                val l1 = out.slice(1..3)
+                if (l1.any { it !in 0L..U16_MAX.toLong() } || out[4] !in 0L..1L || out[5] !in 0L..Int.MAX_VALUE.toLong()) {
+                    return null
+                }
+                val quality = when (out[6]) {
+                    0L -> QualityClass.FULL
+                    1L -> QualityClass.APPROXIMATE
+                    else -> return null
+                }
+                AuVerdict.Inject(
+                    L1(l1[0].toInt(), l1[1].toInt(), l1[2].toInt()),
+                    sceneRefresh = out[4] == 1L,
+                    shot = out[5].toInt(),
+                    quality = quality
+                )
+            }
+            1L -> AuVerdict.Fallback
+            2L -> AuVerdict.Rejected(RejectReason.fromNative(out[7]), out[8].takeIf { it >= 0 })
+            else -> null
+        }
+    }
+
+    internal fun isDigest(bytes: ByteArray) = bytes.size == DIGEST_BYTES
+
+    private fun code(value: Int?): Code = value?.let(Code::fromNative) ?: Code.UNAVAILABLE
 
     /** A handle the library returned (> 0), or its negated code. */
     internal fun handleOutcome(value: Long?): Outcome<Handle> = when {
@@ -396,6 +587,56 @@ internal object DoviRpuBuilder {
     @JvmStatic
     private external fun nativeSourceRange81(minNits: Double, maxNits: Double, out: IntArray): Int
 
+    // A builder, a manifest or a matcher.
     @JvmStatic
     private external fun nativeRelease(handle: Long): Int
+
+    // A manifest handle > 0, or the negated code.
+    @JvmStatic
+    private external fun nativeManifestParse(json: ByteArray): Long
+
+    @JvmStatic
+    private external fun nativeManifestCheckSource(
+        manifest: Long,
+        sizeBytes: Long,
+        headSha256: ByteArray,
+        tailSha256: ByteArray,
+        lookupKey: ByteArray
+    ): Int
+
+    @JvmStatic
+    private external fun nativeManifestCheckTrack(
+        manifest: Long,
+        codecPrivateSha256: ByteArray,
+        width: Int,
+        height: Int,
+        timeBaseNum: Int,
+        timeBaseDen: Int
+    ): Int
+
+    @JvmStatic
+    private external fun nativeManifestCheckComposer(manifest: Long, composer: Int): Int
+
+    // A builder handle > 0, or the negated code.
+    @JvmStatic
+    private external fun nativeManifestCreateBuilder(manifest: Long): Long
+
+    // A matcher handle > 0, or the negated code.
+    @JvmStatic
+    private external fun nativeMatcherCreate(manifest: Long): Long
+
+    // The verdict's VERDICT_LEN fields in out; the code.
+    @JvmStatic
+    private external fun nativeMatcherNext(
+        matcher: Long,
+        pts: Long,
+        data: ByteArray,
+        offset: Int,
+        length: Int,
+        laced: Boolean,
+        out: LongArray
+    ): Int
+
+    @JvmStatic
+    private external fun nativeMatcherReset(matcher: Long): Int
 }

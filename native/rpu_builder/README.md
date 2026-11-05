@@ -5,10 +5,13 @@ conversion (ROADMAP Appendix A, step DV2.2; design in `docs/dv-conversion/DESIGN
 complete Profile 8.1 and 8.4 RPU NALs, byte-identical to `dovi_tool generate` 2.3.4: static 8.4
 (composer preset, bt2100 or the canary), 8.1 from given params, shot L1 → both scene-refresh
 variants of an RPU, HDR10+ payload → L1, and (DV3.1) HDR10+ payload → L1 plus its scene key and
-mastering display → the 8.1 source range. The Kotlin side is
-`app/src/main/java/com/nuvio/tv/core/player/DoviRpuBuilder.kt`.
+mastering display → the 8.1 source range. Since DV4.6 it also carries hdr-analyze's playback manifest
+(`dovi_rpu_builder::manifest`): parse, the source, track and composer checks, the manifest's own builder,
+and the AU matcher. The Kotlin side is `app/src/main/java/com/nuvio/tv/core/player/DoviRpuBuilder.kt`, and
+`PlaybackManifestSession.kt` owns one playback's manifest handles.
 
-- `src/api.rs`: the logic with no JNI types: argument decoding, the builder handle table, the codes.
+- `src/api.rs`: the logic with no JNI types: argument decoding, the handle table, the codes.
+- `src/manifest.rs`: the playback manifest calls, with no JNI types, and the test manifest.
 - `src/ffi.rs`: the `Java_com_nuvio_tv_core_player_DoviRpuBuilder_native*` exports, each inside
   `catch_unwind`.
 - `src/fixture_tests.rs`, `tests-fixtures/`: the wrapper against hdr-analyze's committed
@@ -21,17 +24,18 @@ The vendored `DV7/libdovi/*/lib/libdovi.a` is a Rust staticlib with its own copy
 staticlib in `libdovi_bridge.so` fails to link under fat LTO on the duplicate unmangled
 `rust_eh_personality`, and links without LTO only while both archives come from the same rustc
 (`DESIGN.md` 2.7). As its own `cdylib` the builder needs only `libc`, `libm` and `libdl`, exports only
-the nine `Java_*` functions, and is loaded by its own `System.loadLibrary("nuvio_rpu")`. Without it
+the 17 `Java_*` functions, and is loaded by its own `System.loadLibrary("nuvio_rpu")`. Without it
 (armeabi-v7a, a build without cargo-ndk) `DoviRpuBuilder.isAvailable()` is false and playback stays
 native.
 
 ## The pin
 
 `Cargo.toml` pins `dovi_rpu_builder` to hdr-analyze commit
-`f55c779f10034f19b4e4e26e3fcd09adcbe73233` (main), and `Cargo.lock` records it. To move it:
+`eb727a02c33f6ca251d460e9aec1ddaf52ab344d` (main), and `Cargo.lock` records it. To move it:
 
-1. Change `rev` in `Cargo.toml` and the seven-character commit in `VERSION` (`src/api.rs`); the test
-   `the_version_names_the_pinned_commit` fails while they differ.
+1. Change both `rev`s in `Cargo.toml` (`dovi_rpu_builder`, and the dev-dependency `dovi84_composer`) and
+   the seven-character commit in `VERSION` (`src/api.rs`); the test `the_version_names_the_pinned_commit`
+   fails while they differ.
 2. `cargo update -p dovi_rpu_builder` and commit the new `Cargo.lock`.
 3. Copy the same fixture files from the new commit's `dovi_rpu_builder/tests/fixtures`, rewrite
    `tests-fixtures/SHA256SUMS` and the commit in `tests-fixtures/README.md`.
@@ -67,7 +71,8 @@ They start one JVM with `-Xcheck:jni` in the test process and call every `Java_*
 `JNIEnv` and Java arrays: static 8.4 (bt2100, canary) and an 8.1 case equal the fixtures through
 JNI, `nativeHdr10PlusL1` fills its out array, `nativeHdr10PlusFrame` gives one key per HDR10+ scene and
 `nativeSourceRange81` the fixtures' 7..3079, wrong-length and null arrays are code 20, a released
-handle is code 21, and no call leaves a Java exception pending. jni finds `libjvm` through
+handle is code 21, the manifest exports parse, check, match and reset the test manifest with AU bytes
+inside a larger array, and no call leaves a Java exception pending. jni finds `libjvm` through
 `JAVA_HOME` (without it, macOS's default `/usr/libexec/java_home`, or the `java` on `PATH` on Linux)
 and loads `$JAVA_HOME/lib/server/libjvm.dylib` by its full path, so macOS needs no
 `DYLD_LIBRARY_PATH`. `cargo clippy --all-targets --features jvm-tests` checks the test code.
@@ -92,6 +97,7 @@ Every call returns one of these (Kotlin: `DoviRpuBuilder.Code`). A code is never
 | 5 | `HDR10_PLUS_PARSE` | a broken or multi-window HDR10+ payload |
 | 6 | `HDR10_PLUS_NO_PEAK` | the payload has no value for the selected peak source |
 | 7 | `RPU` | the `dolby_vision` crate failed after the checks passed (internal) |
+| 8 | `MANIFEST` | the playback manifest does not parse, or its source, track or composer differs |
 | 20 | `BAD_ARGUMENT` | a null or wrong-length array, an unknown enum value, a value that does not fit its field (negative, or above 65535 for a 16-bit field) |
 | 21 | `UNKNOWN_HANDLE` | a handle never created or already released |
 | 22 | `JNI_FAILURE` | a Java array could not be allocated or accessed (the pending exception is cleared) |
@@ -99,8 +105,9 @@ Every call returns one of these (Kotlin: `DoviRpuBuilder.Code`). A code is never
 | - | `UNAVAILABLE` | Kotlin only: the library is not loaded, or the call threw |
 | - | `UNKNOWN` | Kotlin only: a number the library should not return |
 
-1 to 7 are `dovi_rpu_builder::Error::code`. `nativeCreate*` return a handle > 0 or the negated
-code; `nativeRenderShot` returns null and sets `codeOut[0]`.
+1 to 8 are `dovi_rpu_builder::Error::code`. `nativeCreate*`, `nativeManifestParse`,
+`nativeManifestCreateBuilder` and `nativeMatcherCreate` return a handle > 0 or the negated code;
+`nativeRenderShot` returns null and sets `codeOut[0]`.
 
 `nativeHdr10PlusFrame` (DV3.1) fills `[min, avg, max, k0, k1, k2, k3]`: the L1 of `nativeHdr10PlusL1` and
 two 64-bit hashes of the payload's `SceneKey`, the fields `dovi_tool`'s scene rule compares. The app
@@ -112,10 +119,39 @@ changes, writes the 16 HDR10+ fixtures byte for byte. `nativeSourceRange81` fill
 L9's source primaries last (0 P3-D65, 1 BT.709, 2 BT.2020; read under CM v4.0, which otherwise keeps
 `CmMetadata::mkvdovi_default`), as `mkvdovi` detects them for the title.
 
+## Playback manifest (DV4.6)
+
+hdr-analyze `docs/PLAYBACK_MANIFEST.md` is the contract; the crate's parser and `AuMatcher` do the work.
+
+- `nativeManifestParse(byte[] json)`: UTF-8 JSON of at most 64 MiB (longer is code 20, unread). Anything
+  the strict parser refuses, invalid UTF-8 included, is code 8.
+- `nativeManifestCheckSource(manifest, size, head, tail, lookupKey)`: the candidate step. The digests are
+  32 raw SHA-256 bytes (other lengths are code 20) and become the lowercase hex the crate compares. The
+  crate computes no SHA-256, so the wrapper also compares `lookupKey` with the manifest's `lookup_key`.
+- `nativeManifestCheckTrack(manifest, codecPrivateSha256, width, height, num, den)` and
+  `nativeManifestCheckComposer(manifest, composer)`: the track step, and the 8.4 composer the player
+  writes (an 8.1 manifest fails it). The time base is seconds per tick, for Matroska
+  `(TimestampScale, 1000000000)`; the wrapper reduces a positive fraction to lowest terms, the form
+  FFmpeg's stream time base and so the manifest have.
+- `nativeManifestCreateBuilder(manifest)`: a builder handle for the manifest's `rpu`, used with
+  `nativeRenderShot`.
+- `nativeMatcherCreate(manifest)`, `nativeMatcherNext(matcher, pts, data, offset, length, laced, long[9])`,
+  `nativeMatcherReset(matcher)`. A matcher keeps its own AU table and outlives its manifest. `nativeMatcherNext`
+  checks its arguments before the matcher sees the AU, so a code 20 leaves the matcher as it was. It
+  copies the AU's bytes once per call. The out array holds `[kind, min, avg, max, sceneRefresh, shot,
+  class, reason, decodeIndex]`: kind 0 inject, 1 fallback, 2 rejected; class 0 full, 1 approximate;
+  reason 1 unknown pts, 2 size, 3 CRC, 4 order, 5 laced, 6 past the end; decodeIndex -1 when there is none.
+  A rejection is a verdict, not a code, and it stays for the rest of the playback.
+
+`src/manifest.rs` tests every call on a manifest built in code after hdr-analyze's own test table (8.4
+bt2100, B-pictures, a non-picture AU, two IRAPs), and `src/jvm_tests.rs` repeats them through JNI. The
+manifest's builder writes the same bytes as `static_84_params(bt2100)`.
+
 ## Handles
 
-Builders live in a table keyed by a counter that starts at 1 and never reuses a number, so a stale
-or invented handle is code 21, never freed memory. `nativeRenderShot` clones the builder out of the
+Builders, manifests and matchers live in one table keyed by a counter that starts at 1 and never
+reuses a number, so a stale or invented handle, or one of another kind, is code 21, never freed memory
+or the wrong object. `nativeRelease` releases any kind. `nativeRenderShot` clones the builder out of the
 table and writes outside the lock; a builder is `Send + Sync`, so threads may share a handle. A
 panic never leaves the table unusable (a poisoned lock is taken over). Every handle must be released
-with `nativeRelease`.
+with `nativeRelease`. A matcher is used under its own lock, held for one call only.

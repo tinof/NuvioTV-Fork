@@ -1,15 +1,17 @@
 //! The JNI entry points of `com.nuvio.tv.core.player.DoviRpuBuilder` (static methods: Kotlin
 //! `@JvmStatic` on an object). Each one moves values between Java and `api.rs` inside
-//! [`guard`], so a panic returns code 99 instead of unwinding into the JVM.
+//! [`guard`], so a panic returns code 99 instead of unwinding into the JVM. The playback
+//! manifest's exports (`nativeManifest*`, `nativeMatcher*`, DV4.6) call `manifest.rs`.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 
-use jni::objects::{JByteArray, JClass, JIntArray, JObject};
-use jni::sys::{jdouble, jint, jintArray, jlong, jobjectArray, jstring};
+use jni::objects::{JByteArray, JClass, JIntArray, JLongArray, JObject};
+use jni::sys::{jboolean, jdouble, jint, jintArray, jlong, jobjectArray, jstring};
 use jni::JNIEnv;
 
-use crate::api::{self, WrapperError, BUILDERS, OK, PANIC};
+use crate::api::{self, WrapperError, HANDLES, OK, PANIC};
+use crate::manifest::{self, DIGEST_BYTES, MAX_MANIFEST_BYTES, VERDICT_LEN};
 
 /// `body`'s value, or `on_panic` when it panics. The panic hook still runs (its message goes to
 /// stderr, which Android discards).
@@ -75,6 +77,61 @@ fn write_ints(env: &mut JNIEnv<'_>, out: &JIntArray<'_>, values: &[i32]) -> api:
     checked(env, written)
 }
 
+/// A `byte[]` argument of at most `max` bytes, copied. Null, or longer than `max`, is code 20,
+/// and a longer array is not read.
+fn read_bytes(env: &mut JNIEnv<'_>, array: &JByteArray<'_>, max: usize) -> api::Result<Vec<u8>> {
+    if array.is_null() {
+        return Err(WrapperError::BadArgument("null byte[] argument".into()));
+    }
+    let length = env.get_array_length(array);
+    let length = checked(env, length)?;
+    if usize::try_from(length).map_or(true, |length| length > max) {
+        return Err(WrapperError::BadArgument(format!(
+            "{length} bytes in a byte[] argument, at most {max}"
+        )));
+    }
+    let bytes = env.convert_byte_array(array);
+    checked(env, bytes)
+}
+
+/// `length` bytes of `array` from `offset`, copied; code 20 for null or a range outside the array.
+fn read_region(
+    env: &mut JNIEnv<'_>,
+    array: &JByteArray<'_>,
+    offset: jint,
+    length: jint,
+) -> api::Result<Vec<u8>> {
+    if array.is_null() {
+        return Err(WrapperError::BadArgument("null data".into()));
+    }
+    let total = env.get_array_length(array);
+    let total = checked(env, total)?;
+    if offset < 0 || length < 0 || i64::from(offset) + i64::from(length) > i64::from(total) {
+        return Err(WrapperError::BadArgument(format!(
+            "bytes {offset}..+{length} of a {total}-byte array"
+        )));
+    }
+    let mut bytes = vec![0; length as usize];
+    let read = env.get_byte_array_region(array, offset, &mut bytes);
+    checked(env, read)?;
+    // jbyte is i8; the same allocation, reinterpreted value by value.
+    Ok(bytes.into_iter().map(|byte| byte as u8).collect())
+}
+
+/// Code 20 unless `out` is a `long[]` of exactly `length` values.
+fn check_longs(env: &mut JNIEnv<'_>, out: &JLongArray<'_>, length: usize) -> api::Result<()> {
+    if out.is_null() {
+        return Err(WrapperError::BadArgument("null out array".into()));
+    }
+    let actual = env.get_array_length(out);
+    if checked(env, actual)? as usize != length {
+        return Err(WrapperError::BadArgument(format!(
+            "out array needs {length} values"
+        )));
+    }
+    Ok(())
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeVersion<'local>(
     mut env: JNIEnv<'local>,
@@ -96,7 +153,7 @@ pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeCreate
     composer: jint,
 ) -> jlong {
     guard(-jlong::from(PANIC), || {
-        handle_or_code(api::create_static_84(&BUILDERS, composer))
+        handle_or_code(api::create_static_84(&HANDLES, composer))
     })
 }
 
@@ -129,7 +186,7 @@ pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeCreate
                 level5.as_deref(),
                 source_primaries,
             )?;
-            api::create(&BUILDERS, &params)
+            api::create(&HANDLES, &params)
         })())
     })
 }
@@ -180,7 +237,7 @@ pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeRender
     code_out: JIntArray<'local>,
 ) -> jobjectArray {
     let result = guard(Err(PANIC), || {
-        let nals = api::render_shot(&BUILDERS, handle, min_pq, avg_pq, max_pq);
+        let nals = api::render_shot(&HANDLES, handle, min_pq, avg_pq, max_pq);
         nals.and_then(|nals| shot_arrays(&mut env, &nals))
             .map_err(|error| error.code())
     });
@@ -263,17 +320,149 @@ pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeReleas
     _class: JClass<'local>,
     handle: jlong,
 ) -> jint {
-    guard(PANIC, || code(api::release(&BUILDERS, handle)))
+    guard(PANIC, || code(api::release(&HANDLES, handle)))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestParse<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    json: JByteArray<'local>,
+) -> jlong {
+    guard(-jlong::from(PANIC), || {
+        handle_or_code((|| {
+            let json = read_bytes(&mut env, &json, MAX_MANIFEST_BYTES)?;
+            manifest::parse(&HANDLES, &json)
+        })())
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckSource<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    size_bytes: jlong,
+    head_sha256: JByteArray<'local>,
+    tail_sha256: JByteArray<'local>,
+    lookup_key: JByteArray<'local>,
+) -> jint {
+    guard(PANIC, || {
+        code((|| {
+            let head = read_bytes(&mut env, &head_sha256, DIGEST_BYTES)?;
+            let tail = read_bytes(&mut env, &tail_sha256, DIGEST_BYTES)?;
+            let key = read_bytes(&mut env, &lookup_key, DIGEST_BYTES)?;
+            manifest::check_source(&HANDLES, handle, size_bytes, &head, &tail, &key)
+        })())
+    })
+}
+
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckTrack<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    codec_private_sha256: JByteArray<'local>,
+    width: jint,
+    height: jint,
+    time_base_num: jint,
+    time_base_den: jint,
+) -> jint {
+    guard(PANIC, || {
+        code((|| {
+            let digest = read_bytes(&mut env, &codec_private_sha256, DIGEST_BYTES)?;
+            let time_base = (time_base_num, time_base_den);
+            manifest::check_track(&HANDLES, handle, &digest, width, height, time_base)
+        })())
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckComposer<
+    'local,
+>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    composer: jint,
+) -> jint {
+    guard(PANIC, || {
+        code(manifest::check_composer(&HANDLES, handle, composer))
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCreateBuilder<
+    'local,
+>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jlong {
+    guard(-jlong::from(PANIC), || {
+        handle_or_code(manifest::create_builder(&HANDLES, handle))
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeMatcherCreate<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    manifest_handle: jlong,
+) -> jlong {
+    guard(-jlong::from(PANIC), || {
+        handle_or_code(manifest::create_matcher(&HANDLES, manifest_handle))
+    })
+}
+
+/// The arguments are checked before the matcher sees the AU, so a refused call (code 20) leaves
+/// its state as it was. Only a failure to write `out` (code 22) comes after the matcher moved on.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeMatcherNext<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    pts: jlong,
+    data: JByteArray<'local>,
+    offset: jint,
+    length: jint,
+    laced: jboolean,
+    out: JLongArray<'local>,
+) -> jint {
+    guard(PANIC, || {
+        code((|| {
+            check_longs(&mut env, &out, VERDICT_LEN)?;
+            let bytes = read_region(&mut env, &data, offset, length)?;
+            let verdict = manifest::next(&HANDLES, handle, pts, &bytes, laced != 0)?;
+            let written = env.set_long_array_region(&out, 0, &verdict);
+            checked(&mut env, written)
+        })())
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeMatcherReset<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jint {
+    guard(PANIC, || code(manifest::reset(&HANDLES, handle)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{Builders, PANIC_HANDLE};
+    use crate::api::{Handles, PANIC_HANDLE};
 
     #[test]
     fn a_panic_is_code_99_at_every_kind_of_entry() {
-        let builders = Builders::new();
+        let builders = Handles::new();
         let handle = api::create_static_84(&builders, 1).unwrap();
         let [min, avg, max] = api::static_84_l1();
         // The bodies of nativeRelease, nativeCreate* and nativeRenderShot, with a panic in the

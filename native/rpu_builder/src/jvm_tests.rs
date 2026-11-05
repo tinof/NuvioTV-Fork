@@ -5,8 +5,8 @@
 
 use std::sync::OnceLock;
 
-use jni::objects::{JByteArray, JClass, JIntArray, JObject, JObjectArray, JString};
-use jni::sys::{jint, jintArray, jlong};
+use jni::objects::{JByteArray, JClass, JIntArray, JLongArray, JObject, JObjectArray, JString};
+use jni::sys::{jint, jintArray, jlong, JNI_FALSE, JNI_TRUE};
 use jni::{InitArgsBuilder, JNIEnv, JNIVersion, JavaVM};
 
 use crate::api::{self, BAD_ARGUMENT, OK, UNKNOWN_HANDLE};
@@ -15,6 +15,14 @@ use crate::ffi::{
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeCreateStatic84 as native_create_static_84,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeHdr10PlusFrame as native_hdr10plus_frame,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeHdr10PlusL1 as native_hdr10plus_l1,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckComposer as native_manifest_check_composer,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckSource as native_manifest_check_source,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckTrack as native_manifest_check_track,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCreateBuilder as native_manifest_create_builder,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestParse as native_manifest_parse,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeMatcherCreate as native_matcher_create,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeMatcherNext as native_matcher_next,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeMatcherReset as native_matcher_reset,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeRelease as native_release,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeRenderShot as native_render_shot,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeSourceRange81 as native_source_range_81,
@@ -22,6 +30,11 @@ use crate::ffi::{
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeVersion as native_version,
 };
 use crate::fixture_tests::{fixture, json, payloads, push_record, shots};
+use crate::manifest::fixture::{
+    self as manifest_fixture, data, expected_verdicts, CODEC_PRIVATE, HEAD, HEIGHT, KEY, PTS,
+    SHOT_L1, SIZE, TAIL, TIME_BASE, WIDTH,
+};
+use crate::manifest::VERDICT_LEN;
 
 /// One JVM per process (JNI_CreateJavaVM works once); every test thread attaches to it.
 fn vm() -> &'static JavaVM {
@@ -368,5 +381,357 @@ fn a_stale_handle_is_code_21() {
         let raw = native_render_shot(call_env, class, handle, l1[0], l1[1], l1[2], null_ints());
         assert_no_exception(env, "nativeRenderShot");
         assert!(raw.is_null());
+    });
+}
+
+/// A `byte[]` of `bytes`, or null.
+fn bytes<'local>(env: &mut JNIEnv<'local>, bytes: Option<&[u8]>) -> JByteArray<'local> {
+    bytes.map_or_else(
+        || JByteArray::from(JObject::null()),
+        |bytes| env.byte_array_from_slice(bytes).unwrap(),
+    )
+}
+
+fn manifest_parse(env: &mut JNIEnv<'_>, json: Option<&[u8]>) -> jlong {
+    let json = bytes(env, json);
+    let (call_env, class) = args(env);
+    let handle = native_manifest_parse(call_env, class, json);
+    assert_no_exception(env, "nativeManifestParse");
+    handle
+}
+
+fn check_source(
+    env: &mut JNIEnv<'_>,
+    handle: jlong,
+    size: jlong,
+    digests: [Option<&[u8]>; 3],
+) -> jint {
+    let [head, tail, key] = digests.map(|digest| bytes(env, digest));
+    let (call_env, class) = args(env);
+    let code = native_manifest_check_source(call_env, class, handle, size, head, tail, key);
+    assert_no_exception(env, "nativeManifestCheckSource");
+    code
+}
+
+fn check_track(
+    env: &mut JNIEnv<'_>,
+    handle: jlong,
+    digest: Option<&[u8]>,
+    size: [jint; 2],
+    time_base: (jint, jint),
+) -> jint {
+    let digest = bytes(env, digest);
+    let (call_env, class) = args(env);
+    let code = native_manifest_check_track(
+        call_env,
+        class,
+        handle,
+        digest,
+        size[0],
+        size[1],
+        time_base.0,
+        time_base.1,
+    );
+    assert_no_exception(env, "nativeManifestCheckTrack");
+    code
+}
+
+/// nativeMatcherNext on `length` bytes from `offset` of `array`: the code and the out array (its
+/// values stay -7 where the export did not write).
+fn matcher_next(
+    env: &mut JNIEnv<'_>,
+    handle: jlong,
+    pts: jlong,
+    array: Option<&[u8]>,
+    range: [jint; 2],
+    laced: bool,
+    out_length: Option<usize>,
+) -> (jint, Vec<i64>) {
+    let data = bytes(env, array);
+    let out = out_length.map(|length| {
+        let out = env.new_long_array(length as i32).unwrap();
+        env.set_long_array_region(&out, 0, &vec![-7; length])
+            .unwrap();
+        out
+    });
+    let out_arg = match &out {
+        Some(out) => JLongArray::from(env.new_local_ref(out).unwrap()),
+        None => JLongArray::from(JObject::null()),
+    };
+    let (call_env, class) = args(env);
+    let laced = if laced { JNI_TRUE } else { JNI_FALSE };
+    let code = native_matcher_next(
+        call_env, class, handle, pts, data, range[0], range[1], laced, out_arg,
+    );
+    assert_no_exception(env, "nativeMatcherNext");
+    let values = out.map_or_else(Vec::new, |out| {
+        let mut values = vec![0; env.get_array_length(&out).unwrap() as usize];
+        env.get_long_array_region(&out, 0, &mut values).unwrap();
+        values
+    });
+    (code, values)
+}
+
+/// AU `index` at offset 3 of a larger array, as an extractor's buffer holds it.
+fn au_in_buffer(index: usize) -> (Vec<u8>, [jint; 2]) {
+    let au = data(index);
+    let mut buffer = vec![0xEE; 3];
+    buffer.extend_from_slice(&au);
+    buffer.extend_from_slice(&[0xEE; 5]);
+    (buffer, [3, au.len() as jint])
+}
+
+#[test]
+fn a_manifest_parses_and_checks_through_jni() {
+    with_env(|env| {
+        let handle = manifest_parse(env, Some(&manifest_fixture::json()));
+        assert!(handle > 0, "{handle}");
+        assert_eq!(
+            check_source(env, handle, SIZE, [Some(&HEAD), Some(&TAIL), Some(&KEY)]),
+            OK
+        );
+        assert_eq!(
+            check_source(
+                env,
+                handle,
+                SIZE + 1,
+                [Some(&HEAD), Some(&TAIL), Some(&KEY)]
+            ),
+            8
+        );
+        assert_eq!(
+            check_source(env, handle, SIZE, [Some(&TAIL), Some(&TAIL), Some(&KEY)]),
+            8
+        );
+        assert_eq!(
+            check_track(
+                env,
+                handle,
+                Some(&CODEC_PRIVATE),
+                [WIDTH, HEIGHT],
+                TIME_BASE
+            ),
+            OK
+        );
+        assert_eq!(
+            check_track(
+                env,
+                handle,
+                Some(&CODEC_PRIVATE),
+                [WIDTH, HEIGHT],
+                (1, 1_000_000)
+            ),
+            8
+        );
+        for (composer, expected) in [(1, OK), (0, 8), (2, 8), (3, BAD_ARGUMENT)] {
+            let (call_env, class) = args(env);
+            let code = native_manifest_check_composer(call_env, class, handle, composer);
+            assert_no_exception(env, "nativeManifestCheckComposer");
+            assert_eq!(code, expected, "composer {composer}");
+        }
+
+        // Null, short and long digests are code 20; a long one is not read.
+        for digests in [
+            [None, Some(&TAIL[..]), Some(&KEY[..])],
+            [Some(&HEAD[..]), Some(&TAIL[..31]), Some(&KEY[..])],
+            [Some(&HEAD[..]), Some(&TAIL[..]), Some(&[0; 33][..])],
+        ] {
+            assert_eq!(check_source(env, handle, SIZE, digests), BAD_ARGUMENT);
+        }
+        assert_eq!(
+            check_source(env, handle, -1, [Some(&HEAD), Some(&TAIL), Some(&KEY)]),
+            BAD_ARGUMENT
+        );
+        assert_eq!(
+            check_track(env, handle, None, [WIDTH, HEIGHT], TIME_BASE),
+            BAD_ARGUMENT
+        );
+        assert_eq!(
+            check_track(env, handle, Some(&CODEC_PRIVATE), [-1, HEIGHT], TIME_BASE),
+            BAD_ARGUMENT
+        );
+        assert_eq!(release(env, handle), OK);
+        assert_eq!(
+            check_source(env, handle, SIZE, [Some(&HEAD), Some(&TAIL), Some(&KEY)]),
+            UNKNOWN_HANDLE
+        );
+
+        // Refusals are negated codes and take no handle.
+        assert_eq!(manifest_parse(env, Some(b"{")), -8);
+        assert_eq!(manifest_parse(env, Some(&[0xFF, 0xFE])), -8);
+        assert_eq!(manifest_parse(env, None), -jlong::from(BAD_ARGUMENT));
+    });
+}
+
+#[test]
+fn the_matcher_gives_each_au_its_verdict_through_jni() {
+    with_env(|env| {
+        let manifest = manifest_parse(env, Some(&manifest_fixture::json()));
+        let (call_env, class) = args(env);
+        let matcher = native_matcher_create(call_env, class, manifest);
+        assert_no_exception(env, "nativeMatcherCreate");
+        assert!(matcher > manifest, "{matcher}");
+        // The matcher keeps its own table: releasing the manifest first is fine.
+        assert_eq!(release(env, manifest), OK);
+
+        let feed = |env: &mut JNIEnv<'_>, i: usize| {
+            let (buffer, range) = au_in_buffer(i);
+            let (code, verdict) = matcher_next(
+                env,
+                matcher,
+                PTS[i],
+                Some(&buffer),
+                range,
+                false,
+                Some(VERDICT_LEN),
+            );
+            assert_eq!(code, OK, "AU {i}");
+            assert_eq!(verdict, expected_verdicts()[i], "AU {i}");
+        };
+        for i in 0..4 {
+            feed(env, i);
+        }
+
+        // In the middle of the stream, a refused call for AU 4 leaves the matcher where it was and
+        // the out array unwritten: had it reached the matcher, AU 4 below would be out of order.
+        let (buffer, au_range) = au_in_buffer(4);
+        for (case, array, range, out) in [
+            ("null data", None, [0, 0], Some(VERDICT_LEN)),
+            (
+                "offset past the end",
+                Some(&buffer[..]),
+                [buffer.len() as jint, 1],
+                Some(VERDICT_LEN),
+            ),
+            (
+                "negative offset",
+                Some(&buffer[..]),
+                [-1, 2],
+                Some(VERDICT_LEN),
+            ),
+            (
+                "negative length",
+                Some(&buffer[..]),
+                [0, -1],
+                Some(VERDICT_LEN),
+            ),
+            (
+                "int overflow",
+                Some(&buffer[..]),
+                [jint::MAX, jint::MAX],
+                Some(VERDICT_LEN),
+            ),
+            (
+                "short out",
+                Some(&buffer[..]),
+                au_range,
+                Some(VERDICT_LEN - 1),
+            ),
+            ("null out", Some(&buffer[..]), au_range, None),
+        ] {
+            let (code, values) = matcher_next(env, matcher, PTS[4], array, range, false, out);
+            assert_eq!(code, BAD_ARGUMENT, "{case}");
+            assert!(values.iter().all(|&v| v == -7), "{case}");
+        }
+        for i in 4..PTS.len() {
+            feed(env, i);
+        }
+
+        // Still at the end of the table: the next AU is past it (reason 6), sticky after a reset.
+        let (code, verdict) = matcher_next(
+            env,
+            matcher,
+            8,
+            Some(&buffer),
+            [0, 2],
+            false,
+            Some(VERDICT_LEN),
+        );
+        assert_eq!((code, &verdict), (OK, &vec![2, 0, 0, 0, 0, 0, 0, 6, -1]));
+        let (call_env, class) = args(env);
+        assert_eq!(native_matcher_reset(call_env, class, matcher), OK);
+        assert_no_exception(env, "nativeMatcherReset");
+        let (buffer, range) = au_in_buffer(0);
+        let (_, again) = matcher_next(
+            env,
+            matcher,
+            0,
+            Some(&buffer),
+            range,
+            true,
+            Some(VERDICT_LEN),
+        );
+        assert_eq!(again, verdict);
+
+        assert_eq!(release(env, matcher), OK);
+        let (code, _) = matcher_next(
+            env,
+            matcher,
+            0,
+            Some(&buffer),
+            range,
+            false,
+            Some(VERDICT_LEN),
+        );
+        assert_eq!(code, UNKNOWN_HANDLE);
+        let (call_env, class) = args(env);
+        assert_eq!(
+            native_matcher_reset(call_env, class, matcher),
+            UNKNOWN_HANDLE
+        );
+    });
+}
+
+#[test]
+fn a_laced_au_is_rejected_through_jni() {
+    with_env(|env| {
+        let manifest = manifest_parse(env, Some(&manifest_fixture::json()));
+        let (call_env, class) = args(env);
+        let matcher = native_matcher_create(call_env, class, manifest);
+        let (buffer, range) = au_in_buffer(0);
+        let (code, verdict) = matcher_next(
+            env,
+            matcher,
+            0,
+            Some(&buffer),
+            range,
+            true,
+            Some(VERDICT_LEN),
+        );
+        assert_eq!((code, verdict), (OK, vec![2, 0, 0, 0, 0, 0, 0, 5, -1]));
+        assert_eq!(release(env, matcher), OK);
+        assert_eq!(release(env, manifest), OK);
+    });
+}
+
+#[test]
+fn the_manifests_builder_renders_through_jni() {
+    with_env(|env| {
+        let manifest = manifest_parse(env, Some(&manifest_fixture::json()));
+        let (call_env, class) = args(env);
+        let builder = native_manifest_create_builder(call_env, class, manifest);
+        assert_no_exception(env, "nativeManifestCreateBuilder");
+        assert!(builder > manifest, "{builder}");
+        let static_84 = create(env, [84, 1, 40, 29], None, None, None);
+        for l1 in SHOT_L1 {
+            let l1 = l1.map(i32::from);
+            assert_eq!(
+                render_shot(env, builder, l1),
+                render_shot(env, static_84, l1)
+            );
+        }
+        // A builder handle is not a manifest, and a manifest handle is not a builder.
+        let (call_env, class) = args(env);
+        assert_eq!(
+            native_manifest_create_builder(call_env, class, builder),
+            -jlong::from(UNKNOWN_HANDLE)
+        );
+        assert_eq!(
+            render_shot(env, manifest, api::static_84_l1()),
+            Err(UNKNOWN_HANDLE)
+        );
+        for handle in [builder, static_84, manifest] {
+            assert_eq!(release(env, handle), OK);
+        }
     });
 }
