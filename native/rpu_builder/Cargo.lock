@@ -96,8 +96,8 @@ dependencies = [
 
 [[package]]
 name = "dovi84_composer"
-version = "0.7.0"
-source = "git+https://github.com/tinof/hdr-analyze?rev=f55c779f10034f19b4e4e26e3fcd09adcbe73233#f55c779f10034f19b4e4e26e3fcd09adcbe73233"
+version = "0.8.0"
+source = "git+https://github.com/tinof/hdr-analyze?rev=eb727a02c33f6ca251d460e9aec1ddaf52ab344d#eb727a02c33f6ca251d460e9aec1ddaf52ab344d"
 dependencies = [
  "anyhow",
  "dolby_vision",
@@ -105,8 +105,8 @@ dependencies = [
 
 [[package]]
 name = "dovi_rpu_builder"
-version = "0.7.0"
-source = "git+https://github.com/tinof/hdr-analyze?rev=f55c779f10034f19b4e4e26e3fcd09adcbe73233#f55c779f10034f19b4e4e26e3fcd09adcbe73233"
+version = "0.8.0"
+source = "git+https://github.com/tinof/hdr-analyze?rev=eb727a02c33f6ca251d460e9aec1ddaf52ab344d#eb727a02c33f6ca251d460e9aec1ddaf52ab344d"
 dependencies = [
  "anyhow",
  "dolby_vision",
@@ -234,6 +234,7 @@ dependencies = [
 name = "nuvio_rpu"
 version = "0.1.0"
 dependencies = [
+ "dovi84_composer",
  "dovi_rpu_builder",
  "jni",
  "serde_json",

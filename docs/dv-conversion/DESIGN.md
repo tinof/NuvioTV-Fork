@@ -590,6 +590,12 @@ start time, an open-GOP start, a different cut or encode, and a mismatched compo
 - The matcher waits for an IRAP after a seek. Before it, AUs keep the fallback.
 - Version 1 refuses laced video, a missing or duplicate pts, and more than one video track.
 
+**Bridged in DV4.6.** `libnuvio_rpu.so` pins hdr-analyze `eb727a0` (P15.2 is its PR #93) and exposes the
+parser, the source, track and composer checks, the manifest's own RPU builder and `AuMatcher` over JNI,
+on the builders' handle table (code 8 for a refusal; the matcher's reject reasons 1 to 6 arrive in its
+verdict). `PlaybackManifestSession` owns one playback's handles. Fetching by `lookup_key` and the
+extractor inputs are DV4.1 and DV4.7. Calls and codes: `native/rpu_builder/README.md`.
+
 ### 2.9 Measuring on the Shield
 
 Pixels from the playback decoder arrive after the input deadline of their own RPU, so they cannot give

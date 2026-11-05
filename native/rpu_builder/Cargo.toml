@@ -16,7 +16,7 @@ crate-type = ["cdylib"]
 [dependencies]
 # Pinned to an hdr-analyze commit on main; moving it is described in README.md. The rev's first
 # seven characters are also in the version string (src/api.rs, VERSION), which a test checks.
-dovi_rpu_builder = { git = "https://github.com/tinof/hdr-analyze", rev = "f55c779f10034f19b4e4e26e3fcd09adcbe73233" }
+dovi_rpu_builder = { git = "https://github.com/tinof/hdr-analyze", rev = "eb727a02c33f6ca251d460e9aec1ddaf52ab344d" }
 jni = { version = "0.21", default-features = false }
 
 [features]
@@ -28,6 +28,9 @@ jvm-tests = ["jni/invocation"]
 [dev-dependencies]
 # Reads the fixtures' JSON; the version dovi_rpu_builder already pulls in.
 serde_json = "1.0"
+# The HLG composer's luminance-mapping name for the test manifest (src/manifest.rs); same commit
+# as dovi_rpu_builder, so Cargo resolves the one copy dovi_rpu_builder already uses.
+dovi84_composer = { git = "https://github.com/tinof/hdr-analyze", rev = "eb727a02c33f6ca251d460e9aec1ddaf52ab344d" }
 
 [profile.release]
 # Every JNI entry point runs inside catch_unwind, which needs unwinding.
