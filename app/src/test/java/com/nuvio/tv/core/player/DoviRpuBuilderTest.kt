@@ -1,5 +1,6 @@
 package com.nuvio.tv.core.player
 
+import com.nuvio.tv.core.player.DoviRpuBuilder.AuVerdict
 import com.nuvio.tv.core.player.DoviRpuBuilder.Code
 import com.nuvio.tv.core.player.DoviRpuBuilder.CmVersion
 import com.nuvio.tv.core.player.DoviRpuBuilder.Handle
@@ -7,10 +8,14 @@ import com.nuvio.tv.core.player.DoviRpuBuilder.HlgComposer
 import com.nuvio.tv.core.player.DoviRpuBuilder.L1
 import com.nuvio.tv.core.player.DoviRpuBuilder.Level5
 import com.nuvio.tv.core.player.DoviRpuBuilder.Level6
+import com.nuvio.tv.core.player.DoviRpuBuilder.ManifestHandle
+import com.nuvio.tv.core.player.DoviRpuBuilder.MatcherHandle
 import com.nuvio.tv.core.player.DoviRpuBuilder.Outcome
 import com.nuvio.tv.core.player.DoviRpuBuilder.Params
 import com.nuvio.tv.core.player.DoviRpuBuilder.PeakSource
 import com.nuvio.tv.core.player.DoviRpuBuilder.Profile
+import com.nuvio.tv.core.player.DoviRpuBuilder.QualityClass
+import com.nuvio.tv.core.player.DoviRpuBuilder.RejectReason
 import com.nuvio.tv.core.player.DoviRpuBuilder.ShotRpu
 import com.nuvio.tv.core.player.DoviRpuBuilder.SourceRange
 import org.junit.Assert.assertArrayEquals
@@ -85,6 +90,7 @@ class DoviRpuBuilderTest {
             5 to Code.HDR10_PLUS_PARSE,
             6 to Code.HDR10_PLUS_NO_PEAK,
             7 to Code.RPU,
+            8 to Code.MANIFEST,
             20 to Code.BAD_ARGUMENT,
             21 to Code.UNKNOWN_HANDLE,
             22 to Code.JNI_FAILURE,
@@ -95,7 +101,7 @@ class DoviRpuBuilderTest {
             assertEquals(value, code.value)
         }
         // The Kotlin-only codes never come from a number, nor do numbers the library lacks.
-        for (value in listOf(-1, -2, 8, 19, 23, 98, 100, Int.MIN_VALUE)) {
+        for (value in listOf(-1, -2, 9, 19, 23, 98, 100, Int.MIN_VALUE)) {
             assertEquals("$value", Code.UNKNOWN, Code.fromNative(value))
         }
         assertEquals(native.size + 2, Code.entries.size)
@@ -182,5 +188,105 @@ class DoviRpuBuilderTest {
         assertEquals(-1, shot.copyInto(destination, 3, sceneRefresh = true))
         assertEquals(-1, shot.copyInto(destination, -1, sceneRefresh = false))
         assertArrayEquals(byteArrayOf(0, 0, 0, 0x7C, 0x01, 4, 5), destination)
+    }
+
+    private val digest = ByteArray(DoviRpuBuilder.DIGEST_BYTES)
+
+    @Test
+    fun `without the library the manifest calls return their unavailable result`() {
+        val manifest = ManifestHandle(1)
+        val matcher = MatcherHandle(2)
+        assertEquals(unavailable, DoviRpuBuilder.parseManifest("{}".toByteArray()))
+        assertEquals(Code.UNAVAILABLE, DoviRpuBuilder.checkManifestSource(manifest, 1000, digest, digest, digest))
+        assertEquals(Code.UNAVAILABLE, DoviRpuBuilder.checkManifestTrack(manifest, digest, 3840, 2160, 1, 1000))
+        assertEquals(Code.UNAVAILABLE, DoviRpuBuilder.checkManifestComposer(manifest, HlgComposer.BT2100))
+        assertEquals(unavailable, DoviRpuBuilder.createManifestBuilder(manifest))
+        assertEquals(unavailable, DoviRpuBuilder.createMatcher(manifest))
+        assertEquals(unavailable, DoviRpuBuilder.matchAu(matcher, 0, ByteArray(4), 0, 4, laced = false))
+        assertEquals(Code.UNAVAILABLE, DoviRpuBuilder.resetMatcher(matcher))
+        assertEquals(Code.UNAVAILABLE, DoviRpuBuilder.releaseManifest(manifest))
+        assertEquals(Code.UNAVAILABLE, DoviRpuBuilder.releaseMatcher(matcher))
+    }
+
+    @Test
+    fun `manifest arguments that do not fit are refused before the library`() {
+        val manifest = ManifestHandle(1)
+        val short = ByteArray(31)
+        val long = ByteArray(33)
+        assertEquals(Code.BAD_ARGUMENT, DoviRpuBuilder.checkManifestSource(manifest, -1, digest, digest, digest))
+        assertEquals(Code.BAD_ARGUMENT, DoviRpuBuilder.checkManifestSource(manifest, 1000, short, digest, digest))
+        assertEquals(Code.BAD_ARGUMENT, DoviRpuBuilder.checkManifestSource(manifest, 1000, digest, long, digest))
+        assertEquals(Code.BAD_ARGUMENT, DoviRpuBuilder.checkManifestSource(manifest, 1000, digest, digest, ByteArray(0)))
+        assertEquals(Code.BAD_ARGUMENT, DoviRpuBuilder.checkManifestTrack(manifest, short, 3840, 2160, 1, 1000))
+        assertEquals(Code.BAD_ARGUMENT, DoviRpuBuilder.checkManifestTrack(manifest, digest, -1, 2160, 1, 1000))
+        assertEquals(Code.BAD_ARGUMENT, DoviRpuBuilder.checkManifestTrack(manifest, digest, 3840, -1, 1, 1000))
+        assertEquals(badArgument, DoviRpuBuilder.parseManifest(ByteArray(DoviRpuBuilder.MAX_MANIFEST_BYTES + 1)))
+        val matcher = MatcherHandle(2)
+        val data = ByteArray(10)
+        for ((offset, length) in listOf(-1 to 2, 0 to -1, 9 to 2, 11 to 0, Int.MAX_VALUE to Int.MAX_VALUE)) {
+            assertEquals(
+                "$offset+$length",
+                badArgument,
+                DoviRpuBuilder.matchAu(matcher, 0, data, offset, length, laced = false)
+            )
+        }
+    }
+
+    @Test
+    fun `a verdict unpacks from the library's fields`() {
+        assertEquals(
+            AuVerdict.Inject(L1(0, 1000, 3000), sceneRefresh = true, shot = 0, quality = QualityClass.FULL),
+            DoviRpuBuilder.auVerdictOf(longArrayOf(0, 0, 1000, 3000, 1, 0, 0, 0, -1))
+        )
+        assertEquals(
+            AuVerdict.Inject(L1(10, 1500, 4095), sceneRefresh = false, shot = 41, quality = QualityClass.APPROXIMATE),
+            DoviRpuBuilder.auVerdictOf(longArrayOf(0, 10, 1500, 4095, 0, 41, 1, 0, -1))
+        )
+        assertEquals(AuVerdict.Fallback, DoviRpuBuilder.auVerdictOf(longArrayOf(1, 0, 0, 0, 0, 0, 0, 0, -1)))
+        assertEquals(
+            AuVerdict.Rejected(RejectReason.ORDER, 17),
+            DoviRpuBuilder.auVerdictOf(longArrayOf(2, 0, 0, 0, 0, 0, 0, 4, 17))
+        )
+        assertEquals(
+            AuVerdict.Rejected(RejectReason.UNKNOWN_PTS, null),
+            DoviRpuBuilder.auVerdictOf(longArrayOf(2, 0, 0, 0, 0, 0, 0, 1, -1))
+        )
+        // A reason the library should not return still rejects.
+        assertEquals(
+            AuVerdict.Rejected(RejectReason.UNKNOWN, null),
+            DoviRpuBuilder.auVerdictOf(longArrayOf(2, 0, 0, 0, 0, 0, 0, 7, -1))
+        )
+    }
+
+    @Test
+    fun `verdict fields that make no sense are null`() {
+        val malformed = listOf(
+            longArrayOf(0, 0, 1000, 3000, 1, 0, 0, 0),
+            longArrayOf(3, 0, 0, 0, 0, 0, 0, 0, -1),
+            longArrayOf(-1, 0, 0, 0, 0, 0, 0, 0, -1),
+            longArrayOf(0, -1, 1000, 3000, 1, 0, 0, 0, -1),
+            longArrayOf(0, 0, 65_536, 3000, 1, 0, 0, 0, -1),
+            longArrayOf(0, 0, 1000, 3000, 2, 0, 0, 0, -1),
+            longArrayOf(0, 0, 1000, 3000, 1, -1, 0, 0, -1),
+            longArrayOf(0, 0, 1000, 3000, 1, Int.MAX_VALUE + 1L, 0, 0, -1),
+            longArrayOf(0, 0, 1000, 3000, 1, 0, 2, 0, -1)
+        )
+        for (fields in malformed) {
+            assertNull(fields.joinToString(), DoviRpuBuilder.auVerdictOf(fields))
+        }
+    }
+
+    @Test
+    fun `reject reasons match the crate's codes`() {
+        assertEquals(
+            listOf(1, 2, 3, 4, 5, 6),
+            RejectReason.entries.filter { it != RejectReason.UNKNOWN }.map { it.value }
+        )
+        for (reason in RejectReason.entries.filter { it != RejectReason.UNKNOWN }) {
+            assertEquals(reason, RejectReason.fromNative(reason.value.toLong()))
+        }
+        for (value in listOf(0L, 7L, -2L, Long.MAX_VALUE)) {
+            assertEquals("$value", RejectReason.UNKNOWN, RejectReason.fromNative(value))
+        }
     }
 }
