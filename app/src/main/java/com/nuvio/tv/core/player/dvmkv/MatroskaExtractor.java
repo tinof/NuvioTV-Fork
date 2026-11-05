@@ -280,7 +280,9 @@ public class MatroskaExtractor implements Extractor {
      * Fork (DV2.7): rewrites an AU of a converted track with its RPU, in place of {@link
      * #transformHevcSample}; the result follows the same rules. {@code streamStart} is true for the
      * track's frame 0, the first AU of the linear stream; {@code timeUs} is the AU's presentation
-     * time (DV3.1).
+     * time (DV3.1). DV4.7: {@code ticks} is the Cluster timestamp plus the block's signed relative
+     * timestamp in TimestampScale units, unrounded, and {@code laceCount} the number of frames in
+     * the AU's block (1 without lacing).
      */
     @Nullable
     default byte[] injectDolbyVisionRpu(
@@ -289,7 +291,9 @@ public class MatroskaExtractor implements Extractor {
         int sampleLength,
         int nalUnitLengthFieldLength,
         boolean streamStart,
-        long timeUs) {
+        long timeUs,
+        long ticks,
+        int laceCount) {
       return null;
     }
 
@@ -779,6 +783,10 @@ public class MatroskaExtractor implements Extractor {
   private boolean returnFromTracks;
   private long seekPositionAfterReadingTracks = C.INDEX_UNSET;
   private long clusterTimecodeUs = C.TIME_UNSET;
+  // Fork (DV4.7): the Cluster timestamp as stored, in TimestampScale units, and the current block's
+  // (Cluster plus the block's signed relative timestamp), unrounded for the manifest matcher.
+  private long clusterTimecode = C.TIME_UNSET;
+  private long blockTicks;
 
   // Reading state.
   private boolean haveOutputSample;
@@ -951,6 +959,7 @@ public class MatroskaExtractor implements Extractor {
   // malformed-container resync path can reuse the exact same clean-slate reset.
   private void resetParsingState() {
     clusterTimecodeUs = C.TIME_UNSET;
+    clusterTimecode = C.TIME_UNSET;
     blockState = BLOCK_STATE_START;
     reader.reset();
     varintReader.reset();
@@ -1938,6 +1947,7 @@ public class MatroskaExtractor implements Extractor {
         break;
       case ID_TIME_CODE:
         clusterTimecodeUs = scaleTimecodeToUs(value);
+        clusterTimecode = value;
         break;
       case ID_BLOCK_DURATION:
         blockDurationUs = scaleTimecodeToUs(value);
@@ -2279,6 +2289,7 @@ public class MatroskaExtractor implements Extractor {
 
           int timecode = (scratch.getData()[0] << 8) | (scratch.getData()[1] & 0xFF);
           blockTimeUs = clusterTimecodeUs + scaleTimecodeToUs(timecode);
+          blockTicks = clusterTimecode + timecode;
           boolean isKeyframe =
               track.type == C.TRACK_TYPE_AUDIO
                   || (id == ID_SIMPLE_BLOCK && (scratch.getData()[2] & 0x80) == 0x80);
@@ -2752,7 +2763,9 @@ public class MatroskaExtractor implements Extractor {
                   remainingSampleBytes,
                   track.nalUnitLengthFieldLength,
                   streamStart,
-                  auTimeUs);
+                  auTimeUs,
+                  blockTicks,
+                  blockSampleCount);
         } else {
           transformedPayload =
               dolbyVisionSampleTransformer.transformHevcSample(
