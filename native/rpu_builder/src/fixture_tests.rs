@@ -9,7 +9,7 @@ use dovi_rpu_builder::{
 };
 use serde_json::Value;
 
-use crate::api::{self, Builders};
+use crate::api::{self, Handles};
 
 pub(crate) fn fixture(name: &str) -> Vec<u8> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -68,7 +68,7 @@ fn extra_json(params: &RpuParams, shots: &[(u64, [i32; 3])]) -> Value {
 }
 
 /// Each shot rendered once through `render_shot`; its first AU takes the scene-refresh NAL.
-fn render(builders: &Builders, handle: i64, shots: &[(u64, [i32; 3])]) -> Vec<u8> {
+fn render(builders: &Handles, handle: i64, shots: &[(u64, [i32; 3])]) -> Vec<u8> {
     let mut out = Vec::new();
     for &(duration, [min, avg, max]) in shots {
         let nals = api::render_shot(builders, handle, min, avg, max).unwrap();
@@ -86,7 +86,7 @@ fn render(builders: &Builders, handle: i64, shots: &[(u64, [i32; 3])]) -> Vec<u8
 
 #[test]
 fn static_84_equals_dovi_tool_for_bt2100_and_canary() {
-    let builders = Builders::new();
+    let builders = Handles::new();
     for (composer, name) in [(1, "static_84_bt2100"), (2, "static_84_canary")] {
         let extra = json(&format!("{name}.extra.json"));
         let shots = shots(&extra);
@@ -117,7 +117,7 @@ fn static_84_equals_dovi_tool_for_bt2100_and_canary() {
 #[test]
 fn static_84_records_0_and_1_are_the_two_variants() {
     // Record 0 (scene refresh) and record 1 (no refresh), as render_shot returns them.
-    let builders = Builders::new();
+    let builders = Handles::new();
     let handle = api::create_static_84(&builders, 1).unwrap();
     let [min, avg, max] = api::static_84_l1();
     let nals = api::render_shot(&builders, handle, min, avg, max).unwrap();
@@ -160,7 +160,7 @@ fn profile_81_cases_equal_dovi_tool() {
             ),
         ),
     ];
-    let builders = Builders::new();
+    let builders = Handles::new();
     for (name, (cm, avg_cm, level6, range, level5)) in cases {
         let extra = json(&format!("{name}.extra.json"));
         let shots = shots(&extra);
@@ -208,7 +208,7 @@ const PEAK_SOURCES: [(i32, &str); 4] = [
 /// range 7..3079, the average floor of the CM version).
 #[test]
 fn hdr10plus_sequences_equal_dovi_tool_for_every_peak_source() {
-    let builders = Builders::new();
+    let builders = Handles::new();
     let mut compared = 0;
     for sequence in ["profile_a", "profile_b"] {
         let scene_starts: Vec<usize> = json(&format!("{sequence}.json"))["SceneInfoSummary"]
@@ -265,7 +265,7 @@ fn hdr10plus_sequences_equal_dovi_tool_for_every_peak_source() {
 /// `dovi_tool` outputs byte for byte: the L1 of an AU's own payload is its scene's L1.
 #[test]
 fn per_au_l1_and_key_changes_equal_dovi_tool() {
-    let builders = Builders::new();
+    let builders = Handles::new();
     let mut compared = 0;
     for sequence in ["profile_a", "profile_b"] {
         let scene_starts: Vec<usize> = json(&format!("{sequence}.json"))["SceneInfoSummary"]
