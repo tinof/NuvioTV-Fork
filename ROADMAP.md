@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-05 | DV4.6 closed: `libnuvio_rpu.so` pins hdr-analyze `eb727a0` (P15.2) and exposes the manifest parser, the source, track and composer checks, the manifest's builder and the AU matcher over JNI; `PlaybackManifestSession` owns one playback's handles. | DV4 | [log](docs/ROADMAP_LOG.md), PR #50 |
 | 2026-11-04 | U1.5: rebased onto upstream 1.1.0-nt.10 (official 1.1.0-beta.10) with no drop; both protected features kept every line; a new test commit mocks `TextUtils` in the HLG SEI tests, which upstream's new SEI peek logs through. | U1 | [log](docs/ROADMAP_LOG.md), PR #47 |
 | 2026-11-04 | M1.2 closed: a Shield dry run of the merged `shield_measure.py` measured cold start, five UI journeys and playback with seeks; the details journey opens a collection on this Home, which M1.5 now covers. | M1 | [log](docs/ROADMAP_LOG.md), PR #45 |
 | 2026-11-03 | Q2.5 closed: the settle hold after an AFR mode switch is 600 ms on Nvidia; 600 and 1200 ms were both clean over three starts each, and 600 ms starts sooner. | Q2 | [log](docs/ROADMAP_LOG.md), PR #43 |
@@ -931,19 +932,14 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 #### DV4: T1, shot lists made on a PC
 
-- **Status:** Open. DV4.4 started 2026-11-04 as hdr-analyze P15 (P15.1 to P15.4; design in hdr-analyze
-  `docs/PLAYBACK_MANIFEST.md`). The owner's titles stream from NzbDAV through AIOStreams. The manifest is
-  made ahead of time on the Windows PC and served over HTTP by `lookup_key`; there is no local sidecar.
-  hdr-analyze P15.1 (the AU table) merged in its PR #91 on 2026-11-04; P15.2 is next.
+- **Status:** Open. hdr-analyze P15.1 and P15.2 merged; DV4.6, the JNI bridge to its manifest, is done
+  (log). Open: DV4.4 (P15.3), DV4.7 extractor inputs, then the DV4.1 provider; manifests come by
+  `lookup_key` over HTTP.
 - [DV4.4][desk] In hdr-analyze, the playback manifest of `DESIGN.md` 2.8 around the L1 payload, written
   by `mkvdovi` and accepted for imported `RPU.bin` files. Gate: tests with variable frame rate, a
   non-zero start, an open-GOP start, a different encode and a mismatched composer. Needs: DV2.1.
   Done when hdr-analyze P15.3 passes. The `RPU.bin` import (P15.4) is deferred (owner, 2026-11-05):
   the owner's flow makes measured manifests only.
-- [DV4.6][desk] JNI bridge to hdr-analyze's `dovi_rpu_builder::manifest` (P15.2): bump the `nuvio_rpu`
-  pin, expose parse, `check_source`, `check_track` and `AuMatcher::next` / `reset` with their stable codes.
-  Gate: JVM tests through a fake native plus a device-free Rust test of the bridge; the APK still builds.
-  Needs: hdr-analyze P15.2 merged.
 - [DV4.7][desk] Extractor inputs for the matcher: raw Matroska ticks (Cluster timecode + block timecode,
   not rounded µs), the block's lace count and a decode index per AU, passed to `TrackRpus.next`; and the
   rule for a rejection inside a shot (DESIGN 2.2, refresh on the lowest-pts AU queued after it). Gate:
