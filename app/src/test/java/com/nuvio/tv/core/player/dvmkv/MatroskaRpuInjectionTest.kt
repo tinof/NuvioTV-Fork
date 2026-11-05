@@ -14,11 +14,14 @@ import androidx.media3.extractor.TrackOutput
 import androidx.media3.extractor.text.SubtitleParser
 import com.nuvio.tv.core.player.DolbyVisionConversionConfig
 import com.nuvio.tv.core.player.DolbyVisionMatroskaTransformer
+import com.nuvio.tv.core.player.AuInput
+import com.nuvio.tv.core.player.AuRpu
 import com.nuvio.tv.core.player.DolbyVisionStatsSession
 import com.nuvio.tv.core.player.DoviRpuBuilder
 import com.nuvio.tv.core.player.DvRpuSource
 import com.nuvio.tv.core.player.DvTrackFacts
 import com.nuvio.tv.core.player.StaticTrackRpus
+import com.nuvio.tv.core.player.TrackRpus
 import com.nuvio.tv.core.player.DvSignallingDecision
 import com.nuvio.tv.core.player.HevcColourFixtures
 import io.mockk.every
@@ -253,6 +256,69 @@ class MatroskaRpuInjectionTest {
     }
 
     @Test
+    fun `each AU reaches the source with its raw ticks, its block's lace count and its decode index`() {
+        // TimestampScale 11 111 ns (about 1/90 000 s): microseconds round, ticks must not.
+        // Decode order I0 P3 B1 B2, then a laced block of two frames, then a B-picture with a negative
+        // offset from the next Cluster.
+        val laced = element(
+            0xA3,
+            byteArrayOf(0x81.toByte(), (14_400 ushr 8).toByte(), 14_400.toByte(), 0x04, 1),
+            lengthPrefixed(trail),
+            lengthPrefixed(trail)
+        )
+        val file = mkv(
+            trackEntry("hlg_tagged", hlgColour),
+            cluster(1_000, block(0, keyframe = true, idr), block(10_800, keyframe = false, trail), block(3_600, keyframe = false, trail), block(7_200, keyframe = false, trail), laced),
+            cluster(20_000, block(-3, keyframe = false, trail)),
+            timecodeScaleNs = 11_111,
+        )
+        val rpus = RecordingRpus()
+        val read = readFile(file, transformer(source = rpus.source()))
+        assertEquals(listOf(1_000L, 11_800L, 4_600L, 8_200L, 15_400L, 15_400L, 19_997L), rpus.inputs.map { it.ticks })
+        assertEquals(listOf(1, 1, 1, 1, 2, 2, 1), rpus.inputs.map { it.laceCount })
+        assertEquals((0L..6L).toList(), rpus.inputs.map { it.decodeIndex })
+        assertEquals(read.timesUs, rpus.inputs.map { it.timeUs })
+    }
+
+    @Test
+    fun `the decode index starts again at every seek`() {
+        val file = file(hlgColour)
+        val rpus = RecordingRpus()
+        val extractor = LiveExtractor(transformer(source = rpus.source()))
+        init(extractor, SampleCollector())
+        readFrom(extractor, file, 0)
+        extractor.seek(clusterPosition(file, 1).toLong(), 120_000)
+        readFrom(extractor, file, clusterPosition(file, 1))
+        assertEquals(listOf(0L, 1L, 2L, 3L, 4L, 5L, 0L, 1L, 2L), rpus.inputs.map { it.decodeIndex })
+        assertEquals(listOf(0L, 40L, 80L, 120L, 160L, 200L, 120L, 160L, 200L), rpus.inputs.map { it.ticks })
+    }
+
+    @Test
+    fun `a rejection on a future reference refreshes the first fallback picture presented, not only the rejected AU`() {
+        // Decode order I0 P4 B2 B1 B3 | P8 B6 B5 B7 P12 at 40 ms a frame; the manifest is rejected on P8,
+        // which is decoded before B6, B5 and B7 but presented after them. B5 is the first fallback
+        // picture on screen, so it must carry the scene refresh.
+        val file = mkv(
+            trackEntry("hlg_tagged", hlgColour),
+            cluster(
+                0,
+                block(0, keyframe = true, idr), block(160, keyframe = false, trail), block(80, keyframe = false, trail),
+                block(40, keyframe = false, trail), block(120, keyframe = false, trail), block(320, keyframe = false, trail),
+                block(240, keyframe = false, trail), block(200, keyframe = false, trail), block(280, keyframe = false, trail),
+                block(480, keyframe = false, trail),
+            ),
+        )
+        val rpus = RecordingRpus(switchAt = 5)
+        val read = readFile(file, transformer(source = rpus.source()))
+        val flags = refreshFlags(read.samples)
+        val firstFallbackOnScreen = (5 until read.timesUs.size).minBy { read.timesUs[it] }
+        assertEquals(200_000L, read.timesUs[firstFallbackOnScreen])
+        assertTrue("B5 carries the refresh", flags[firstFallbackOnScreen])
+        // Frame 0; the rejected AU; each later AU presented before every fallback AU so far; nothing else.
+        assertEquals(listOf(true, false, false, false, false, true, true, true, false, false), flags)
+    }
+
+        @Test
     fun `frame 0 carries scene refresh when the first Cluster holds no AU of the track`() {
         // A TS capture remuxed to MKV: the first Cluster holds only audio, the first IDR opens the second.
         val audio = element(
@@ -392,6 +458,23 @@ class MatroskaRpuInjectionTest {
         for (i in native.samples.indices) {
             assertArrayEquals("AU $i", native.samples[i] + annexB(if (i == 0) refreshRpu else plainRpu), out.samples[i])
         }
+    }
+
+    /**
+     * A source that records what the extractor passes for each AU, and marks the AU of decode position
+     * [switchAt] (counted over the whole read) as a provider switch, as a rejected manifest does.
+     */
+    private inner class RecordingRpus(private val switchAt: Int = -1) : TrackRpus {
+        val inputs = mutableListOf<AuInput>()
+        override val first = DoviRpuBuilder.ShotRpu(refreshRpu, plainRpu)
+
+        override fun next(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int, au: AuInput): AuRpu {
+            val switch = inputs.size == switchAt
+            inputs += au
+            return AuRpu(first, sceneRefresh = false, providerSwitch = switch)
+        }
+
+        fun source() = DvRpuSource { _, _ -> DvRpuSource.Prepared.Ready(this, "recording") }
     }
 
     private class Read(val format: Format?, val samples: List<ByteArray>, val timesUs: List<Long>, val track: MatroskaExtractor.Track?, val stats: DolbyVisionStatsSession)
@@ -549,16 +632,17 @@ class MatroskaRpuInjectionTest {
         return out.toByteArray()
     }
 
-    private fun mkv(entry: ByteArray, vararg clusters: ByteArray): ByteArray = mkvTracks(listOf(entry), *clusters)
+    private fun mkv(entry: ByteArray, vararg clusters: ByteArray, timecodeScaleNs: Int = 1_000_000): ByteArray =
+        mkvTracks(listOf(entry), *clusters, timecodeScaleNs = timecodeScaleNs)
 
-    private fun mkvTracks(entries: List<ByteArray>, vararg clusters: ByteArray): ByteArray {
+    private fun mkvTracks(entries: List<ByteArray>, vararg clusters: ByteArray, timecodeScaleNs: Int = 1_000_000): ByteArray {
         val header = element(
             0x1A45DFA3,
             element(0x4282, "matroska".toByteArray()),
             uint(0x4287, 4),
             uint(0x4285, 2)
         )
-        val info = element(0x1549A966, uint(0x2AD7B1, 1_000_000))
+        val info = element(0x1549A966, uint(0x2AD7B1, timecodeScaleNs))
         val tracks = element(0x1654AE6B, *entries.toTypedArray())
         return header + element(0x18538067, info, tracks, *clusters)
     }

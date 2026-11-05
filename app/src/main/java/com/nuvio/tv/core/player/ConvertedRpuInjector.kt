@@ -130,13 +130,33 @@ internal class DvTrackFacts @JvmOverloads constructor(
 }
 
 /**
+ * What the extractor knows of one AU besides its bytes (ROADMAP DV4.7), what a source that matches AUs
+ * against a playback manifest needs (`docs/dv-conversion/DESIGN.md` 2.8):
+ *
+ * - [timeUs]: the presentation time the sample queue gets.
+ * - [ticks]: the Cluster timestamp plus the block's signed relative timestamp, in the Segment's
+ *   TimestampScale units, not rounded to microseconds. Every frame of a laced block has the block's.
+ * - [laceCount]: the number of frames in the AU's block, 1 for a block without lacing.
+ * - [decodeIndex]: the AU's place in decode order among the track's AUs since the extractor's last
+ *   start, seek or resync, from 0.
+ */
+internal class AuInput(val timeUs: Long, val ticks: Long, val laceCount: Int, val decodeIndex: Long) {
+    /** Whether the AU's block holds more than one frame. */
+    val laced: Boolean get() = laceCount > 1
+
+    override fun toString() = "AuInput(timeUs=$timeUs, ticks=$ticks, laceCount=$laceCount, decodeIndex=$decodeIndex)"
+}
+
+/**
  * The RPUs of one converted track, AU by AU in decode order. [next] always returns an RPU: a provider
  * that cannot compute a new one gives the last one it wrote, so no AU of a Dolby Vision track goes out
- * without one.
+ * without one. A source that drops a provider inside the stream (a manifest the matcher rejects) gives
+ * the fallback's RPU from that AU on, never the dropped provider's last one, and marks that AU
+ * [AuRpu.providerSwitch].
  */
 internal interface TrackRpus {
-    /** The RPU of the AU in [sample] (presentation time [timeUs]) and whether this source sets its scene refresh. */
-    fun next(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int, timeUs: Long): AuRpu
+    /** The RPU of the AU in [sample] ([au] says where it sits) and whether this source sets its scene refresh. */
+    fun next(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int, au: AuInput): AuRpu
 
     /** The first RPU, for the size check at track init. */
     val first: DoviRpuBuilder.ShotRpu
@@ -151,14 +171,22 @@ internal interface TrackRpus {
     fun release() {}
 }
 
-/** One AU's RPU: [shot] in its scene-refresh variant when [sceneRefresh]. */
-internal class AuRpu(val shot: DoviRpuBuilder.ShotRpu, val sceneRefresh: Boolean)
+/**
+ * One AU's RPU: [shot] in its scene-refresh variant when [sceneRefresh]. [providerSwitch]: this AU is the
+ * first the source writes from another provider than the AU before it, inside the stream (a rejected
+ * manifest falls back); [ConvertedTrackInjector] then sets the scene refresh by `DESIGN.md` 2.2.
+ */
+internal class AuRpu(
+    val shot: DoviRpuBuilder.ShotRpu,
+    val sceneRefresh: Boolean,
+    val providerSwitch: Boolean = false,
+)
 
 /** One shot for the whole title: no scene refresh of its own (only frame 0 and the switch set one). */
 internal class StaticTrackRpus(override val first: DoviRpuBuilder.ShotRpu) : TrackRpus {
     private val rpu = AuRpu(first, sceneRefresh = false)
 
-    override fun next(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int, timeUs: Long) = rpu
+    override fun next(sample: ByteArray, length: Int, nalUnitLengthFieldLength: Int, au: AuInput) = rpu
 }
 
 /** The source for each target: 8.4 from [p84], 8.1 from [p81]. */
@@ -255,6 +283,12 @@ internal class StaticDvRpuSource(
  * the first IRAP AU after every start, seek or resync of the extractor: Media3 drops the AUs before the
  * first keyframe after a seek, so the AU the decoder starts on is the one that gets it. A source with
  * scenes (HDR10+, DV3.1) sets it on the AUs that start one (DESIGN.md 2.4).
+ *
+ * A provider switch inside the stream ([AuRpu.providerSwitch], DV4.7, DESIGN.md 2.2) sets it on the AU
+ * that switched and then on every later AU of the generation presented before all AUs written since
+ * the switch. With B-frames the AU that switched can be a reference decoded ahead of earlier-presented
+ * pictures; the lowest-pts AU queued after the switch is the first fallback picture on screen, and AUs
+ * are written one by one, so a running minimum is the only way to give it the flag.
  */
 @UnstableApi
 internal class ConvertedTrackInjector(
@@ -262,10 +296,16 @@ internal class ConvertedTrackInjector(
     private val refreshEveryStart: Boolean,
 ) {
     private var firstAuOfGenerationPending = true
+    private var decodeIndex = 0L
+    // The lowest presentation time written since a provider switch in this generation, if there was one.
+    private var switchWindowOpen = false
+    private var switchMinTimeUs = 0L
 
     /** The extractor started reading at a new position: a seek or a resync. */
     fun onReset() {
         firstAuOfGenerationPending = true
+        decodeIndex = 0
+        switchWindowOpen = false
         rpus.onReset()
     }
 
@@ -273,9 +313,9 @@ internal class ConvertedTrackInjector(
 
     /**
      * Writes [sample]'s first [length] bytes, NAL units with [nalLengthFieldLength]-byte length fields,
-     * with the RPU into [out]. [timeUs] is the AU's presentation time. False when the sample's NAL
-     * lengths do not add up to [length] or the RPU does not fit the length field; [out] then holds
-     * nothing usable.
+     * with the RPU into [out]. [timeUs] is the AU's presentation time, [ticks] and [laceCount] as
+     * [AuInput] has them. False when the sample's NAL lengths do not add up to [length] or the RPU does
+     * not fit the length field; [out] then holds nothing usable.
      */
     fun inject(
         sample: ByteArray,
@@ -283,8 +323,12 @@ internal class ConvertedTrackInjector(
         nalLengthFieldLength: Int,
         streamStart: Boolean,
         timeUs: Long,
+        ticks: Long,
+        laceCount: Int,
         out: ExposedByteArrayOutputStream,
     ): Boolean {
+        // Every AU of the generation counts, also one this call refuses: it still reaches the decoder.
+        val index = decodeIndex++
         if (nalLengthFieldLength !in 1..4) return false
         out.reset()
         var irap = false
@@ -303,8 +347,8 @@ internal class ConvertedTrackInjector(
             if (nalType != NAL_TYPE_RPU) out.write(sample, position, nalEnd - position)
             position = nalEnd
         }
-        val rpu = rpus.next(sample, length, nalLengthFieldLength, timeUs)
-        val sceneRefresh = rpu.sceneRefresh || streamStart ||
+        val rpu = rpus.next(sample, length, nalLengthFieldLength, AuInput(timeUs, ticks, laceCount, index))
+        val sceneRefresh = switchRefresh(rpu.providerSwitch, timeUs) || rpu.sceneRefresh || streamStart ||
             (refreshEveryStart && firstAuOfGenerationPending && irap)
         if (irap) firstAuOfGenerationPending = false
         val shot = rpu.shot
@@ -315,6 +359,16 @@ internal class ConvertedTrackInjector(
         }
         shot.writeTo(out, sceneRefresh)
         return true
+    }
+
+    /** The refresh of a provider switch (see the class comment), for the AU presented at [timeUs]. */
+    private fun switchRefresh(switched: Boolean, timeUs: Long): Boolean {
+        if (switched || (switchWindowOpen && timeUs < switchMinTimeUs)) {
+            switchWindowOpen = true
+            switchMinTimeUs = timeUs
+            return true
+        }
+        return false
     }
 
     companion object {
