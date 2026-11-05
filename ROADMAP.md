@@ -938,15 +938,24 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 - [DV4.4][desk] In hdr-analyze, the playback manifest of `DESIGN.md` 2.8 around the L1 payload, written
   by `mkvdovi` and accepted for imported `RPU.bin` files. Gate: tests with variable frame rate, a
   non-zero start, an open-GOP start, a different encode and a mismatched composer. Needs: DV2.1.
-  Done when hdr-analyze P15.3 passes; P15.4 covers the `RPU.bin` import, limited to RPUs that rebuild
-  byte for byte from the manifest.
+  Done when hdr-analyze P15.3 passes. The `RPU.bin` import (P15.4) is deferred (owner, 2026-11-05):
+  the owner's flow makes measured manifests only.
+- [DV4.6][desk] JNI bridge to hdr-analyze's `dovi_rpu_builder::manifest` (P15.2): bump the `nuvio_rpu`
+  pin, expose parse, `check_source`, `check_track` and `AuMatcher::next` / `reset` with their stable codes.
+  Gate: JVM tests through a fake native plus a device-free Rust test of the bridge; the APK still builds.
+  Needs: hdr-analyze P15.2 merged.
+- [DV4.7][desk] Extractor inputs for the matcher: raw Matroska ticks (Cluster timecode + block timecode,
+  not rounded µs), the block's lace count and a decode index per AU, passed to `TrackRpus.next`; and the
+  rule for a rejection inside a shot (DESIGN 2.2, refresh on the lowest-pts AU queued after it). Gate:
+  real-extractor tests, red first, including a rejection on a future reference followed by earlier
+  B-pictures. Needs: DV4.6.
 - [DV4.1][desk] Shot-list provider in the fork: load a manifest from a file or URL, check identity
   incrementally as AUs are read, inject in the extractor. Gate: unit tests; a different encode of the
-  same title is rejected. Needs: DV4.4, DV2.2, DV2.3; for HLG also DV2.4. Inputs the extractor must
-  gain: raw Matroska ticks (Cluster timecode + block timecode, not rounded µs), the block's lace count
-  (any laced video sample rejects the manifest), and a decode index. The matcher is hdr-analyze's
-  `dovi_rpu_builder::manifest` over JNI, which bumps the `nuvio_rpu` pin. The 8.1 path needs a fallback
-  RPU for AUs before the first validated IRAP and after a rejection, so it waits for DV3.3; HLG first.
+  same title is rejected. Needs: DV4.4, DV4.6, DV4.7, DV2.2, DV2.3; for HLG also DV2.4. The manifest is
+  found by `lookup_key` (size plus SHA-256 of the first and last MiB, two range reads through the
+  existing DataSource stack) on a configured HTTP folder (the owner's Oracle host). The 8.1 path needs a
+  fallback RPU for AUs before the first validated IRAP and after a rejection, so it waits for DV3.3; HLG
+  first. Tests can use hand-made manifests before P15.3 lands.
 - [DV4.5][device][owner][new-build] A local sidecar end to end. Gate: every AU of the title carries the
   sidecar's L1 (debug log), no added dropped frames, the owner's G-E reading. Needs: DV4.1, DV1.8.
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
