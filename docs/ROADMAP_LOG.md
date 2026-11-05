@@ -10,6 +10,25 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-05: DV4.6 JNI bridge to hdr-analyze's playback manifest (PR #50)
+
+- [DV4.6][desk] JNI bridge to hdr-analyze's `dovi_rpu_builder::manifest` (P15.2): bump the `nuvio_rpu`
+  pin, expose parse, `check_source`, `check_track` and `AuMatcher::next` / `reset` with their stable codes.
+  Gate: JVM tests through a fake native plus a device-free Rust test of the bridge; the APK still builds.
+  Needs: hdr-analyze P15.2 merged.
+
+- **Evidence:** `native/rpu_builder`: `cargo test` (31) and `cargo test --features jvm-tests` (43, a real JVM
+  with `-Xcheck:jni`, every new `Java_*` export called on a manifest built in code); Kotlin
+  `DoviRpuBuilderTest` (13) and `PlaybackManifestSessionTest` (8, through a fake native); full unit gate
+  green (8510 tests); the arm64 `libnuvio_rpu.so` builds (665656 bytes, 17 `Java_*` exports, 16 KB
+  aligned) and the APK assembles. Tier 2 cross-review on PR #50: codex and gemini, both LGTM.
+- **Resolution:** the pin moved from `f55c779` to `eb727a0` with all 32 fixtures unchanged. Eight exports
+  wrap `PlaybackManifest::parse`, `check_source` (plus the `lookup_key` comparison the crate leaves to the
+  player), `check_track` (the Matroska time base reduced to lowest terms), `check_composer`, the
+  manifest's `RpuBuilder` and `AuMatcher::new` / `next` / `reset`. Builders, manifests and matchers share
+  one handle counter, so a wrong-kind handle is code 21; crate refusals are code 8 and the reject reasons
+  1 to 6 come in the `long[9]` verdict. Calls and codes: `native/rpu_builder/README.md`.
+
 ## 2026-11-04: U1.5 sync onto upstream 1.1.0-nt.10 (PR #47)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `17b2029e3` onto `d1d47c8ca`: 122 upstream commits behind (14
