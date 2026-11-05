@@ -1,7 +1,7 @@
 # Fixtures
 
 Copied unchanged from hdr-analyze `dovi_rpu_builder/tests/fixtures` at commit
-`f55c779f10034f19b4e4e26e3fcd09adcbe73233`, the commit `Cargo.toml` pins. Every `RPU.bin` was written by
+`eb727a02c33f6ca251d460e9aec1ddaf52ab344d`, the commit `Cargo.toml` pins. Every `RPU.bin` was written by
 `dovi_tool generate` 2.3.4 (and, for bt2100 and the canary, rewritten by hdr-analyze's
 `fit_hlg_composer`), never by the library under test; their hashes equal hdr-analyze's own
 `SHA256SUMS` at that commit. Only the files `src/fixture_tests.rs` reads are here.
