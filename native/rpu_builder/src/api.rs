@@ -1,12 +1,13 @@
-//! The wrapper's logic, with no JNI types: argument decoding, the builder handle table and the
-//! result codes. `ffi.rs` only moves values between Java and these functions.
+//! The wrapper's logic, with no JNI types: argument decoding, the handle table and the result
+//! codes. `ffi.rs` only moves values between Java and these functions; the playback manifest's
+//! calls are in `manifest.rs`.
 //!
 //! Codes (stable; `DoviRpuBuilder.Code` in Kotlin lists the same numbers):
 //!
 //! | Code | Meaning |
 //! |---|---|
 //! | 0 | ok |
-//! | 1-7 | `dovi_rpu_builder::Error::code`: 1 composer, 2 block level, 3 value out of range, 4 not HDR10+ (skip the SEI), 5 HDR10+ parse, 6 HDR10+ without the selected peak, 7 internal RPU failure |
+//! | 1-8 | `dovi_rpu_builder::Error::code`: 1 composer, 2 block level, 3 value out of range, 4 not HDR10+ (skip the SEI), 5 HDR10+ parse, 6 HDR10+ without the selected peak, 7 internal RPU failure, 8 the playback manifest does not parse or does not describe this file |
 //! | 20 | bad argument: null or wrong-length array, unknown enum value, value out of range for the field |
 //! | 21 | unknown handle: never created, or already released |
 //! | 22 | JNI failure: a Java array could not be allocated or accessed |
@@ -16,6 +17,7 @@ use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
+use dovi_rpu_builder::manifest::{AuMatcher, PlaybackManifest};
 use dovi_rpu_builder::{
     static_84_params, CmMetadata, CmV40Config, CmVersion, Hdr10PlusFrame, HlgComposer, Level5,
     Level6, PeakSource, Profile, RpuBuilder, RpuParams, SceneKey, DEFAULT_TRIM_TARGETS_NITS, L1,
@@ -28,7 +30,7 @@ use dovi_rpu_builder::{
 pub const VERSION: &str = concat!(
     "nuvio_rpu ",
     env!("CARGO_PKG_VERSION"),
-    " dovi_rpu_builder f55c779"
+    " dovi_rpu_builder eb727a0"
 );
 
 pub const OK: i32 = 0;
@@ -42,7 +44,7 @@ pub const PANIC: i32 = 99;
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum WrapperError {
-    /// `dovi_rpu_builder` refused the input (codes 1-7).
+    /// `dovi_rpu_builder` refused the input (codes 1-8).
     Builder(dovi_rpu_builder::Error),
     BadArgument(String),
     UnknownHandle(i64),
@@ -68,12 +70,12 @@ impl From<dovi_rpu_builder::Error> for WrapperError {
 
 pub type Result<T, E = WrapperError> = std::result::Result<T, E>;
 
-fn bad(message: String) -> WrapperError {
+pub(crate) fn bad(message: String) -> WrapperError {
     WrapperError::BadArgument(message)
 }
 
 /// 0 preset, 1 bt2100, 2 the canary at its default offset (`HlgComposer::canary`).
-fn composer(value: i32) -> Result<HlgComposer> {
+pub(crate) fn composer(value: i32) -> Result<HlgComposer> {
     match value {
         0 => Ok(HlgComposer::Preset),
         1 => Ok(HlgComposer::Bt2100),
@@ -112,7 +114,7 @@ fn u16_field(name: &str, value: i32) -> Result<u16> {
     u16::try_from(value).map_err(|_| bad(format!("{name} {value} is not 0..=65535")))
 }
 
-fn u32_field(name: &str, value: i32) -> Result<u32> {
+pub(crate) fn u32_field(name: &str, value: i32) -> Result<u32> {
     u32::try_from(value).map_err(|_| bad(format!("{name} {value} is negative")))
 }
 
@@ -232,33 +234,44 @@ fn level5_arg(values: &[i32]) -> Result<Level5> {
     })
 }
 
-/// A builder, shared between threads: `RpuBuilder::shot` takes `&self`.
+/// A builder, a manifest and a matcher are shared between threads: `RpuBuilder::shot` and the
+/// manifest checks take `&self`, and a matcher sits behind its own lock.
 const _: fn() = || {
     fn send_sync<T: Send + Sync>() {}
     send_sync::<RpuBuilder>();
+    send_sync::<PlaybackManifest>();
+    send_sync::<Mutex<AuMatcher>>();
 };
 
-/// Builders by handle. A handle is a number from a counter that starts at 1 and is never reused,
-/// so a stale or invented handle finds nothing (code 21) instead of freed memory.
-pub struct Builders {
+/// What a handle names: an RPU builder, a parsed playback manifest (DV4.6) or its AU matcher.
+pub(crate) enum Entry {
+    Builder(Arc<RpuBuilder>),
+    Manifest(Arc<PlaybackManifest>),
+    Matcher(Arc<Mutex<AuMatcher>>),
+}
+
+/// Handles, manifests and matchers by handle. A handle is a number from one counter that starts
+/// at 1 and is never reused, so a stale or invented handle, or one of another kind, finds nothing
+/// (code 21) instead of freed memory or the wrong object.
+pub struct Handles {
     table: Mutex<Table>,
 }
 
 struct Table {
     next: i64,
-    builders: HashMap<i64, Arc<RpuBuilder>>,
+    entries: HashMap<i64, Entry>,
 }
 
 /// Panics inside the lock in test builds, to test that a panic poisons nothing.
 #[cfg(test)]
 pub(crate) const PANIC_HANDLE: i64 = i64::MIN;
 
-impl Builders {
+impl Handles {
     pub fn new() -> Self {
         Self {
             table: Mutex::new(Table {
                 next: 1,
-                builders: HashMap::new(),
+                entries: HashMap::new(),
             }),
         }
     }
@@ -269,11 +282,11 @@ impl Builders {
         self.table.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn insert(&self, builder: RpuBuilder) -> i64 {
+    pub(crate) fn insert(&self, entry: Entry) -> i64 {
         let mut table = self.lock();
         let handle = table.next;
         table.next += 1;
-        table.builders.insert(handle, Arc::new(builder));
+        table.entries.insert(handle, entry);
         handle
     }
 
@@ -289,17 +302,28 @@ impl Builders {
         table
     }
 
-    fn get(&self, handle: i64) -> Result<Arc<RpuBuilder>> {
+    /// The entry's object, cloned out of the table so that the lock is not held while it is used;
+    /// code 21 when `handle` names nothing or an entry `pick` does not accept.
+    pub(crate) fn get<T>(&self, handle: i64, pick: impl FnOnce(&Entry) -> Option<T>) -> Result<T> {
         self.lock_for(handle)
-            .builders
+            .entries
             .get(&handle)
-            .cloned()
+            .and_then(pick)
             .ok_or(WrapperError::UnknownHandle(handle))
     }
 
+    fn builder(&self, handle: i64) -> Result<Arc<RpuBuilder>> {
+        self.get(handle, |entry| match entry {
+            Entry::Builder(builder) => Some(Arc::clone(builder)),
+            _ => None,
+        })
+    }
+
+    /// Removes an entry of any kind; an object still in use by another thread lives until that
+    /// call returns.
     fn remove(&self, handle: i64) -> Result<()> {
         self.lock_for(handle)
-            .builders
+            .entries
             .remove(&handle)
             .map(drop)
             .ok_or(WrapperError::UnknownHandle(handle))
@@ -307,22 +331,22 @@ impl Builders {
 
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
-        self.lock().builders.len()
+        self.lock().entries.len()
     }
 }
 
 /// The table the JNI functions use.
-pub static BUILDERS: LazyLock<Builders> = LazyLock::new(Builders::new);
+pub static HANDLES: LazyLock<Handles> = LazyLock::new(Handles::new);
 
 /// `nativeCreate`: a builder for [`params`], refused by the crate (codes 1-7) when a write would
 /// fail.
-pub fn create(builders: &Builders, params: &RpuParams) -> Result<i64> {
-    Ok(builders.insert(RpuBuilder::new(params)?))
+pub fn create(handles: &Handles, params: &RpuParams) -> Result<i64> {
+    Ok(handles.insert(Entry::Builder(Arc::new(RpuBuilder::new(params)?))))
 }
 
 /// `nativeCreateStatic84`: `static_84_params(composer)`, for [`STATIC_84_L1`].
-pub fn create_static_84(builders: &Builders, composer_value: i32) -> Result<i64> {
-    create(builders, &static_84_params(composer(composer_value)?))
+pub fn create_static_84(handles: &Handles, composer_value: i32) -> Result<i64> {
+    create(handles, &static_84_params(composer(composer_value)?))
 }
 
 /// `nativeStatic84L1`: `[min, avg, max]`.
@@ -346,7 +370,7 @@ pub struct ShotNals {
 /// `nativeRenderShot`: the shot's L1 (16-bit codes, clamped by the crate as `dovi_tool` clamps
 /// them) written once with each scene-refresh value.
 pub fn render_shot(
-    builders: &Builders,
+    handles: &Handles,
     handle: i64,
     min_pq: i32,
     avg_pq: i32,
@@ -358,7 +382,7 @@ pub fn render_shot(
         u16_field("L1 max", max_pq)?,
     );
     // The builder is cloned out of the table, so the lock is not held while writing.
-    let builder = builders.get(handle)?;
+    let builder = handles.builder(handle)?;
     let mut shot = builder.shot(l1)?;
     Ok(ShotNals {
         scene_refresh: shot.write(true)?,
@@ -409,9 +433,9 @@ pub fn source_range_81(min_nits: f64, max_nits: f64) -> [i32; 2] {
         .map_or([-1, -1], |(min, max)| [i32::from(min), i32::from(max)])
 }
 
-/// `nativeRelease`.
-pub fn release(builders: &Builders, handle: i64) -> Result<()> {
-    builders.remove(handle)
+/// `nativeRelease`: a builder, a manifest or a matcher.
+pub fn release(handles: &Handles, handle: i64) -> Result<()> {
+    handles.remove(handle)
 }
 
 #[cfg(test)]
@@ -431,10 +455,20 @@ mod tests {
         let manifest = include_str!("../Cargo.toml");
         let rev = VERSION.rsplit(' ').next().unwrap();
         assert_eq!(rev.len(), 7);
-        assert!(
-            manifest.contains(&format!("rev = \"{rev}")),
-            "VERSION names {rev}, Cargo.toml pins another commit"
-        );
+        // Every hdr-analyze dependency (dovi_rpu_builder, and dovi84_composer for the tests) is
+        // pinned to the commit VERSION names.
+        let revs: Vec<&str> = manifest
+            .split("rev = \"")
+            .skip(1)
+            .map(|rest| &rest[..rest.find('"').unwrap()])
+            .collect();
+        assert_eq!(revs.len(), 2, "{revs:?}");
+        for pinned in revs {
+            assert!(
+                pinned.starts_with(rev),
+                "VERSION names {rev}, Cargo.toml pins {pinned}"
+            );
+        }
         assert!(VERSION.starts_with(concat!("nuvio_rpu ", env!("CARGO_PKG_VERSION"), " ")));
     }
 
@@ -538,10 +572,10 @@ mod tests {
         for (case, result) in refused {
             assert_eq!(code(result), BAD_ARGUMENT, "{case}");
         }
-        assert_eq!(code(create_static_84(&Builders::new(), 3)), BAD_ARGUMENT);
+        assert_eq!(code(create_static_84(&Handles::new(), 3)), BAD_ARGUMENT);
         assert_eq!(code(hdr10plus_l1(&[0xB5], 4, 40)), BAD_ARGUMENT);
         assert_eq!(code(hdr10plus_l1(&[0xB5], 0, 30)), BAD_ARGUMENT);
-        let builders = Builders::new();
+        let builders = Handles::new();
         let handle = create_static_84(&builders, 1).unwrap();
         for (min, avg, max) in [(-1, 1283, 3079), (0, 65536, 3079), (0, 1283, i32::MAX)] {
             assert_eq!(
@@ -553,7 +587,7 @@ mod tests {
 
     #[test]
     fn builder_refusals_keep_the_crates_codes() {
-        let builders = Builders::new();
+        let builders = Handles::new();
         // Fits u32 and u16, not the RPU: the crate's OutOfRange.
         let l6 = params(81, 0, 40, 40, Some(&[10_001, 50, 1000, 400]), None, None).unwrap();
         assert_eq!(code(create(&builders, &l6)), 3);
@@ -598,7 +632,7 @@ mod tests {
             other => panic!("{other:?}"),
         }
         // A P3 RPU differs from the BT.2020 one only in L9.
-        let builders = Builders::new();
+        let builders = Handles::new();
         let [a, b] = [default, p3].map(|p| {
             let handle = create(&builders, &p).unwrap();
             render_shot(&builders, handle, 0, 1229, 3079).unwrap()
@@ -651,7 +685,7 @@ mod tests {
 
     #[test]
     fn handles_are_created_rendered_and_released() {
-        let builders = Builders::new();
+        let builders = Handles::new();
         let first = create_static_84(&builders, 1).unwrap();
         let second = create_static_84(&builders, 2).unwrap();
         assert_eq!((first, second), (1, 2));
@@ -684,16 +718,16 @@ mod tests {
 
     #[test]
     fn the_global_table_works_across_threads() {
-        let handle = create_static_84(&BUILDERS, 1).unwrap();
+        let handle = create_static_84(&HANDLES, 1).unwrap();
         let [min, avg, max] = static_84_l1();
-        let expected = render_shot(&BUILDERS, handle, min, avg, max).unwrap();
+        let expected = render_shot(&HANDLES, handle, min, avg, max).unwrap();
         let threads: Vec<_> = (0..4)
-            .map(|_| std::thread::spawn(move || render_shot(&BUILDERS, handle, min, avg, max)))
+            .map(|_| std::thread::spawn(move || render_shot(&HANDLES, handle, min, avg, max)))
             .collect();
         for thread in threads {
             assert_eq!(thread.join().unwrap().unwrap(), expected);
         }
-        release(&BUILDERS, handle).unwrap();
-        assert_eq!(code(release(&BUILDERS, handle)), 21);
+        release(&HANDLES, handle).unwrap();
+        assert_eq!(code(release(&HANDLES, handle)), 21);
     }
 }
