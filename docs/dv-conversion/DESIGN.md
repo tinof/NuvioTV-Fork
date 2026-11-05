@@ -185,6 +185,14 @@ that shot, including the scene-refresh variant and any reconfiguration prefix; c
 is not enough. If the guarantee cannot be established, the whole shot keeps its fallback. A test covers a
 later AU with less headroom than the first; no fallback inside a shot is allowed.
 
+**Open: a rejected manifest inside a shot (2026-11-04).** The manifest matcher (section 2.8) can reject
+on any AU. At that point the manifest is no longer admissible, so the provider changes inside the
+shot: the one exception to the rule above. With B-frames, the AU that fails can be a reference picture
+decoded ahead of earlier-presented B-pictures. Refreshing only that AU can leave the first presented
+fallback picture without a scene refresh. DV4.1 settles the rule, for example a refresh on the
+lowest-pts AU queued after the rejection. It also needs a test where the rejection comes on a future
+reference followed by earlier B-pictures.
+
 ### 2.3 AU identity and invalidation
 
 An AU is identified by content and track, configuration revision, analysis generation, decode-order
@@ -568,6 +576,19 @@ payload with:
 An imported `RPU.bin` needs the same manifest. File size plus hashes of the first and last chunks only
 identify a candidate; the AU checks during playback confirm it. Tests: variable frame rate, a non-zero
 start time, an open-GOP start, a different cut or encode, and a mismatched composer.
+
+**Designed 2026-11-04** as hdr-analyze P15 (`docs/PLAYBACK_MANIFEST.md` there).
+- Identity: the size and SHA-256 of the first and last MiB form a `lookup_key`, and the manifest is
+  served as `<lookup_key>.dvmanifest.json`.
+- Track: the file's only video track, by CodecPrivate digest, dimensions and time base (FFmpeg
+  does not expose the TrackNumber).
+- AUs in decode order: pts ticks, size, a non-picture flag, and a CRC-32 over each IRAP AU.
+- Presentation index: the pts rank, checked by the analyzer against its decoder output.
+- Shots in stream frames, plus the `RpuParams` that make the builder's RPUs equal mkvdovi's byte for
+  byte.
+- Provenance, and coverage with `full` or `approximate`.
+- The matcher waits for an IRAP after a seek. Before it, AUs keep the fallback.
+- Version 1 refuses laced video, a missing or duplicate pts, and more than one video track.
 
 ### 2.9 Measuring on the Shield
 
