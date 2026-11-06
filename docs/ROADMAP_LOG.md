@@ -10,6 +10,27 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-06: DV4.7 Extractor inputs for the matcher (PR #51)
+
+- [DV4.7][desk] Extractor inputs for the matcher: raw Matroska ticks (Cluster timecode + block timecode,
+  not rounded µs), the block's lace count and a decode index per AU, passed to `TrackRpus.next`; and the
+  rule for a rejection inside a shot (DESIGN 2.2, refresh on the lowest-pts AU queued after it). Gate:
+  real-extractor tests, red first, including a rejection on a future reference followed by earlier
+  B-pictures. Needs: DV4.6.
+
+- **Evidence:** three `MatroskaRpuInjectionTest` cases through the vendored extractor, red before the
+  change (ticks came out as rounded µs, the decode index stayed 0, B5 had no refresh): raw ticks at a
+  TimestampScale of 11 111 ns with a negative block offset and a laced block; the decode index restarting
+  at a seek; a rejection on P8 decoded before B6, B5 and B7, where B5 (first fallback picture on screen)
+  carries the refresh. Two `ConvertedTrackInjectorTest` cases: a seek ends the window; a refused AU keeps
+  its decode index. Full unit gate green (8515 tests). Tier 1 review on PR #51: codex LGTM.
+- **Resolution:** `AuInput` carries the presentation time, ticks (Cluster plus signed block timestamp,
+  one value for every frame of a laced block), lace count and decode index (per extractor generation,
+  counted in `ConvertedTrackInjector`). `AuRpu.providerSwitch` marks the first fallback AU; the injector
+  refreshes it and every later AU presented before all AUs written since, until a seek (DESIGN 2.2).
+  The DV4.1 provider passes `ticks` as the matcher's pts and `laceCount > 1` as `laced`; the matcher
+  keeps its own decode index (hdr-analyze `matcher.rs:150`).
+
 ## 2026-11-05: DV4.6 JNI bridge to hdr-analyze's playback manifest (PR #50)
 
 - [DV4.6][desk] JNI bridge to hdr-analyze's `dovi_rpu_builder::manifest` (P15.2): bump the `nuvio_rpu`
