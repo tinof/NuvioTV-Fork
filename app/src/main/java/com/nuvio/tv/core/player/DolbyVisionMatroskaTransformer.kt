@@ -8,16 +8,24 @@ import com.nuvio.tv.core.player.dvmkv.MatroskaExtractor
 import com.nuvio.tv.core.util.DebugSwitches
 import java.io.ByteArrayOutputStream
 
-/** The sources a real extractor uses: [DolbyVisionMatroskaTransformer]'s switches reach them here. */
+/**
+ * The sources a real extractor uses: [DolbyVisionMatroskaTransformer]'s switches reach them here. DV4.1:
+ * with a [shotList] fetch, 8.4 takes its L1 from the file's playback manifest over the static provider.
+ */
 @UnstableApi
 internal fun defaultRpuSource(
     hdr10PlusEnabled: Boolean,
     seiStaticEnabled: Boolean,
     native: Hdr10PlusNative = Hdr10PlusNative.Library,
-): DvRpuSource = DvRpuSources(
-    StaticDvRpuSource.fromSwitches(),
-    Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled, native = native, seiStatic = seiStaticEnabled),
-)
+    shotList: ShotListManifests.Pending? = null,
+): DvRpuSource {
+    val composer = StaticDvRpuSource.composerFor(DebugSwitches.flag(StaticDvRpuSource.CANARY_SWITCH))
+    val static84 = StaticDvRpuSource(composer)
+    return DvRpuSources(
+        if (shotList == null) static84 else ShotListDvRpuSource(static84, composer, shotList),
+        Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled, native = native, seiStatic = seiStaticEnabled),
+    )
+}
 
 /**
  * App-level (AAR mode) implementation of the vendored Matroska extractor's
@@ -58,7 +66,9 @@ internal class DolbyVisionMatroskaTransformer(
     private val hdr10PlusEnabled: Boolean = DebugSwitches.flag(Hdr10PlusDvRpuSource.SWITCH) != false,
     // DV3.4: the static metadata of the SEI, off with debug.nuvio.dv_sei_static 0.
     private val seiStaticEnabled: Boolean = DebugSwitches.flag(Hdr10PlusDvRpuSource.SEI_STATIC_SWITCH) != false,
-    private val rpuSource: DvRpuSource = defaultRpuSource(hdr10PlusEnabled, seiStaticEnabled),
+    // DV4.1: the file's playback manifest, fetched by lookup_key while the extractor reads up to the Tracks.
+    shotList: ShotListManifests.Pending? = null,
+    private val rpuSource: DvRpuSource = defaultRpuSource(hdr10PlusEnabled, seiStaticEnabled, shotList = shotList),
     private val refreshEveryStart: Boolean = DebugSwitches.flag(REFRESH_EVERY_START_SWITCH) == true,
 ) : MatroskaExtractor.DolbyVisionSampleTransformer {
 

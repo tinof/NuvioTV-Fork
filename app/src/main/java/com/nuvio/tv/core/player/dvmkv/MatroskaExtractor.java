@@ -67,6 +67,7 @@ import com.nuvio.tv.core.player.DvSignalling;
 import com.nuvio.tv.core.player.DvSignallingDecision;
 import com.nuvio.tv.core.player.DvSeiStatic;
 import com.nuvio.tv.core.player.DvTrackFacts;
+import com.nuvio.tv.core.player.DvTrackIdentity;
 import com.nuvio.tv.core.player.HlgContract;
 import com.nuvio.tv.core.player.HlgDecision;
 import com.nuvio.tv.core.player.DolbyVisionBaseLayerColor;
@@ -1654,6 +1655,8 @@ public class MatroskaExtractor implements Extractor {
               "CodecId is missing in TrackEntry element", /* cause= */ null);
         } else {
           if (isCodecSupported(currentTrack.codecId)) {
+            // Fork (DV4.1): the time base of the track's raw ticks, for a playback manifest's track check.
+            currentTrack.dvTimestampScaleNs = timecodeScale;
             currentTrack.initializeFormat(currentTrack.number, dolbyVisionSampleTransformer);
             if (chaptersMetadata != null) {
               currentTrack.addChaptersMetadata(chaptersMetadata);
@@ -3784,6 +3787,8 @@ public class MatroskaExtractor implements Extractor {
     // Video elements.
     public int width = Format.NO_VALUE;
     public int height = Format.NO_VALUE;
+    // Fork (DV4.1): the Segment's TimestampScale when the TrackEntry ended; unset when Info comes later.
+    public long dvTimestampScaleNs = C.TIME_UNSET;
     public int bitsPerChannel = Format.NO_VALUE;
     public int displayWidth = Format.NO_VALUE;
     public int displayHeight = Format.NO_VALUE;
@@ -4461,7 +4466,20 @@ public class MatroskaExtractor implements Extractor {
           maxFrameAverageLuminanceStated ? maxFrameAverageLuminance : null,
           masteringPrimaries(),
           containerColourPrimaries,
-          seiStatic());
+          seiStatic(),
+          dvTrackIdentity());
+    }
+
+    /**
+     * Fork (DV4.1): what a playback manifest checks the track by, or null when the CodecPrivate, the
+     * dimensions or the TimestampScale are not known at track init.
+     */
+    @Nullable
+    private DvTrackIdentity dvTrackIdentity() {
+      if (codecPrivate == null || width <= 0 || height <= 0 || dvTimestampScaleNs <= 0) {
+        return null;
+      }
+      return new DvTrackIdentity(codecPrivate, width, height, dvTimestampScaleNs);
     }
 
     @Nullable
