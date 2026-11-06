@@ -10,6 +10,46 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-06: DV1.8 G-C, precise half, on the device (PR #53)
+
+- [DV1.8][device][owner][new-build] G-C, precise half (DV1.4 closed on the owner's eye check): the
+  `mkvdovi` files (8.4 bt2100 and canary, 8.1 from HDR10 and HDR10+, the L1 variants) played through
+  Nuvio with the DV2.8 dump on, from the start, from a mid-file resume point and with seeks. Gate: the
+  dumped RPUs validate with `dovi_tool info` and equal the files' RPUs; the owner's TV readings and the
+  playback chain in the log; the G-C rows of the qualification matrix set. Needs: DV2.8.
+
+- **Build and chain:** local build of `6009d0979` (APK sha256 `5459d21c…`, cargo-ndk `libnuvio_rpu.so`),
+  Shield TV Pro 2019 → LG OLED C9. Files from the owner's Jellyfin on the Oracle host, opened in Nuvio's
+  Jellyfin source. Decoder `OMX.Nvidia.DOVI.decode`; the display manager logged a Dolby Vision source.
+  `debug.nuvio.rpu_dump` 6000, so each playback dumped every AU it queued.
+- **Files made for this step:** `mkvdovi` 0.8.0 (binary sha256 `d2d1eb2f…`), `dovi_tool` 2.3.4, from 1-minute
+  4K25 cuts of the hdr-analyze dev corpus: D1 = HLG documentary → 8.4 (`--hlg-composer bt2100`, 1526
+  frames, CM v4.0, L9 BT.2020); D2 = HDR10+ Profile B series → 8.1 (`--hdr10plus-l1 hdr10plus`, 1552
+  frames, L9 P3-D65). Reference RPUs from `ffmpeg -c:v copy -bsf hevc_mp4toannexb | dovi_tool extract-rpu`.
+- **Method:** `rpu_dump_to_bin.py` rebuilt one `RPU.bin` per generation (start, each seek, each resume),
+  and each record was matched to the reference frame with the same PTS. `dovi_tool extract-rpu` writes
+  display order, so reference entry k belongs to the k-th smallest packet PTS (a decode-order mapping
+  shows false differences on every B-frame).
+
+| File | Sessions | AUs dumped | Equal to the file's RPU | Coverage | Owner on the TV |
+|---|---|---|---|---|---|
+| D1, 8.4 bt2100 from HLG | 2 | 2020 | 2020 | start from frame 0, 5 seeks, a second start | Dolby Vision, neutral colour |
+| D2, 8.1 from HDR10+ | 4 | 2165 | 2165 | start from frame 0, 3 seeks, three more starts | Dolby Vision, all fine |
+| Native Profile 8.1 web series, 3-minute cut | 1 | 2224 | 2224 | start from frame 0 (1671 AUs), 8 seeks, resume at 2:04 | Dolby Vision, all fine |
+
+  All 24 rebuilt generations parse with `dovi_tool info`; no record was lost or failed its CRC.
+- **Earlier readings counted toward the step** (hdr-analyze `docs/ROADMAP_LOG.md`, 2026-11-04, P14): an
+  8.1 canary (chroma constants −1/16) turned the picture green on the C9 in Nuvio over Jellyfin, and the
+  owner judged three dynamic-contrast strengths of one title. Those variants change the reshaping as
+  well as L1/L3, and their RPUs were not dumped. DV1.4 (2026-10-23) is the eye check of the `mkvdovi`
+  8.4 bt2100 and canary files.
+- **Not run:** no `mkvdovi` file from plain HDR10, no variants that differ in L1 alone, and no 8.4 canary
+  file (`mkvdovi` 0.8.0 offers only the `preset` and `bt2100` composers). The owner closed the step
+  without them: every HDR10+ and HLG file tested so far played correctly.
+- **Session:** M2 snapshot and restore clean (`~/shield-snapshots/20261106-1206-dv18/`, local only), with
+  the logcat, the per-generation `RPU.bin` files and the references. adb first failed with "No route to
+  host" while `nc` reached the port: macOS Local Network privacy blocked the terminal host app.
+
 ## 2026-11-06: DV4.1 Shot-list provider in the fork (PR #52)
 
 - [DV4.1][desk] Shot-list provider in the fork: load a manifest from a file or URL, check identity
