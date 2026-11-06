@@ -484,6 +484,22 @@ class MatroskaRpuInjectionTest {
     }
 
     @Test
+    fun `with Tracks before Info the RPU source is asked again once Info gives the TimestampScale`() {
+        val seen = mutableListOf<DvTrackFacts>()
+        val capturing = DvRpuSource { target, facts ->
+            seen += facts
+            readySource.prepare(target, facts)
+        }
+        val header = element(0x1A45DFA3, element(0x4282, "matroska".toByteArray()), uint(0x4287, 4), uint(0x4285, 2))
+        val tracks = element(0x1654AE6B, trackEntry("hlg_tagged", hlgColour))
+        val info = element(0x1549A966, uint(0x2AD7B1, 11_111))
+        val file = header + element(0x18538067, tracks, info, *clusters.toTypedArray())
+        val out = readFile(file, transformer(source = capturing))
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        assertEquals(11_111L, seen.last().identity?.timestampScaleNs)
+    }
+
+    @Test
     fun `with a shot list the AUs carry the manifest's RPUs until the matcher rejects a different encode`() {
         val native = FakePlaybackManifestNative()
         val l1 = DoviRpuBuilder.L1(10, 11, 12)
