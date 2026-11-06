@@ -4,9 +4,11 @@ import com.nuvio.tv.core.player.DoviRpuBuilder.AuVerdict
 import com.nuvio.tv.core.player.DoviRpuBuilder.Code
 import com.nuvio.tv.core.player.DoviRpuBuilder.Handle
 import com.nuvio.tv.core.player.DoviRpuBuilder.HlgComposer
+import com.nuvio.tv.core.player.DoviRpuBuilder.L1
 import com.nuvio.tv.core.player.DoviRpuBuilder.ManifestHandle
 import com.nuvio.tv.core.player.DoviRpuBuilder.MatcherHandle
 import com.nuvio.tv.core.player.DoviRpuBuilder.Outcome
+import com.nuvio.tv.core.player.DoviRpuBuilder.ShotRpu
 
 /**
  * The playback manifest calls of [DoviRpuBuilder] (ROADMAP DV4.6), behind an interface so that JVM
@@ -31,6 +33,7 @@ internal interface PlaybackManifestNative {
     ): Code
     fun checkComposer(manifest: ManifestHandle, composer: HlgComposer): Code
     fun createBuilder(manifest: ManifestHandle): Outcome<Handle>
+    fun renderShot(builder: Handle, l1: L1): Outcome<ShotRpu>
     fun createMatcher(manifest: ManifestHandle): Outcome<MatcherHandle>
     fun next(matcher: MatcherHandle, pts: Long, data: ByteArray, offset: Int, length: Int, laced: Boolean): Outcome<AuVerdict>
     fun reset(matcher: MatcherHandle): Code
@@ -62,6 +65,8 @@ internal interface PlaybackManifestNative {
             DoviRpuBuilder.checkManifestComposer(manifest, composer)
 
         override fun createBuilder(manifest: ManifestHandle) = DoviRpuBuilder.createManifestBuilder(manifest)
+
+        override fun renderShot(builder: Handle, l1: L1) = DoviRpuBuilder.renderShot(builder, l1)
 
         override fun createMatcher(manifest: ManifestHandle) = DoviRpuBuilder.createMatcher(manifest)
 
@@ -151,6 +156,13 @@ internal class PlaybackManifestSession private constructor(
         val created = native.createBuilder(manifest)
         if (created is Outcome.Ok) builder = created.value
         return created
+    }
+
+    /** One shot's RPUs from the manifest's builder (DV4.1): [l1] with the manifest's `RpuParams`. */
+    @Synchronized
+    fun renderShot(l1: L1): Outcome<ShotRpu> = when (val builder = builder()) {
+        is Outcome.Ok -> native.renderShot(builder.value, l1)
+        is Outcome.Failed -> builder
     }
 
     /** See [DoviRpuBuilder.matchAu]; a refused argument ([Code.BAD_ARGUMENT]) is not sticky. */

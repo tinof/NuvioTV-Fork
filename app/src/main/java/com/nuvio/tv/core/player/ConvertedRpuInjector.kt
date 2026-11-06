@@ -54,6 +54,18 @@ internal class DvSeiStatic(
     }
 }
 
+/**
+ * The track as a playback manifest identifies it (ROADMAP DV4.1, hdr-analyze `docs/PLAYBACK_MANIFEST.md`):
+ * its CodecPrivate as stored, its pixel dimensions and the Segment's TimestampScale in nanoseconds, the
+ * time base of its raw ticks ([timestampScaleNs] / 10^9 s).
+ */
+internal class DvTrackIdentity(
+    val codecPrivate: ByteArray,
+    val width: Int,
+    val height: Int,
+    val timestampScaleNs: Long,
+)
+
 /** The values of [DvTrackFacts] [DvTrackFacts.filledFromSei] can take from the SEI: MediaInfo's four fields. */
 internal enum class DvStaticField { MASTERING_LUMINANCE, MASTERING_PRIMARIES, MAX_CLL, MAX_FALL }
 
@@ -63,7 +75,7 @@ internal enum class DvStaticField { MASTERING_LUMINANCE, MASTERING_PRIMARIES, MA
  * MasteringMetadata, each field null when the container does not state it: [masteringPrimaries] is
  * R, G, B and white point as x, y pairs (8 values); [containerPrimaries] the Colour element's H.273 code.
  * DV3.4: [seiStatic] is what the stream's SEI states, unused until [filledFromSei], which records in
- * [fromSei] what it took.
+ * [fromSei] what it took. DV4.1: [identity] is what a playback manifest checks the track by.
  */
 internal class DvTrackFacts @JvmOverloads constructor(
     val hdr10PlusPayloads: List<ByteArray> = emptyList(),
@@ -74,6 +86,7 @@ internal class DvTrackFacts @JvmOverloads constructor(
     val masteringPrimaries: FloatArray? = null,
     val containerPrimaries: Int? = null,
     val seiStatic: DvSeiStatic? = null,
+    val identity: DvTrackIdentity? = null,
     val fromSei: Set<DvStaticField> = emptySet(),
 ) {
     private val masteringLuminanceStated: Boolean
@@ -99,6 +112,7 @@ internal class DvTrackFacts @JvmOverloads constructor(
             if (primaries) sei.masteringPrimaries else masteringPrimaries,
             containerPrimaries,
             sei,
+            identity,
             listOfNotNull(
                 DvStaticField.MASTERING_LUMINANCE.takeIf { luminance },
                 DvStaticField.MASTERING_PRIMARIES.takeIf { primaries },

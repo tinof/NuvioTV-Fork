@@ -24,6 +24,14 @@ import com.nuvio.tv.core.player.StaticTrackRpus
 import com.nuvio.tv.core.player.TrackRpus
 import com.nuvio.tv.core.player.DvSignallingDecision
 import com.nuvio.tv.core.player.HevcColourFixtures
+import com.nuvio.tv.core.player.FakePlaybackManifestNative
+import com.nuvio.tv.core.player.FetchedManifest
+import com.nuvio.tv.core.player.ManifestSourceIdentity
+import com.nuvio.tv.core.player.ShotListDvRpuSource
+import com.nuvio.tv.core.player.ShotListManifests
+import com.nuvio.tv.core.player.bytes
+import com.nuvio.tv.core.player.rpuOf
+import java.util.concurrent.CompletableFuture
 import io.mockk.every
 import io.mockk.mockk
 import java.io.ByteArrayOutputStream
@@ -458,6 +466,47 @@ class MatroskaRpuInjectionTest {
         for (i in native.samples.indices) {
             assertArrayEquals("AU $i", native.samples[i] + annexB(if (i == 0) refreshRpu else plainRpu), out.samples[i])
         }
+    }
+
+    @Test
+    fun `the RPU source gets the track's CodecPrivate, dimensions and TimestampScale for a manifest`() {
+        var seen: DvTrackFacts? = null
+        val capturing = DvRpuSource { target, facts ->
+            seen = facts
+            readySource.prepare(target, facts)
+        }
+        readFile(mkv(trackEntry("hlg_tagged", hlgColour), *clusters.toTypedArray(), timecodeScaleNs = 11_111), transformer(source = capturing))
+        val identity = seen!!.identity!!
+        assertArrayEquals(HevcColourFixtures.hvcCOf("hlg_tagged"), identity.codecPrivate)
+        assertEquals(1920, identity.width)
+        assertEquals(1080, identity.height)
+        assertEquals(11_111L, identity.timestampScaleNs)
+    }
+
+    @Test
+    fun `with a shot list the AUs carry the manifest's RPUs until the matcher rejects a different encode`() {
+        val native = FakePlaybackManifestNative()
+        val l1 = DoviRpuBuilder.L1(10, 11, 12)
+        native.verdicts += listOf(
+            DoviRpuBuilder.Outcome.Ok(DoviRpuBuilder.AuVerdict.Inject(l1, true, 0, DoviRpuBuilder.QualityClass.FULL)),
+            DoviRpuBuilder.Outcome.Ok(DoviRpuBuilder.AuVerdict.Inject(l1, false, 0, DoviRpuBuilder.QualityClass.FULL)),
+            DoviRpuBuilder.Outcome.Ok(DoviRpuBuilder.AuVerdict.Rejected(DoviRpuBuilder.RejectReason.SIZE, 2)),
+        )
+        val identity = ManifestSourceIdentity(1, ByteArray(32), ByteArray(32))
+        val pending = ShotListManifests.Pending(CompletableFuture.completedFuture(FetchedManifest(identity, "{}".toByteArray())), 0)
+        val source = ShotListDvRpuSource(readySource, DoviRpuBuilder.HlgComposer.BT2100, pending, native)
+        val native0 = readFile(file(hlgColour), transformer = null)
+        val out = readFile(file(hlgColour), transformer(source = source))
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        val shot = rpuOf(l1)
+        assertArrayEquals("AU 0", native0.samples[0] + annexB(shot.bytes(true)), out.samples[0])
+        assertArrayEquals("AU 1", native0.samples[1] + annexB(shot.bytes(false)), out.samples[1])
+        assertArrayEquals("AU 2, the rejected one: the fallback with a switch refresh", native0.samples[2] + annexB(refreshRpu), out.samples[2])
+        for (i in 3 until native0.samples.size) {
+            assertArrayEquals("AU $i", native0.samples[i] + annexB(plainRpu), out.samples[i])
+        }
+        val nexts = native.calls.filter { it.startsWith("next") }
+        assertEquals(listOf(0L, 40L, 80L), nexts.map { it.split(' ')[2].toLong() })
     }
 
     /**

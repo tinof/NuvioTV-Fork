@@ -50,6 +50,8 @@ internal class DolbyVisionExtractorsFactory(
     private val stripDvRpu: Boolean = false,
     private val stripHdr10PlusSei: Boolean = false,
     private val injectHdr10Sei: Boolean = false,
+    // DV4.1: where converted HLG tracks look up their playback manifest; null without the switch.
+    private val shotLists: ShotListManifests? = null,
     autoSyncObservesText: Boolean = false
 ) : ExtractorsFactory {
 
@@ -63,10 +65,10 @@ internal class DolbyVisionExtractorsFactory(
         uri: Uri,
         responseHeaders: Map<String, List<String>>
     ): Array<Extractor> =
-        delegate.createExtractors(uri, responseHeaders).map(::wrap).toTypedArray()
+        delegate.createExtractors(uri, responseHeaders).map { wrap(it, uri) }.toTypedArray()
 
-    private fun wrap(extractor: Extractor): Extractor {
-        val wrapped = wrapForDolbyVision(extractor)
+    private fun wrap(extractor: Extractor, uri: Uri? = null): Extractor {
+        val wrapped = wrapForDolbyVision(extractor, uri)
         return if (extractor.javaClass.name == Mp4ChaptersExtractor.STOCK_MP4_EXTRACTOR) {
             Mp4ChaptersExtractor(wrapped)
         } else {
@@ -74,7 +76,7 @@ internal class DolbyVisionExtractorsFactory(
         }
     }
 
-    private fun wrapForDolbyVision(extractor: Extractor): Extractor {
+    private fun wrapForDolbyVision(extractor: Extractor, uri: Uri?): Extractor {
         // Matroska is swapped unconditionally: the vendored
         // extractor carries the DTS-HD MA / DTS:X first-sample sniff (mkvmerge
         // writes A_DTS for every DTS variant; stock media3 1.8 maps that to core
@@ -93,6 +95,7 @@ internal class DolbyVisionExtractorsFactory(
                     stripRpuOnly = stripDvRpu && !config.active,
                     stripHdr10PlusSei = stripHdr10PlusSei,
                     injectHdr10Sei = injectHdr10Sei,
+                    shotList = shotListFor(uri),
                 )
             )
             // On the MKV strip path the base layer is HDR10 but its Format
@@ -104,6 +107,12 @@ internal class DolbyVisionExtractorsFactory(
         if (!config.active && !stripDvRpu && !stripHdr10PlusSei) return extractor
         val nalFormat = nalFormatFor(extractor) ?: return extractor
         return DolbyVisionExtractor(extractor, config, nalFormat, stripDvRpu, stripHdr10PlusSei)
+    }
+
+    /** DV4.1: the manifest fetch for [uri], only when HDR10 and HLG tracks may convert. */
+    private fun shotListFor(uri: Uri?): ShotListManifests.Pending? {
+        if (uri == null || !config.convertNonDolbyVision) return null
+        return shotLists?.forUri(uri)
     }
 
     private fun nalFormatFor(extractor: Extractor): NalFormat? {
