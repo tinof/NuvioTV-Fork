@@ -10,6 +10,31 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-06: DV4.1 Shot-list provider in the fork (PR #52)
+
+- [DV4.1][desk] Shot-list provider in the fork: load a manifest from a file or URL, check identity
+  incrementally as AUs are read, inject in the extractor. Gate: unit tests; a different encode of the
+  same title is rejected. Needs: DV4.4, DV4.6, DV4.7, DV2.2, DV2.3; for HLG also DV2.4. The manifest is
+  found by `lookup_key` (size plus SHA-256 of the first and last MiB, two range reads through the
+  existing DataSource stack) on a configured HTTP folder (the owner's Oracle host). The 8.1 path needs a
+  fallback RPU for AUs before the first validated IRAP and after a rejection, so it waits for DV3.3; HLG
+  first. Tests can use hand-made manifests before P15.3 lands.
+
+- **Evidence:** `ShotListManifestTest` (12: the `lookup_key` against digests computed with Python's
+  hashlib, the two reads, a chunked server through `Content-Range`, a missing manifest, the wait, a
+  stalled fetch that does not hold up the next file), `ShotListDvRpuSourceTest` (15: every check, a
+  different encode refused at the source or track check and rejected by the matcher mid-stream, the
+  drop kept across a second prepare) and three real-extractor cases in `MatroskaRpuInjectionTest`
+  (the track identity, Tracks before Info, AUs with the manifest's RPUs until a rejection). Full unit
+  gate green (8545 tests). Tier 2 review on PR #52: codex 4 P1 findings, all FIXED with tests red first;
+  gemini LGTM.
+- **Resolution:** opt-in by `debug.nuvio.dv_manifest_url` (an HTTP or `file://` folder) and
+  `debug.nuvio.dv_manifest_wait_ms` (3 s). `ShotListManifests` reads the identity through the playback
+  `DataSource` stack and fetches `<lookup_key>.dvmanifest.json` without the stream's headers;
+  `ShotListDvRpuSource` checks source, track and composer, and `ShotListTrackRpus` feeds every AU to the
+  matcher, falling back to the static 8.4 RPU with a provider switch. 8.1 waits for DV3.3; the
+  single-video-track check is not made (DESIGN 2.8).
+
 ## 2026-11-06: DV4.4 The playback manifest in hdr-analyze (hdr-analyze PR #96)
 
 - [DV4.4][desk] In hdr-analyze, the playback manifest of `DESIGN.md` 2.8 around the L1 payload, written
