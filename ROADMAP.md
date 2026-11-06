@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-06 | DV4.4 closed: hdr-analyze P15.3 writes the playback manifest (`mkvdovi manifest`), its gate passed there; the `RPU.bin` import (P15.4) stays deferred. | DV4 | [log](docs/ROADMAP_LOG.md), hdr-analyze PR #96 |
 | 2026-11-06 | DV4.7 closed: `TrackRpus.next` gets each AU's raw Matroska ticks, lace count and decode index; a provider switch inside a shot refreshes the first fallback picture on screen, also when the rejected AU is a future reference. | DV4 | [log](docs/ROADMAP_LOG.md), PR #51 |
 | 2026-11-05 | DV4.6 closed: `libnuvio_rpu.so` pins hdr-analyze `eb727a0` (P15.2) and exposes the manifest parser, the source, track and composer checks, the manifest's builder and the AU matcher over JNI; `PlaybackManifestSession` owns one playback's handles. | DV4 | [log](docs/ROADMAP_LOG.md), PR #50 |
 | 2026-11-04 | U1.5: rebased onto upstream 1.1.0-nt.10 (official 1.1.0-beta.10) with no drop; both protected features kept every line; a new test commit mocks `TextUtils` in the HLG SEI tests, which upstream's new SEI peek logs through. | U1 | [log](docs/ROADMAP_LOG.md), PR #47 |
@@ -933,14 +934,9 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 #### DV4: T1, shot lists made on a PC
 
-- **Status:** Open. hdr-analyze P15.1 and P15.2 merged; DV4.6 (JNI bridge) and DV4.7 (extractor inputs,
-  rejection refresh) are done (log). Open: DV4.4 (P15.3), then the DV4.1 provider; manifests come by
-  `lookup_key` over HTTP.
-- [DV4.4][desk] In hdr-analyze, the playback manifest of `DESIGN.md` 2.8 around the L1 payload, written
-  by `mkvdovi` and accepted for imported `RPU.bin` files. Gate: tests with variable frame rate, a
-  non-zero start, an open-GOP start, a different encode and a mismatched composer. Needs: DV2.1.
-  Done when hdr-analyze P15.3 passes. The `RPU.bin` import (P15.4) is deferred (owner, 2026-11-05):
-  the owner's flow makes measured manifests only.
+- **Status:** Open. hdr-analyze P15.1 to P15.3 merged; DV4.4 (the manifest, P15.3), DV4.6 (JNI bridge)
+  and DV4.7 (extractor inputs, rejection refresh) are done (log). Open: the DV4.1 provider; manifests
+  come by `lookup_key` over HTTP. The `RPU.bin` import (P15.4) is deferred (owner, 2026-11-05).
 - [DV4.1][desk] Shot-list provider in the fork: load a manifest from a file or URL, check identity
   incrementally as AUs are read, inject in the extractor. Gate: unit tests; a different encode of the
   same title is rejected. Needs: DV4.4, DV4.6, DV4.7, DV2.2, DV2.3; for HLG also DV2.4. The manifest is
