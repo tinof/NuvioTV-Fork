@@ -152,6 +152,27 @@ class ShotListManifestTest {
     }
 
     @Test
+    fun `a stalled fetch for one file does not hold up the next file's fetch`() {
+        val gate = CountDownLatch(1)
+        val stalled = object : DataSource.Factory {
+            override fun createDataSource(): DataSource {
+                gate.await()
+                throw IOException("released")
+            }
+        }
+        val json = "{}".toByteArray()
+        val folder = Files(mapOf("http://oracle/m/9bffb41b7848bdd658c178d4406e85771778622e08e329311931dc5da7747cbe.dvmanifest.json" to json))
+        try {
+            // Both use the default executor, as every player does.
+            assertNull(ShotListManifests("http://oracle/m", stalled, folder, waitMs = 50).forUri(Uri.parse("a")).await())
+            val next = ShotListManifests("http://oracle/m", Files(mapOf("b" to hello)), folder, waitMs = 5_000).forUri(Uri.parse("b"))
+            assertArrayEquals(json, next.await()!!.json)
+        } finally {
+            gate.countDown()
+        }
+    }
+
+    @Test
     fun `a second extractor for the same file reuses the fetch, another file starts its own`() {
         val manifests = ShotListManifests("http://oracle/m", Files(mapOf("a" to hello, "b" to hello)), Files(emptyMap()), 5_000, Executors.newSingleThreadExecutor())
         val a = manifests.forUri(Uri.parse("a"))
