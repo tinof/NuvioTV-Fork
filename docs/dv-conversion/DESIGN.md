@@ -600,7 +600,7 @@ start time, an open-GOP start, a different cut or encode, and a mismatched compo
 **Bridged in DV4.6.** `libnuvio_rpu.so` pins hdr-analyze `eb727a0` (P15.2 is its PR #93) and exposes the
 parser, the source, track and composer checks, the manifest's own RPU builder and `AuMatcher` over JNI,
 on the builders' handle table (code 8 for a refusal; the matcher's reject reasons 1 to 6 arrive in its
-verdict). `PlaybackManifestSession` owns one playback's handles. Fetching by `lookup_key` is DV4.1.
+verdict). `PlaybackManifestSession` owns one playback's handles. Fetching by `lookup_key` is DV4.1 (below).
 Calls and codes: `native/rpu_builder/README.md`.
 
 **Extractor inputs (DV4.7).** `TrackRpus.next` gets an `AuInput` per AU: the presentation time, the
@@ -609,6 +609,21 @@ rounded to microseconds; every frame of a laced block has the block's), the bloc
 decode index among the track's AUs since the extractor's last start, seek or resync. The DV4.1 provider
 gives the matcher `ticks` as its `pts` and `laced` (lace count above 1); the matcher keeps its own
 decode index into the manifest's table, and refuses laced video.
+
+**Shot-list provider (DV4.1).** Opt-in with `debug.nuvio.dv_manifest_url` (an HTTP or `file://`
+folder); unset, nothing is looked up. When the extractor is created, `ShotListManifests` reads the
+file's identity through the playback's own `DataSource` stack (one read from the start for the size and
+the head, one range read of the last MiB), hashes the `lookup_key` and fetches
+`<lookup_key>.dvmanifest.json` without the stream's headers. Track init waits for it at most
+`debug.nuvio.dv_manifest_wait_ms` (3 s by default) on the loading thread. `ShotListDvRpuSource` then
+runs the source, track (CodecPrivate digest, dimensions, TimestampScale / 10^9 in lowest terms) and
+composer checks and creates the manifest's builder; any failure keeps the static 8.4 provider, which is
+also every AU's fallback. Per AU the matcher's `Inject` gives the shot's RPU (rendered once per shot),
+`Fallback` the static RPU; a rejection or a native failure gives the static RPU for the rest of the
+playback. An AU whose provider differs from the previous AU of the generation is a provider switch
+(2.2), so the first injected AU after a seek's leading fallback AUs is refreshed too. Profile 8.1 keeps
+its own sources until DV3.3 gives it a fallback. Not checked: that the file has one video track, since
+the extractor decides each TrackEntry as it ends; the CodecPrivate digest and the AU checks stand in.
 
 ### 2.9 Measuring on the Shield
 

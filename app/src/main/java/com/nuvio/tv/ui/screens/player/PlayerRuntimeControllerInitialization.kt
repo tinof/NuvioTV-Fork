@@ -1735,6 +1735,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         stripDvRpu = stripDvRpuEnabled,
                         stripHdr10PlusSei = stripHdr10PlusSei,
                         injectHdr10Sei = playerSettings.injectHdr10MetadataOnStrip,
+                        shotLists = com.nuvio.tv.core.player.ShotListManifests.fromSwitches(context) { PlayerPlaybackNetworking.createDataSourceFactory(context, headers) },
                         autoSyncObservesText = autoSyncObservesText
                     ).let { MkvFrameTimingExtractorsFactory(it, startMkvFrameTiming()) }
             // The thumbnail tap wraps the outermost factory. The libass path takes the unwrapped one and wraps
