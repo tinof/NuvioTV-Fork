@@ -194,6 +194,22 @@ class ShotListDvRpuSourceTest {
     }
 
     @Test
+    fun `a manifest the matcher rejected stays dropped when the track is prepared again, also by a new extractor`() {
+        val native = FakePlaybackManifestNative()
+        val fetch = pending()
+        val source = ShotListDvRpuSource(fallback, HlgComposer.BT2100, fetch, native)
+        val first = (source.prepare(p84, facts) as DvRpuSource.Prepared.Ready).rpus
+        native.verdicts += Outcome.Ok(AuVerdict.Rejected(RejectReason.CRC, 4))
+        next(first, au(0))
+        first.release()
+        // Tracks read a second time (Tracks behind the Clusters) prepare the same track again.
+        assertSame(fallbackRpus, (source.prepare(p84, facts) as DvRpuSource.Prepared.Ready).rpus)
+        val another = ShotListDvRpuSource(fallback, HlgComposer.BT2100, fetch, native)
+        assertSame(fallbackRpus, (another.prepare(p84, facts) as DvRpuSource.Prepared.Ready).rpus)
+        assertTrue(native.live.isEmpty())
+    }
+
+    @Test
     fun `a matcher failure or a shot that cannot be rendered drops the manifest like a rejection`() {
         val failing = FakePlaybackManifestNative()
         val a = shotList(failing)
