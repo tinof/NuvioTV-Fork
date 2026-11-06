@@ -47,7 +47,7 @@ internal class ShotListDvRpuSource(
         }
         log("manifest $key accepted for the track, ${identity.width}x${identity.height}")
         return DvRpuSource.Prepared.Ready(
-            ShotListTrackRpus(session, prepared.rpus, key),
+            ShotListTrackRpus(session, prepared.rpus, key, onDrop = manifest::markDropped),
             "shot list $key, fallback ${prepared.label}",
         )
     }
@@ -101,7 +101,7 @@ internal class ShotListDvRpuSource(
  * - [AuVerdict.Fallback] (before the first IRAP after a start or a seek, a non-picture AU, a picture
  *   outside the coverage): [fallback]'s RPU;
  * - [AuVerdict.Rejected], or a matcher or builder failure: [fallback]'s RPU for the rest of the playback,
- *   seeks included.
+ *   seeks included; [onDrop] keeps the file's manifest dropped when the track is prepared again.
  *
  * An AU whose provider differs from the AU before it in the same generation is marked
  * [AuRpu.providerSwitch], so [ConvertedTrackInjector] sets the scene refresh by `DESIGN.md` 2.2. The first
@@ -112,6 +112,7 @@ internal class ShotListTrackRpus(
     private val session: PlaybackManifestSession,
     private val fallback: TrackRpus,
     private val name: String,
+    private val onDrop: () -> Unit = {},
 ) : TrackRpus {
 
     override val first: ShotRpu get() = fallback.first
@@ -174,6 +175,7 @@ internal class ShotListTrackRpus(
 
     private fun drop(reason: String) {
         dropped = true
+        onDrop()
         log("manifest $name dropped: $reason; the fallback for the rest of the playback")
     }
 
