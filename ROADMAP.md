@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-06 | DV4.1 closed: converted HLG tracks take per-shot L1 from the file's playback manifest, found by `lookup_key` on the folder `debug.nuvio.dv_manifest_url` names; a rejection keeps the static RPU for the rest of the playback. | DV4 | [log](docs/ROADMAP_LOG.md), PR #52 |
 | 2026-11-06 | DV4.4 closed: hdr-analyze P15.3 writes the playback manifest (`mkvdovi manifest`), its gate passed there; the `RPU.bin` import (P15.4) stays deferred. | DV4 | [log](docs/ROADMAP_LOG.md), hdr-analyze PR #96 |
 | 2026-11-06 | DV4.7 closed: `TrackRpus.next` gets each AU's raw Matroska ticks, lace count and decode index; a provider switch inside a shot refreshes the first fallback picture on screen, also when the rejected AU is a future reference. | DV4 | [log](docs/ROADMAP_LOG.md), PR #51 |
 | 2026-11-05 | DV4.6 closed: `libnuvio_rpu.so` pins hdr-analyze `eb727a0` (P15.2) and exposes the manifest parser, the source, track and composer checks, the manifest's builder and the AU matcher over JNI; `PlaybackManifestSession` owns one playback's handles. | DV4 | [log](docs/ROADMAP_LOG.md), PR #50 |
@@ -934,16 +935,9 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 #### DV4: T1, shot lists made on a PC
 
-- **Status:** Open. hdr-analyze P15.1 to P15.3 merged; DV4.4 (the manifest, P15.3), DV4.6 (JNI bridge)
-  and DV4.7 (extractor inputs, rejection refresh) are done (log). Open: the DV4.1 provider; manifests
-  come by `lookup_key` over HTTP. The `RPU.bin` import (P15.4) is deferred (owner, 2026-11-05).
-- [DV4.1][desk] Shot-list provider in the fork: load a manifest from a file or URL, check identity
-  incrementally as AUs are read, inject in the extractor. Gate: unit tests; a different encode of the
-  same title is rejected. Needs: DV4.4, DV4.6, DV4.7, DV2.2, DV2.3; for HLG also DV2.4. The manifest is
-  found by `lookup_key` (size plus SHA-256 of the first and last MiB, two range reads through the
-  existing DataSource stack) on a configured HTTP folder (the owner's Oracle host). The 8.1 path needs a
-  fallback RPU for AUs before the first validated IRAP and after a rejection, so it waits for DV3.3; HLG
-  first. Tests can use hand-made manifests before P15.3 lands.
+- **Status:** Open. DV4.1 (the HLG shot-list provider, opt-in by `debug.nuvio.dv_manifest_url`), DV4.4,
+  DV4.6 and DV4.7 are done (log). Open: DV4.5 on the device, the DV4.2 server mode and DV4.3; P15.4
+  (`RPU.bin` import) is deferred (owner, 2026-11-05).
 - [DV4.5][device][owner][new-build] A local sidecar end to end. Gate: every AU of the title carries the
   sidecar's L1 (debug log), no added dropped frames, the owner's G-E reading. Needs: DV4.1, DV1.8.
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
