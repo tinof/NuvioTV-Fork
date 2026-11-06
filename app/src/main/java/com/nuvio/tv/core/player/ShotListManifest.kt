@@ -171,7 +171,11 @@ internal class ShotListManifests(
         fun await(): FetchedManifest? = if (dropped) null else try {
             future.get(waitMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
+            // The track keeps its fallback for this playback: stop the fetch.
+            future.cancel(true)
             log("the manifest is not ready after $waitMs ms; the track keeps its fallback")
+            null
+        } catch (e: java.util.concurrent.CancellationException) {
             null
         } catch (e: ExecutionException) {
             log("the manifest fetch failed: ${e.cause?.message}")
@@ -198,7 +202,8 @@ internal class ShotListManifests(
         private const val TAG = "DvShotList"
         private const val TIMEOUT_MS = 5_000
 
-        private val EXECUTOR: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        // One thread per fetch: a fetch stalled on a slow stream must not hold up the next file's.
+        private val EXECUTOR: ExecutorService = Executors.newCachedThreadPool { runnable ->
             Thread(runnable, "dv-manifest").apply { isDaemon = true }
         }
 
