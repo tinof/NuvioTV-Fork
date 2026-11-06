@@ -1509,6 +1509,10 @@ public class MatroskaExtractor implements Extractor {
           // timecodeScale was omitted. Use the default value.
           timecodeScale = 1000000;
         }
+        // Fork (DV4.1): tracks whose TrackEntry ended before Info get the TimestampScale now.
+        for (int i = 0; i < tracks.size(); i++) {
+          tracks.valueAt(i).onTimestampScaleKnown(timecodeScale, dolbyVisionSampleTransformer);
+        }
         if (durationTimecode != C.TIME_UNSET) {
           durationUs = scaleTimecodeToUs(durationTimecode);
         }
@@ -4595,6 +4599,28 @@ public class MatroskaExtractor implements Extractor {
       requiresDolbyVisionTransform = !hasContentEncryption;
       if (output != null) {
         output.format(format);
+      }
+    }
+
+    /**
+     * Fork (DV4.1): Info ended after this track's TrackEntry, so the track identity had no time base.
+     * A converted track asks its RPU source again with it, before any of its samples; a source that
+     * fails keeps the one the track has.
+     */
+    void onTimestampScaleKnown(
+        long timestampScaleNs, @Nullable DolbyVisionSampleTransformer transformer) {
+      if (dvTimestampScaleNs > 0) {
+        return;
+      }
+      dvTimestampScaleNs = timestampScaleNs;
+      if (transformer != null
+          && isDolbyVisionConverted()
+          && dvSignalling instanceof DvSignallingDecision.Convert) {
+        transformer.updateDolbyVisionConversion(
+            hlgTrackId,
+            (DvSignallingDecision.Convert) dvSignalling,
+            nalUnitLengthFieldLength,
+            dvTrackFacts());
       }
     }
 
