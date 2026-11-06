@@ -47,21 +47,33 @@ internal class ManifestSourceIdentity(
         /**
          * Reads the identity of [uri] through [dataSourceFactory] (the playback's own stack, so its
          * headers and redirects apply): one read from the start, which gives the size and the head, and
-         * one range read of the tail when the file is longer than one chunk. Null when the size is
-         * unknown (a chunked response) or the file ends early.
+         * one range read of the tail when the file is longer than one chunk. A server that sends the
+         * whole file without a length (chunked) gets a range request for the head instead, and the size
+         * comes from its `Content-Range`. Null when the size stays unknown or the file ends early.
          */
         @UnstableApi
         @Throws(IOException::class)
         fun read(dataSourceFactory: DataSource.Factory, uri: Uri): ManifestSourceIdentity? {
             val source = dataSourceFactory.createDataSource()
-            val size: Long
-            val head: ByteArray
+            var size: Long
+            var head: ByteArray? = null
             try {
                 size = source.open(DataSpec(uri))
-                if (size == C.LENGTH_UNSET.toLong() || size < 0) return null
-                head = readExactly(source, minOf(size, CHUNK_BYTES.toLong()).toInt()) ?: return null
+                if (size >= 0) head = readExactly(source, minOf(size, CHUNK_BYTES.toLong()).toInt()) ?: return null
             } finally {
                 source.close()
+            }
+            if (head == null) {
+                val ranged = dataSourceFactory.createDataSource()
+                try {
+                    val length = ranged.open(DataSpec.Builder().setUri(uri).setPosition(0).setLength(CHUNK_BYTES.toLong()).build())
+                    size = totalOf(ranged.responseHeaders) ?: return null
+                    val headLength = minOf(size, CHUNK_BYTES.toLong()).toInt()
+                    if (length != C.LENGTH_UNSET.toLong() && length < headLength) return null
+                    head = readExactly(ranged, headLength) ?: return null
+                } finally {
+                    ranged.close()
+                }
             }
             val tail = if (size <= CHUNK_BYTES) {
                 head
@@ -77,6 +89,13 @@ internal class ManifestSourceIdentity(
                 }
             }
             return ManifestSourceIdentity(size, sha256(head), sha256(tail))
+        }
+
+        /** The complete length in a `Content-Range: bytes <first>-<last>/<total>` header, or null. */
+        internal fun totalOf(headers: Map<String, List<String>>): Long? {
+            val value = headers.entries.firstOrNull { it.key.equals("Content-Range", ignoreCase = true) }?.value?.firstOrNull()
+                ?: return null
+            return value.substringAfterLast('/', "").trim().toLongOrNull()?.takeIf { it >= 0 }
         }
 
         private fun readExactly(source: DataSource, length: Int): ByteArray? {
