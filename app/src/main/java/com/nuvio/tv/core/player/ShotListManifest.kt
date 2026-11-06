@@ -153,10 +153,22 @@ internal class ShotListManifests(
         return FetchedManifest(identity, json)
     }
 
-    /** One file's fetch. */
+    /**
+     * One file's fetch. Once a track drops the manifest ([markDropped]: a rejection or a native failure),
+     * it is dropped for the rest of the playback: a track prepared again, or a new extractor for the same
+     * file, gets no manifest.
+     */
     class Pending internal constructor(private val future: Future<FetchedManifest?>, private val waitMs: Long) {
-        /** The manifest, or null when there is none, it failed, or it is not there within the wait. */
-        fun await(): FetchedManifest? = try {
+        @Volatile
+        var dropped = false
+            private set
+
+        fun markDropped() {
+            dropped = true
+        }
+
+        /** The manifest, or null when there is none, it was dropped, it failed, or it is not there within the wait. */
+        fun await(): FetchedManifest? = if (dropped) null else try {
             future.get(waitMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
             log("the manifest is not ready after $waitMs ms; the track keeps its fallback")
