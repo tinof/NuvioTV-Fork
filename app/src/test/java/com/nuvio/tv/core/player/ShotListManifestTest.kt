@@ -104,6 +104,41 @@ class ShotListManifestTest {
     }
 
     @Test
+    fun `a server that sends the whole file chunked still gives the size of a range request's Content-Range`() {
+        val chunked = object : DataSource.Factory {
+            override fun createDataSource(): DataSource = object : BaseDataSource(true) {
+                private var position = 0
+                private var end = 0
+                private var ranged = false
+
+                override fun open(dataSpec: DataSpec): Long {
+                    position = dataSpec.position.toInt()
+                    ranged = dataSpec.length != C.LENGTH_UNSET.toLong()
+                    end = if (ranged) position + dataSpec.length.toInt() else big.size
+                    return if (ranged) dataSpec.length else C.LENGTH_UNSET.toLong()
+                }
+
+                override fun getResponseHeaders(): Map<String, List<String>> =
+                    if (ranged) mapOf("Content-Range" to listOf("bytes $position-${end - 1}/${big.size}")) else emptyMap()
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                    if (position >= end) return C.RESULT_END_OF_INPUT
+                    val count = minOf(length, end - position)
+                    System.arraycopy(big, position, buffer, offset, count)
+                    position += count
+                    return count
+                }
+
+                override fun getUri(): Uri? = null
+                override fun close() {}
+            }
+        }
+        val identity = ManifestSourceIdentity.read(chunked, Uri.parse("f"))!!
+        assertEquals(big.size.toLong(), identity.sizeBytes)
+        assertEquals("9cf1c9b7fcf96ecb9cf75e4dc4a20c66b60f084d044a5a80bf334ef05d5c18ed", identity.lookupKeyHex)
+    }
+
+    @Test
     fun `an unknown size gives no identity`() {
         assertNull(ManifestSourceIdentity.read(Files(mapOf("f" to big), knownLength = false), Uri.parse("f")))
     }
