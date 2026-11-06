@@ -17,10 +17,10 @@ playback and display chain, and links the log entry with the measurements.
 | G-B | T3 | 4K60, every frame | not run | | DV1.3 |
 | G-B | T3 | 4K60, without top-layer `_N` pictures | not run | | DV1.3 |
 | G-B | T3 | 4K60, IRAP only | not run | | DV1.3 |
-| G-C | all | 8.1 from HDR10, `mkvdovi` file, Shield → owner's TV | not run | | DV1.8 |
-| G-C | all | 8.1 from HDR10+, `mkvdovi` file | not run | | DV1.8 |
-| G-C | all | 8.4 bt2100 and canary, `mkvdovi` file | pass, eye check only (owner) | 2026-10-23 | DV1.4; `dovi_tool` checks in DV1.8 |
-| G-C | all | L1 variants of one title | not run | | DV1.8 |
+| G-C | all | 8.1 from HDR10, `mkvdovi` file, Shield → owner's TV | not run: no `mkvdovi` HDR10 file was made; the owner closed DV1.8 without it. A native 8.1 file played with every dumped RPU equal to the file's (2224 AUs, start, seeks, resume) | 2026-11-06 | DV1.8 in the log |
+| G-C | all | 8.1 from HDR10+, `mkvdovi` file | pass: 4K25 HDR10+ Profile B cut, Shield → LG C9 shows Dolby Vision (owner); 2165 dumped RPUs equal the file's, `dovi_tool info` ok; start from frame 0, seeks, restarts | 2026-11-06 | DV1.8 in the log |
+| G-C | all | 8.4 bt2100 and canary, `mkvdovi` file | pass: bt2100, 4K25 HLG cut, Dolby Vision with neutral colour (owner), 2020 dumped RPUs equal the file's, `dovi_tool info` ok, start from frame 0 and seeks (2026-11-06); canary: eye check only (2026-10-23), no `mkvdovi` canary file | 2026-11-06 | DV1.4 and DV1.8 in the log |
+| G-C | all | L1 variants of one title | not run as L1-only variants; the owner closed DV1.8 on three dynamic-contrast variants of one title (reshaping and L1/L3 change), judged on the C9, RPUs not dumped | 2026-11-04 | hdr-analyze log P14; DV1.8 in the log |
 | G-C | all | Pulse clip (L1 alternating, pixels constant) | not run | | DV7.7 |
 | G-C | DV7 candidates b, c | 8.1 mapping canary against identity control, on the recorded playback chain | not run | | DV7.7 |
 | G-C | all | Conversion in the app, per source type | partial: HLG → 8.4 bt2100 (BBC broadcast HLG, Matroska, 4K25, Shield → LG C9) shows Dolby Vision without tint (owner), RPUs validate and match `dovi_tool`; canary, frame-0 start and seeks not run; HDR10+ in the next row; static HDR10 not run | 2026-10-25 | DV3.2 session 1 in the log; DV3.3 |

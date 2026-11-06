@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-06 | DV1.8 closed (owner): the 8.4 bt2100 file from HLG and the 8.1 file from HDR10+, both made by `mkvdovi`, played through Nuvio with the RPU dump on; every dumped RPU equals the file's at the same PTS from the start, after seeks and on a resume, Dolby Vision with neutral colour on the TV. No `mkvdovi` HDR10 file or L1-only variants were made. | DV1 | [log](docs/ROADMAP_LOG.md), PR #53 |
 | 2026-11-06 | DV4.1 closed: converted HLG tracks take per-shot L1 from the file's playback manifest, found by `lookup_key` on the folder `debug.nuvio.dv_manifest_url` names; a rejection keeps the static RPU for the rest of the playback. | DV4 | [log](docs/ROADMAP_LOG.md), PR #52 |
 | 2026-11-06 | DV4.4 closed: hdr-analyze P15.3 writes the playback manifest (`mkvdovi manifest`), its gate passed there; the `RPU.bin` import (P15.4) stays deferred. | DV4 | [log](docs/ROADMAP_LOG.md), hdr-analyze PR #96 |
 | 2026-11-06 | DV4.7 closed: `TrackRpus.next` gets each AU's raw Matroska ticks, lace count and decode index; a provider switch inside a shot refreshes the first fallback picture on screen, also when the rejected AU is a future reference. | DV4 | [log](docs/ROADMAP_LOG.md), PR #51 |
@@ -839,7 +840,8 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 #### DV1: device gates and desk checks
 
-- **Status:** Open. DV1.4 closed on 2026-10-23 on the owner's eye check (log); its precise half is DV1.8.
+- **Status:** Open. DV1.4 closed on 2026-10-23 on the owner's eye check, and its precise half DV1.8 on
+  2026-11-06 (log).
 - [DV1.1][desk] Read the Media3 1.8.0 renderer path and the patched AARs: the sample framing at
   `onQueueInputBuffer` per container, the reconfiguration prefix, the real input-buffer capacity for 4K
   HEVC (`KEY_MAX_INPUT_SIZE` is only the request), and how flushes and releases reach the renderer.
@@ -855,11 +857,6 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   the load. Gate: the report in the log and the idle G-F row of the qualification matrix. Needs: DV1.2.
 - [DV1.7][device][new-build] G-F playback thermal run (T3): two hours of playback with analysis. Gate:
   the report in the log and the playback G-F row of the qualification matrix. Needs: DV5.4.
-- [DV1.8][device][owner][new-build] G-C, precise half (DV1.4 closed on the owner's eye check): the
-  `mkvdovi` files (8.4 bt2100 and canary, 8.1 from HDR10 and HDR10+, the L1 variants) played through
-  Nuvio with the DV2.8 dump on, from the start, from a mid-file resume point and with seeks. Gate: the
-  dumped RPUs validate with `dovi_tool info` and equal the files' RPUs; the owner's TV readings and the
-  playback chain in the log; the G-C rows of the qualification matrix set. Needs: DV2.8.
 
 #### DV2: shared code, signalling and injector
 
