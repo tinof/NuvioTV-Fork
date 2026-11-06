@@ -10,6 +10,24 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-06: DV4.4 The playback manifest in hdr-analyze (hdr-analyze PR #96)
+
+- [DV4.4][desk] In hdr-analyze, the playback manifest of `DESIGN.md` 2.8 around the L1 payload, written
+  by `mkvdovi` and accepted for imported `RPU.bin` files. Gate: tests with variable frame rate, a
+  non-zero start, an open-GOP start, a different encode and a mismatched composer. Needs: DV2.1.
+  Done when hdr-analyze P15.3 passes. The `RPU.bin` import (P15.4) is deferred (owner, 2026-11-05):
+  the owner's flow makes measured manifests only.
+
+- **Evidence:** hdr-analyze P15.3 merged as its PR #96 (2026-11-05). Its gate, logged in hdr-analyze
+  `docs/ROADMAP_LOG.md`: VFR, a non-zero start and open GOP accepted; builder RPUs from the manifest
+  equal mkvdovi's `--keep-source` output byte for byte for 8.4 bt2100 and 8.1; a different encode and a
+  mismatched composer rejected; `extra.json` goldens and RPU baselines unchanged. Closed in the DV4.1 run
+  of 2026-11-06, which found the fork's line still open.
+- **Resolution:** the fork's `nuvio_rpu` pin (`eb727a0`, DV4.6) differs from hdr-analyze main only by
+  three lines in `dovi_rpu_builder/src/lib.rs`, so it parses P15.3's manifests. hdr-analyze P15.5 (an
+  FFmpeg-cut open-GOP file with negative leading timestamps is refused by the producer) is open there
+  and does not block the player. P15.4 (`RPU.bin` import) stays deferred.
+
 ## 2026-11-06: DV4.7 Extractor inputs for the matcher (PR #51)
 
 - [DV4.7][desk] Extractor inputs for the matcher: raw Matroska ticks (Cluster timecode + block timecode,
