@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-07 | M3.3 closed: the 10 s `BUFFER:` line logs the video renderer's dropped, max consecutive dropped and skipped counts, with a `counterScope` that changes when a new renderer restarts them, so single drops reach logcat. | M3 | [log](docs/ROADMAP_LOG.md), PR #54 |
 | 2026-11-06 | DV1.8 closed (owner): the 8.4 bt2100 file from HLG and the 8.1 file from HDR10+, both made by `mkvdovi`, played through Nuvio with the RPU dump on; every dumped RPU equals the file's at the same PTS from the start, after seeks and on a resume, Dolby Vision with neutral colour on the TV. No `mkvdovi` HDR10 file or L1-only variants were made. | DV1 | [log](docs/ROADMAP_LOG.md), PR #53 |
 | 2026-11-06 | DV4.1 closed: converted HLG tracks take per-shot L1 from the file's playback manifest, found by `lookup_key` on the folder `debug.nuvio.dv_manifest_url` names; a rejection keeps the static RPU for the rest of the playback. | DV4 | [log](docs/ROADMAP_LOG.md), PR #52 |
 | 2026-11-06 | DV4.4 closed: hdr-analyze P15.3 writes the playback manifest (`mkvdovi manifest`), its gate passed there; the `RPU.bin` import (P15.4) stays deferred. | DV4 | [log](docs/ROADMAP_LOG.md), hdr-analyze PR #96 |
@@ -586,15 +587,10 @@ because a wrong passthrough path is invisible until measured.
 
 ### M3: diagnostics
 
-- **Status:** Open. Findings A4, A5.
+- **Status:** Open. M3.3 is done (log); open: M3.1 playback-head stalls, M3.2 `STHRESH` on API 31+.
 - [M3.1][desk] Count playback-head stalls (the client's `disabled due to previous underrun` restarts) on the
   HUD, cumulative across track rebuilds (A4). Gate: unit test.
 - [M3.2][desk] Log `STHRESH` only on API 31+ (A5). Gate: unit test.
-- [M3.3][desk] Log `droppedBufferCount`, `skippedOutputBufferCount` and `maxConsecutiveDroppedBufferCount`
-  with the 10 s `BUFFER:` line.
-  - `onDroppedVideoFrames` fires only after 50 drops (`PlayerRuntimeControllerInitialization.kt:3462`), so
-    single drops never reach logcat today.
-  - Gate: unit test.
 
 ## Engine
 
