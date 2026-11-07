@@ -125,6 +125,8 @@ private val localOnlyPlayerProfileSettingsKeys = setOf(
     "map_dv7_to_hevc",
     "dv7_libdovi_mode_override",
     "strip_hdr10plus_sei",
+    "dv_manifest_enabled",
+    "dv_manifest_url",
     "mpv_hardware_decode_mode",
     "frame_rate_matching",
     "frame_rate_matching_mode",

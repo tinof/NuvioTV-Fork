@@ -138,6 +138,7 @@ internal fun PlaybackVideoSection(
                 onToggle = { onUpdate { setConvertHdrToDolbyVision(!settings.convertHdrToDolbyVision) } },
                 enabled = enabled && !stripMode
             )
+            DvManifestRows(settings, dvManifestRowsEnabled(enabled, stripMode, settings.convertHdrToDolbyVision), onUpdate, onOpenDialog)
         }
         SettingsToggleRow(
             title = stringResource(R.string.audio_strip_hdr10plus_title),
@@ -330,6 +331,7 @@ internal fun VideoSettingsDialogs(
             },
             onDismiss = onDismiss
         )
+        PlaybackDialog.DV_MANIFEST_URL -> DvManifestUrlDialog(settings.dvManifestUrl, onUpdate, onDismiss)
         PlaybackDialog.DV7_HANDLING_MODE -> Dv7HandlingModeDialog(
             selectedMode = settings.dv7HandlingMode,
             onModeSelected = { mode ->

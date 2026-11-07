@@ -208,8 +208,8 @@ internal class ShotListManifests(
     companion object {
         /**
          * `adb shell setprop debug.nuvio.dv_manifest_url http://<host>:<port>/<folder>` (or a `file://`
-         * folder): converted HLG tracks take their L1 from that folder's playback manifests. Unset: no
-         * lookup, no request.
+         * folder): converted HLG tracks take their L1 from that folder's playback manifests. It wins over
+         * the saved player setting (DV4.8); with neither: no lookup, no request.
          */
         const val URL_SWITCH = "debug.nuvio.dv_manifest_url"
 
@@ -226,11 +226,20 @@ internal class ShotListManifests(
             Thread(runnable, "dv-manifest").apply { isDaemon = true }
         }
 
-        /** The manifests [URL_SWITCH] names, or null when it is unset ([playbackDataSourceFactory] is then not called). */
-        fun fromSwitches(context: android.content.Context, playbackDataSourceFactory: () -> DataSource.Factory): ShotListManifests? {
-            val base = DebugSwitches.property(URL_SWITCH)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        /**
+         * The manifests [URL_SWITCH] names, else the saved folder when [savedEnabled] ([DvManifestFolder]),
+         * or null when neither gives one ([playbackDataSourceFactory] is then not called).
+         */
+        fun fromSwitches(
+            context: android.content.Context,
+            savedEnabled: Boolean,
+            savedUrl: String,
+            playbackDataSourceFactory: () -> DataSource.Factory,
+        ): ShotListManifests? {
+            val base = DvManifestFolder.resolve(DebugSwitches.property(URL_SWITCH), savedEnabled, savedUrl) ?: return null
             val wait = DebugSwitches.int(WAIT_SWITCH)?.takeIf { it >= 0 }?.toLong() ?: DEFAULT_WAIT_MS
-            return ShotListManifests(base, playbackDataSourceFactory(), manifestFactory(context), waitMs = wait)
+            log("manifest folder from ${if (base.fromSetting) "the player setting" else URL_SWITCH}")
+            return ShotListManifests(base.url, playbackDataSourceFactory(), manifestFactory(context), waitMs = wait)
         }
 
         internal fun manifestUrl(baseUrl: String, lookupKeyHex: String) =
