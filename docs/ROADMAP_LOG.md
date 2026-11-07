@@ -10,6 +10,42 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-07: DV4.5 A local sidecar end to end, on the device (PR #55)
+
+- [DV4.5][device][owner][new-build] A local sidecar end to end. Gate: every AU of the title carries the
+  sidecar's L1 (debug log), no added dropped frames, the owner's G-E reading. Needs: DV4.1, DV1.8.
+
+- **Build and chain:** local build of `a90ec160a` (APK sha256 `87fd2b91…`), Shield TV Pro 2019 → LG OLED
+  C9, decoder `OMX.Nvidia.DOVI.decode`, "Convert HLG and HDR10+ to Dolby Vision" on. The title is DV1.8's
+  D1 source: the plain 1-minute 4K25 HLG documentary cut of the hdr-analyze dev corpus (1526 pictures, not
+  Dolby Vision), added to the owner's Jellyfin test library as "D1 HLG source" and played from there.
+- **Manifest:** hdr-analyze main at `f318efe` (P15.5), `mkvdovi manifest` with the defaults (8.4
+  bt2100, CM v4.0, accurate quality) on the Mac's CPU: 87 s, 14 shots over 1526 pictures, coverage
+  `full`, `l1_policy` measured. Its `lookup_key` (`a083a508…`) was recomputed from the file on the
+  Jellyfin host and matched. Served as `<lookup_key>.dvmanifest.json` from a plain HTTP folder on the
+  Mac on the LAN (`debug.nuvio.dv_manifest_url`); `debug.nuvio.rpu_dump` 6000.
+- **Run A, manifest on, from frame 0 to the end:** the fetch took 458 ms (17220 bytes), the manifest was
+  accepted for the track, and `DvShotList` logged "1526 AUs from the manifest, 0 from the fallback". The
+  dump (`rpu_dump_to_bin.py --order pts`, 1524 records; the last anchor's 2 B-frames fall after the
+  gap) equals the RPUs of DV1.8's `mkvdovi` 8.4 file from the same source: `rpu_l1_compare.py` 0 L1 and
+  0 other differences. Against the manifest's shots, avg and max are equal on every frame; min is 12 on
+  every frame, because the builder clamps L1 min to at most 12 as `dovi_tool` does
+  (`dovi_rpu_builder/src/static_l1.rs:21`), while the manifest stores the unclamped value.
+- **Run B, manifest off (static 8.4), same file from frame 0:** every dumped RPU carries the static L1
+  (0, 1283, 3079), as expected.
+- **Dropped frames:** every 10 s `BUFFER:` line of both runs shows `dropped=0 maxConsecDropped=0
+  skipped=0`, one `counterScope` per run.
+- **G-E (owner, LG C9):** run A, with the manifest's per-shot L1, looked better than run B with static L1.
+- **Not run:** seeks, a resume or a start inside a shot with the manifest, and a server on the owner's
+  Oracle host.
+- **Found on the way:** the Shield reaches the Oracle host only through its public reverse proxy, not
+  its private or tailnet address, so serving manifests from Oracle needs a proxy route (DV4.3). Oracle's
+  `mkvdovi` and `hdr-analyze` builds predate the `manifest` command. The Jellyfin test library held only
+  the converted D1 and D2 files; the plain HLG source now sits beside them.
+- **Session:** M2 snapshot and restore clean (`~/shield-snapshots/20261107-1409-dv4-5/`, local only:
+  DRIFT 0, OWNER 0; the one INFO line is the installed APK, now the build above), with the logcat, the
+  manifest, both rebuilt `RPU.bin` files and the reference.
+
 ## 2026-11-07: M3.3 Video frame counters on the BUFFER line (PR #54)
 
 - [M3.3][desk] Log `droppedBufferCount`, `skippedOutputBufferCount` and `maxConsecutiveDroppedBufferCount`

@@ -27,7 +27,7 @@ playback and display chain, and links the log entry with the measurements.
 | G-C | all | Conversion in the app, HDR10+ → 8.1 | pass: 4K 23.976 fps HDR10+ web series, Matroska, Shield → LG C9 shows Dolby Vision (owner); an RPU in every AU; L1 equal to `dovi_tool` on 6115 frames from 0:00; L6, source range and L9 from the SEI, the whole RPU equal to `mkvdovi` on 7231 frames from 0:00, the owner's A/B shows no large difference (DV3.4); seeks not compared with `dovi_tool` | 2026-11-01 | DV3.1 and DV3.4 in the log |
 | G-D | T1 server, T3 | Renderer replacement, Matroska | not run | | DV1.1, DV5.1 |
 | G-E | T0 HDR10, T1, T3 | Static HDR10 → 8.1 against native HDR10 | not run | | DV3.3 |
-| G-E | T1, T3 | Shot list against static | not run | | DV4.5 |
+| G-E | T1, T3 | Shot list against static | T1 pass: 4K25 HLG cut, `mkvdovi manifest` (14 shots) against static 8.4, both from frame 0 on the LG C9; the owner preferred the shot list; 0 dropped frames in both; T3 not run | 2026-11-07 | DV4.5 in the log (PR #55) |
 | G-E | T3 | HDR10+ against measured | not run | | DV5.4 |
 | G-F | T2 | Idle analysis, two hours | not run | | DV1.6 |
 | G-F | T3 | Playback with analysis, two hours | not run | | DV1.7 |
