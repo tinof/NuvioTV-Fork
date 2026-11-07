@@ -933,19 +933,23 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   DV4.5 (the device run, owner preferred it to static L1), DV4.6 and DV4.7 are done (log). Open: the
   DV4.8 (a saved setting for the manifest URL), DV4.9 (a full-length title through the PC → Oracle →
   Shield path), the DV4.2 server mode and DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05). The Shield
-  reaches the Oracle host only through its public reverse proxy (DV4.5 log).
+  reaches the Oracle host only through its public reverse proxy (DV4.5 log). Manifests are made and served by
+  the subtitles add-on (owner, 2026-11-07): a dashboard button queues a played HLG release, a worker on the PC
+  runs `mkvdovi manifest`, and the add-on serves `https://subs.m4ntic.tech/dv/<lookup_key>.dvmanifest.json`
+  behind its existing Caddy IP gate (`tinof/stremio-subtitles-add-on` ROADMAP H1).
 - [DV4.8][desk] A saved setting for the manifest folder (owner, 2026-11-07): `debug.nuvio.dv_manifest_url`
   is lost at every Shield reboot. Add an on/off and an `http(s)://` folder URL to the player settings next to
   `convertHdrToDolbyVision` (`PlayerSettingsDataStore`, per profile), read by `ShotListManifest` at track init;
   the setprop stays as a debug override that wins when set. Gate: DataStore and settings-screen tests, red
   first; a reboot test on the Shield keeps the URL and the next HLG playback logs the manifest fetch. Needs:
   DV4.1.
-- [DV4.9][device][owner][new-build] A full-length HLG title through the real path: `mkvdovi manifest` on the
-  Windows PC over the NzbDAV mount, the manifest on the Oracle folder behind Caddy, the URL from DV4.8.
+- [DV4.9][device][owner][new-build] A full-length HLG title through the real path: the dashboard button, the
+  PC worker over the NzbDAV mount, the manifest served by the subtitles add-on, the URL
+  `https://subs.m4ntic.tech/dv/` from DV4.8.
   Gate: the fetch lands inside the wait, every AU of a played stretch carries the manifest's L1, two seeks
   and a resume keep it (or log the fallback for AUs before the IRAP), no added dropped frames, the
-  `ShotListDvRpuSource` count line in the log. Needs: DV4.8, hdr-analyze `mkvdovi manifest` on the PC
-  (a v0.9.0 release or a build of main), the Caddy route.
+  `ShotListDvRpuSource` count line in the log. Needs: DV4.8, subtitles add-on H1.4 (which needs hdr-analyze
+  `mkvdovi manifest` on the PC: a v0.9.0 release or a build of main).
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
   time, with a warm-up for scene context and crop, and stream finished shots; the first shot after a
   start inside a long shot is marked incomplete. Gate: its shots equal an offline run with the same
