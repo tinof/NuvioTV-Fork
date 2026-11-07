@@ -10,6 +10,23 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-07: M3.3 Video frame counters on the BUFFER line (PR #54)
+
+- [M3.3][desk] Log `droppedBufferCount`, `skippedOutputBufferCount` and `maxConsecutiveDroppedBufferCount`
+  with the 10 s `BUFFER:` line.
+  - `onDroppedVideoFrames` fires only after 50 drops (`PlayerRuntimeControllerInitialization.kt:3462`), so
+    single drops never reach logcat today.
+  - Gate: unit test.
+
+- **Evidence:** `PlaybackDecoderCounterFieldsTest` (5: a single drop below the callback threshold, a
+  replaced renderer, tunnelled output, modes without counters, no video). Full unit gate green (8550
+  tests). Tier 1 review on PR #54: codex 1 P1 (tunnelled output left out the skipped count), FIXED with
+  the test red first.
+- **Resolution:** `PlaybackDecoderCounterFields` appends `dropped=`, `maxConsecDropped=`, `skipped=` and
+  `counterScope=` for MediaCodec and tunnelled output, and `frameCounters=<mode>` for native or
+  unsupported output. The counts are cumulative per renderer; `counterScope` changes when a new renderer
+  starts them again from zero. This gives DV4.5 its "no added dropped frames" evidence in logcat.
+
 ## 2026-11-06: DV1.8 G-C, precise half, on the device (PR #53)
 
 - [DV1.8][device][owner][new-build] G-C, precise half (DV1.4 closed on the owner's eye check): the
