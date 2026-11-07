@@ -359,6 +359,14 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setConvertHdrToDolbyVision(enabled)
     }
 
+    suspend fun setDvManifestEnabled(enabled: Boolean) {
+        playerSettingsDataStore.setDvManifestEnabled(enabled)
+    }
+
+    suspend fun setDvManifestUrl(url: String) {
+        playerSettingsDataStore.setDvManifestUrl(url)
+    }
+
     suspend fun setStripHdr10PlusSei(enabled: Boolean) {
         playerSettingsDataStore.setStripHdr10PlusSei(enabled)
     }
