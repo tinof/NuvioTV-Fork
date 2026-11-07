@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-07 | DV4.5 closed (owner): a plain HLG cut with a `mkvdovi manifest` served from a LAN folder plays as 8.4 with all 1526 AUs from the manifest; the dumped RPUs equal `mkvdovi`'s 8.4 file from the same source, no dropped frames, and the owner preferred it to static L1 (G-E). | DV4 | [log](docs/ROADMAP_LOG.md), PR #55 |
 | 2026-11-07 | M3.3 closed: the 10 s `BUFFER:` line logs the video renderer's dropped, max consecutive dropped and skipped counts, with a `counterScope` that changes when a new renderer restarts them, so single drops reach logcat. | M3 | [log](docs/ROADMAP_LOG.md), PR #54 |
 | 2026-11-06 | DV1.8 closed (owner): the 8.4 bt2100 file from HLG and the 8.1 file from HDR10+, both made by `mkvdovi`, played through Nuvio with the RPU dump on; every dumped RPU equals the file's at the same PTS from the start, after seeks and on a resume, Dolby Vision with neutral colour on the TV. No `mkvdovi` HDR10 file or L1-only variants were made. | DV1 | [log](docs/ROADMAP_LOG.md), PR #53 |
 | 2026-11-06 | DV4.1 closed: converted HLG tracks take per-shot L1 from the file's playback manifest, found by `lookup_key` on the folder `debug.nuvio.dv_manifest_url` names; a rejection keeps the static RPU for the rest of the playback. | DV4 | [log](docs/ROADMAP_LOG.md), PR #52 |
@@ -929,10 +930,9 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 #### DV4: T1, shot lists made on a PC
 
 - **Status:** Open. DV4.1 (the HLG shot-list provider, opt-in by `debug.nuvio.dv_manifest_url`), DV4.4,
-  DV4.6 and DV4.7 are done (log). Open: DV4.5 on the device, the DV4.2 server mode and DV4.3; P15.4
-  (`RPU.bin` import) is deferred (owner, 2026-11-05).
-- [DV4.5][device][owner][new-build] A local sidecar end to end. Gate: every AU of the title carries the
-  sidecar's L1 (debug log), no added dropped frames, the owner's G-E reading. Needs: DV4.1, DV1.8.
+  DV4.5 (the device run, owner preferred it to static L1), DV4.6 and DV4.7 are done (log). Open: the
+  DV4.2 server mode and DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05). The Shield
+  reaches the Oracle host only through its public reverse proxy (DV4.5 log).
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
   time, with a warm-up for scene context and crop, and stream finished shots; the first shot after a
   start inside a long shot is marked incomplete. Gate: its shots equal an offline run with the same
