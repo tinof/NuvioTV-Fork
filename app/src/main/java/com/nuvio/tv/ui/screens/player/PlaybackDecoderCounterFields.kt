@@ -9,8 +9,9 @@ import androidx.media3.exoplayer.ExoPlayer
  * The video renderer's frame counters for the 10 s BUFFER log line (M3.3).
  *
  * `onDroppedVideoFrames` reports only after 50 drops, so single drops never reached logcat. These are
- * the renderer's current cumulative counts, under the HUD's support rules ([PlaybackVideoPresentation]):
- * drops for MediaCodec and tunnelled output, skips for MediaCodec only. A mode without counters logs
+ * the renderer's current cumulative counts, for the modes where the HUD trusts the drop counters
+ * ([PlaybackVideoPresentation]): MediaCodec and tunnelled output. The skip count is logged raw in both,
+ * although the HUD shows it for MediaCodec only. A mode without counters logs
  * `frameCounters=<mode>` instead. `counterScope` changes when the renderer's counters are replaced
  * (a new renderer starts again from zero); within one scope the counts never fall.
  * Call on the player's application thread.
@@ -46,7 +47,7 @@ internal object PlaybackDecoderCounterFields {
         val parts = ArrayList<String>(4)
         parts += "dropped=${counters.droppedBufferCount}"
         parts += "maxConsecDropped=${counters.maxConsecutiveDroppedBufferCount}"
-        if (presentation.supportsSkipCounters) parts += "skipped=${counters.skippedOutputBufferCount}"
+        parts += "skipped=${counters.skippedOutputBufferCount}"
         parts += "counterScope=$scope"
         return parts.joinToString(prefix = ", ")
     }

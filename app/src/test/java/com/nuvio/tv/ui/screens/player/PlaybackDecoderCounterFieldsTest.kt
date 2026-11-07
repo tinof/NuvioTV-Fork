@@ -32,8 +32,8 @@ class PlaybackDecoderCounterFieldsTest {
             PlaybackDecoderCounterFields.fields(PlaybackVideoPresentation.MEDIA_CODEC, counters(2, maxConsecutive = 2)))
     }
 
-    @Test fun `tunnelled output logs drops but not skips`() {
-        assertEquals(", dropped=5, maxConsecDropped=4, counterScope=1",
+    @Test fun `tunnelled output logs all three counters`() {
+        assertEquals(", dropped=5, maxConsecDropped=4, skipped=9, counterScope=1",
             PlaybackDecoderCounterFields.fields(PlaybackVideoPresentation.TUNNELLED, counters(5, 4, skipped = 9)))
     }
 
