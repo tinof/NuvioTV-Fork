@@ -81,6 +81,7 @@ internal enum class PlaybackDialog {
     AFR_SETTLE_DELAY,
     DV7_HANDLING_MODE,
     DV_OUTPUT,
+    DV_MANIFEST_URL,
     MPV_HARDWARE_DECODE_MODE,
     MPV_DIRECT_DECODE_MODE,
     P2P_CONSENT,
