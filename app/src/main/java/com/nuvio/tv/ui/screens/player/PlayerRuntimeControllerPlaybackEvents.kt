@@ -596,7 +596,8 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                         val budgetMb = (_loadControl as? com.nuvio.tv.core.player.BufferBudgetControl)
                             ?.allocatorTargetBytes()?.div(1024 * 1024)
                         val bufferLine = "BUFFER: ahead=${bufAhead}s, loading=$loading, heap=$usedMb/${maxMb}MB, pos=${pos / 1000}s" +
-                            (budgetMb?.let { ", budgetMb=$it" } ?: "")
+                            (budgetMb?.let { ", budgetMb=$it" } ?: "") +
+                            PlaybackDecoderCounterFields.sample(player, playbackAnalyticsDiagnostics.hudSample().videoDecoderName)
                         scope.launch(Dispatchers.IO) {
                             Log.i(PlayerRuntimeController.TAG, bufferLine + PlaybackRuntimeCounters.logFields())
                             com.nuvio.tv.core.player.AllocationRecorder.sample(context.applicationContext, pos / 1000)
