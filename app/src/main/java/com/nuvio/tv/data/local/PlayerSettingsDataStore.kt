@@ -18,6 +18,7 @@ import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.player.BufferAhead
 import com.nuvio.tv.core.performance.DeviceProfile
 import com.nuvio.tv.core.player.BufferSizing
+import com.nuvio.tv.core.player.DvManifestFolder
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -385,9 +386,9 @@ data class PlayerSettings(
     // never reach the decoder.
     val convertHdrToDolbyVision: Boolean = false,
     // DV4.8: converted HLG tracks look up their playback manifests in this http(s) folder when on. The
-    // debug.nuvio.dv_manifest_url setprop wins over it (DvManifestFolder).
+    // debug.nuvio.dv_manifest_url setprop wins over it (DvManifestFolder). The folder starts at the add-on's.
     val dvManifestEnabled: Boolean = false,
-    val dvManifestUrl: String = "",
+    val dvManifestUrl: String = DvManifestFolder.DEFAULT_URL,
     val mpvHi10pGnextSoftwareFallbackEnabled: Boolean = false,
     val mpvHardwareDecodeMode: MpvHardwareDecodeMode = MpvHardwareDecodeMode.AUTO_SAFE,
     // Display settings
@@ -1456,7 +1457,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 injectHdr10MetadataOnStrip = storedInjectHdr10MetadataOnStrip(prefs[injectHdr10MetadataOnStripKey]),
                 convertHdrToDolbyVision = prefs[convertHdrToDolbyVisionKey] ?: false,
                 dvManifestEnabled = prefs[dvManifestEnabledKey] ?: false,
-                dvManifestUrl = prefs[dvManifestUrlKey] ?: "",
+                dvManifestUrl = prefs[dvManifestUrlKey] ?: DvManifestFolder.DEFAULT_URL,
                 mpvHi10pGnextSoftwareFallbackEnabled =
                     prefs[mpvHi10pGnextSoftwareFallbackEnabledKey] ?: false,
                 mpvHardwareDecodeMode = parseMpvHardwareDecodeMode(prefs[mpvHardwareDecodeModeKey]),
@@ -2492,7 +2493,7 @@ class PlayerSettingsDataStore @Inject constructor(
         store().edit { it[dvManifestEnabledKey] = enabled }
     }
 
-    /** Saves [url] normalised; a blank one clears the folder. False, and nothing saved, for an invalid one. */
+    /** Saves [url] normalised; a blank one restores the default folder. False, and nothing saved, for an invalid one. */
     suspend fun setDvManifestUrl(url: String): Boolean {
         if (url.isBlank()) {
             store().edit { it.remove(dvManifestUrlKey) }

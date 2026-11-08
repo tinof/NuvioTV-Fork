@@ -1012,7 +1012,7 @@
     <string name="playback_dv_manifest_sub">Converted HLG takes its per-scene brightness from a playback manifest in the folder below, made ahead of time on a PC. Without a manifest the title plays with fixed metadata.</string>
     <string name="playback_dv_manifest_url_title">Manifest folder</string>
     <string name="playback_dv_manifest_url_not_set">Not set</string>
-    <string name="playback_dv_manifest_url_dialog_sub">An http:// or https:// folder address, without a query.</string>
+    <string name="playback_dv_manifest_url_dialog_sub">An http:// or https:// folder address, without a query. Leave it empty for the default folder.</string>
     <string name="playback_dv_manifest_url_invalid">Enter an http:// or https:// address with a host and no ? or #.</string>
     <string name="playback_convert_hdr_to_dv_sub">Plays MKV video on a Dolby Vision TV as Dolby Vision: HLG as Profile 8.4 with fixed metadata, HDR10+ as Profile 8.1 with its own scene metadata. Plain HDR10 plays as it is. Turn it off if the picture looks wrong.</string>
     <string name="audio_strip_hdr10plus_title">Strip HDR10+ metadata</string>
