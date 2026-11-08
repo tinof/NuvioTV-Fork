@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.nuvio.tv.core.player.DvManifestFolder
 import com.nuvio.tv.core.profile.ProfileManager
 import io.mockk.every
 import io.mockk.mockk
@@ -21,7 +22,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** ROADMAP DV4.8: the manifest folder is a saved per-profile setting, off and empty until set. */
+/** ROADMAP DV4.8: the manifest folder is a saved per-profile setting, off until set, with the add-on folder as default. */
 class DvManifestSettingTest {
     private class MemoryStore(initial: Preferences) : DataStore<Preferences> {
         override val data = MutableStateFlow(initial)
@@ -50,12 +51,13 @@ class DvManifestSettingTest {
     }
 
     @Test
-    fun `off and empty by default`() = withSettings { settings, _, _ ->
+    fun `off with the add-on folder by default`() = withSettings { settings, _, _ ->
+        assertEquals("https://subs.m4ntic.tech/dv/", DvManifestFolder.DEFAULT_URL)
         assertFalse(PlayerSettings().dvManifestEnabled)
-        assertEquals("", PlayerSettings().dvManifestUrl)
+        assertEquals(DvManifestFolder.DEFAULT_URL, PlayerSettings().dvManifestUrl)
         val read = settings.playerSettings.first()
         assertFalse(read.dvManifestEnabled)
-        assertEquals("", read.dvManifestUrl)
+        assertEquals(DvManifestFolder.DEFAULT_URL, read.dvManifestUrl)
     }
 
     @Test
@@ -71,7 +73,7 @@ class DvManifestSettingTest {
         active.value = 1
         settings.playerSettings.first().let {
             assertFalse(it.dvManifestEnabled)
-            assertEquals("", it.dvManifestUrl)
+            assertEquals(DvManifestFolder.DEFAULT_URL, it.dvManifestUrl)
         }
         assertNull(stores[1].data.value[urlKey])
     }
@@ -85,13 +87,13 @@ class DvManifestSettingTest {
     }
 
     @Test
-    fun `a blank folder clears it, and turning the toggle off keeps it`() = withSettings { settings, stores, _ ->
+    fun `a blank folder restores the default, and turning the toggle off keeps it`() = withSettings { settings, stores, _ ->
         settings.setDvManifestEnabled(true)
         assertTrue(settings.setDvManifestUrl("https://subs.example/dv/"))
         settings.setDvManifestEnabled(false)
         assertEquals("https://subs.example/dv/", settings.playerSettings.first().dvManifestUrl)
         assertTrue(settings.setDvManifestUrl("   "))
         assertNull(stores[0].data.value[urlKey])
-        assertEquals("", settings.playerSettings.first().dvManifestUrl)
+        assertEquals(DvManifestFolder.DEFAULT_URL, settings.playerSettings.first().dvManifestUrl)
     }
 }

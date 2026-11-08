@@ -11,6 +11,12 @@ import java.net.URISyntaxException
  */
 internal object DvManifestFolder {
 
+    /**
+     * The saved folder before anyone sets one: the subtitles add-on, which makes and serves the manifests
+     * (ROADMAP DV4.9). Typing a URL on a TV remote is slow and the owner is the only user (owner, 2026-11-08).
+     */
+    const val DEFAULT_URL = "https://subs.m4ntic.tech/dv/"
+
     data class Resolved(val url: String, val fromSetting: Boolean)
 
     /** [input] trimmed when it is an `http(s)://` URL with a host and no query or fragment, else null. */
