@@ -930,8 +930,8 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 #### DV4: T1, shot lists made on a PC
 
 - **Status:** Open. DV4.1 (the HLG shot-list provider, opt-in by `debug.nuvio.dv_manifest_url`), DV4.4,
-  DV4.5 (the device run, owner preferred it to static L1), DV4.6 and DV4.7 are done (log). Open: the
-  DV4.8 (a saved setting for the manifest URL), DV4.9 (a full-length title through the PC → Oracle →
+  DV4.5 (the device run, owner preferred it to static L1), DV4.6 and DV4.7 are done (log); DV4.8 (a saved
+  setting for the manifest URL) landed in PR #58, its Shield reboot check pending. Open: DV4.9 (a full-length title through the PC → Oracle →
   Shield path), the DV4.2 server mode and DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05). The Shield
   reaches the Oracle host only through its public reverse proxy (DV4.5 log). Manifests are made and served by
   the subtitles add-on (owner, 2026-11-07): a dashboard button queues a played HLG release, a worker on the PC
@@ -942,7 +942,7 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   `convertHdrToDolbyVision` (`PlayerSettingsDataStore`, per profile), read by `ShotListManifest` at track init;
   the setprop stays as a debug override that wins when set. Gate: DataStore and settings-screen tests, red
   first; a reboot test on the Shield keeps the URL and the next HLG playback logs the manifest fetch. Needs:
-  DV4.1.
+  DV4.1. Landed: PR #58; gate pending.
 - [DV4.9][device][owner][new-build] A full-length HLG title through the real path: the dashboard button, the
   PC worker over the NzbDAV mount, the manifest served by the subtitles add-on, the URL
   `https://subs.m4ntic.tech/dv/` from DV4.8.
