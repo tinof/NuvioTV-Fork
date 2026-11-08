@@ -10,6 +10,31 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-08: DV4.8 A saved setting for the manifest folder (PR #58, PR #59)
+
+- [DV4.8][desk] A saved setting for the manifest folder (owner, 2026-11-07): `debug.nuvio.dv_manifest_url`
+  is lost at every Shield reboot. Add an on/off and an `http(s)://` folder URL to the player settings next to
+  `convertHdrToDolbyVision` (`PlayerSettingsDataStore`, per profile), read by `ShotListManifest` at track init;
+  the setprop stays as a debug override that wins when set. Gate: DataStore and settings-screen tests, red
+  first; a reboot test on the Shield keeps the URL and the next HLG playback logs the manifest fetch. Needs:
+  DV4.1.
+
+- **Setting (PR #58):** Player settings → DV/HDR gains "Scene metadata from a manifest folder" and
+  "Manifest folder" (`http(s)://`, no query or fragment), per profile and device-local (not synced),
+  greyed unless the HLG/HDR10+ conversion is on. A non-blank `debug.nuvio.dv_manifest_url` still wins.
+  Reviewed by Codex and Gemini.
+- **Default folder (PR #59, owner 2026-11-08):** typing a URL on the Shield remote is slow and the owner
+  is the only user, so the folder defaults to the subtitles add-on's `https://subs.m4ntic.tech/dv/`
+  (`DvManifestFolder.DEFAULT_URL`); saving an empty folder restores it. The toggle still starts off.
+  `DvManifestSettingTest` was red first (no default) and the 15 DV manifest unit tests pass.
+- **Reboot gate:** local build of the PR #59 branch (APK sha256 `7985cd4b…`, cert `c22ec9…`) on the
+  Shield TV Pro 2019. The owner turned the toggle on with the default folder; `adb reboot`, setprop
+  blank after boot. The owner saw the toggle and folder kept, then played an HLG WEB-DL episode streamed
+  through AIOStreams: `DvShotList` logged "manifest folder from the player setting" and then "no manifest
+  for lookup 87f60216ba1d (HTTP 404)", so the playback used the static fallback. The add-on folder
+  answers; it held no manifest for that release.
+- **Not run:** a fetch that returns a manifest from the add-on (DV4.9).
+
 ## 2026-11-07: DV4.5 A local sidecar end to end, on the device (PR #55)
 
 - [DV4.5][device][owner][new-build] A local sidecar end to end. Gate: every AU of the title carries the
