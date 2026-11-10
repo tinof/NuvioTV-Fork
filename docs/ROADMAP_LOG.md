@@ -10,6 +10,42 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-10: DV4.9 A full-length HLG title through the real path
+
+- [DV4.9][device][owner][new-build] A full-length HLG title through the real path: the dashboard button, the
+  PC worker over the NzbDAV mount, the manifest served by the subtitles add-on, the URL
+  `https://subs.m4ntic.tech/dv/` from DV4.8.
+  Gate: the fetch lands inside the wait, every AU of a played stretch carries the manifest's L1, two seeks
+  and a resume keep it (or log the fallback for AUs before the IRAP), no added dropped frames, the
+  `ShotListDvRpuSource` count line in the log. Needs: DV4.8, subtitles add-on H1.4 (which needs hdr-analyze
+  `mkvdovi manifest` on the PC: a v0.9.0 release or a build of main).
+
+- **Path:** the owner pressed "Generate HLG dynamic metadata" on the subtitles add-on dashboard for a played
+  HLG WEB-DL episode (8,057,515,478 bytes, 58 min, 4K25) streamed through AIOStreams. The release was on no
+  mount, so it was fetched by hand from the job's stream URL to the PC; the add-on's H1.6 makes that step
+  automatic. The PC worker ran `mkvdovi manifest` (CUDA) and uploaded the 903,768-byte manifest, lookup
+  `87f60216ba1d…`, served at `https://subs.m4ntic.tech/dv/`.
+- **Build:** the DV4.8 build (APK sha256 `7985cd4b…`, `1.1.0-nt.10`) on the Shield TV Pro 2019, toggle on
+  with the default folder, setprop blank. Earlier that day the display reported HDR10 only
+  (`mSupportedHdrTypes=[2]`), so `DV_CONVERT` was off and no manifest was fetched; the owner fixed the TV
+  side and the next start logged `DV_CONVERT: on`.
+- **Signalling:** the hvcC is 23 bytes with no parameter-set arrays; the container states transfer 18, the
+  in-band SPS 14 and the alternative-transfer SEI 18. The extractor logged "HLG for 8.4 from the
+  alternative transfer SEI (SPS from the first AU)" (DV2.10, DV2.11).
+- **First run (19:54):** fetch 733 ms, "manifest 87f60216ba1d accepted for the track, 3840x2160"; played from
+  the start, several seeks between 11:28 and 28:44 (each ready in 40–552 ms), then closed: "21151 AUs from
+  the manifest, 0 from the fallback". `dropped=0` in every captured 10 s line; the lines from about 19:55 to
+  20:05 rotated out of the ring buffer before the capture started.
+- **Resume (20:09):** captured to a file from a cleared buffer. Resumed at 28:50, fetch 639 ms, accepted,
+  then fast scrubbing towards the end and steady playback to the credits: "14707 AUs from the manifest, 0
+  from the fallback". 2 single drops (`maxConsecDropped=1`), both between seeks around 55:44–57:16 with 1 s of buffer;
+  0 in steady playback. The owner accepted these as not added by the manifest path.
+- **Next episode:** autoplay moved to the next episode, which has no manifest: "no manifest for lookup
+  5b460f9dce6f (HTTP 404)", and it played as 8.4 with the static fallback.
+- **Not run:** the RPU dump (`debug.nuvio.rpu_dump` blank), so the injected L1 was not compared per AU with
+  the manifest; DV4.5 showed that comparison byte for byte on the same code path.
+- **Captures:** `~/shield-snapshots/20261110-dv49-s03e04/` on the Mac (not committed).
+
 ## 2026-11-08: DV4.8 A saved setting for the manifest folder (PR #58, PR #59)
 
 - [DV4.8][desk] A saved setting for the manifest folder (owner, 2026-11-07): `debug.nuvio.dv_manifest_url`
