@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-10 | DV4.9 closed (owner): a full-length HLG WEB-DL episode streamed through AIOStreams, its manifest made on the PC from a dashboard job and served by the subtitles add-on, plays as 8.4 with every AU from the manifest (21151 on the first run, 14707 on a resume, 0 from the fallback), fetched in 639–733 ms; seeks and the resume kept it; 2 single drops only while scrubbing fast. | DV4 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-08 | DV4.8 closed: the manifest folder is a saved player setting with `https://subs.m4ntic.tech/dv/` as its default; after a Shield reboot the toggle stayed on and the next HLG playback took the folder from the setting and fetched its lookup (404, no manifest made yet). | DV4 | [log](docs/ROADMAP_LOG.md), PR #58, PR #59 |
 | 2026-11-07 | DV4.5 closed (owner): a plain HLG cut with a `mkvdovi manifest` served from a LAN folder plays as 8.4 with all 1526 AUs from the manifest; the dumped RPUs equal `mkvdovi`'s 8.4 file from the same source, no dropped frames, and the owner preferred it to static L1 (G-E). | DV4 | [log](docs/ROADMAP_LOG.md), PR #55 |
 | 2026-11-07 | M3.3 closed: the 10 s `BUFFER:` line logs the video renderer's dropped, max consecutive dropped and skipped counts, with a `counterScope` that changes when a new renderer restarts them, so single drops reach logcat. | M3 | [log](docs/ROADMAP_LOG.md), PR #54 |
@@ -932,19 +933,12 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 - **Status:** Open. DV4.1 (the HLG shot-list provider, opt-in by `debug.nuvio.dv_manifest_url`), DV4.4,
   DV4.5 (the device run, owner preferred it to static L1), DV4.6, DV4.7 and DV4.8 (a saved setting for the
-  manifest folder, default `https://subs.m4ntic.tech/dv/`) are done (log). Open: DV4.9 (a full-length title through the PC → Oracle →
-  Shield path), the DV4.2 server mode and DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05). The Shield
+  manifest folder, default `https://subs.m4ntic.tech/dv/`) and DV4.9 (a full-length title through the PC → Oracle →
+  Shield path) are done (log). Open: the DV4.2 server mode and DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05). The Shield
   reaches the Oracle host only through its public reverse proxy (DV4.5 log). Manifests are made and served by
   the subtitles add-on (owner, 2026-11-07): a dashboard button queues a played HLG release, a worker on the PC
   runs `mkvdovi manifest`, and the add-on serves `https://subs.m4ntic.tech/dv/<lookup_key>.dvmanifest.json`
   behind its existing Caddy IP gate (`tinof/stremio-subtitles-add-on` ROADMAP H1).
-- [DV4.9][device][owner][new-build] A full-length HLG title through the real path: the dashboard button, the
-  PC worker over the NzbDAV mount, the manifest served by the subtitles add-on, the URL
-  `https://subs.m4ntic.tech/dv/` from DV4.8.
-  Gate: the fetch lands inside the wait, every AU of a played stretch carries the manifest's L1, two seeks
-  and a resume keep it (or log the fallback for AUs before the IRAP), no added dropped frames, the
-  `ShotListDvRpuSource` count line in the log. Needs: DV4.8, subtitles add-on H1.4 (which needs hdr-analyze
-  `mkvdovi manifest` on the PC: a v0.9.0 release or a build of main).
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
   time, with a warm-up for scene context and crop, and stream finished shots; the first shot after a
   start inside a long shot is marked incomplete. Gate: its shots equal an offline run with the same
