@@ -835,6 +835,9 @@ internal class IecPassthroughAudioSink(
 
     private fun moveDtsCarrierIfNeeded(buffer: ByteBuffer): Boolean {
         val format = configuredFormat ?: return false
+        // Fork: the AAC-to-DTS-HD MA transcode keeps the 2-channel carrier (period 2048) it was
+        // proven on (DTSHD_PORT.md 5.4); its XLL units would move it to 8 channels.
+        if (AacToDtsRouting.isDtsHdTranscodeOutput(format)) return false
         if (dtsCarrierLossless || format.sampleMimeType?.startsWith("audio/vnd.dts.uhd") == true) return false
         val wanted = Iec61937Packer.dtsHdCarrierChannels(buffer) ?: return false
         if (wanted == 8) {
