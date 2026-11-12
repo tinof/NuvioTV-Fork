@@ -10,7 +10,7 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
-## 2026-11-12: U1.5 sync of 2026-11-11 onto upstream 1.1.0-arc.2 (PR #TBD)
+## 2026-11-12: U1.5 sync of 2026-11-11 onto upstream 1.1.0-arc.2 (PR #62)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `1576c65e1` onto `96f0ca1bf` (1.1.0-arc.2, official NuvioTV 1.1.0):
   132 upstream commits behind (33 first-parent, among them "Merge official NuvioTV 1.1.0"), 346 fork commits. All 346
@@ -83,8 +83,8 @@ corrected: `hbr_iec`, `dts_hd_tv_passthrough`, the lossless default and the 2026
 
 **Open, for the owner**
 
-- Review follow-up, for an issue: `MatroskaExtractor`'s early audio scan counters (`trueHdSamplesToAnalyze`,
-  `dtsTypeBlocksToRead`) are not reset when the DV2.10 retry runs the scan again. No issue is open for it yet.
+- Review follow-up, issue #61: `MatroskaExtractor`'s early audio scan counters (`trueHdSamplesToAnalyze`,
+  `dtsTypeBlocksToRead`) are not reset when the DV2.10 retry runs the scan again.
 - CI and release builds pass no version, so they get upstream's 1568 / "1.1.0-nt.9.2". Only the local script is
   fixed.
 
