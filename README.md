@@ -170,7 +170,7 @@ Arc is built on Nuvio; you can support the Nuvio team at [nuvio.tv/support](http
 
 This is a modified version of [NuvioTV](https://github.com/NuvioMedia/NuvioTV), changed by ysosrs123
 from July 2026 onwards. Every change is in this repository's history on top of the official release
-it builds on (currently 1.1.0-beta.8). tinof changed it further from October 2026 onwards, for the
+it builds on (currently 1.1.0). tinof changed it further from October 2026 onwards, for the
 `perf/shield-pass` branch; those changes are in the same history (`git log main..perf/shield-pass`). It is
 licensed under the [GNU General Public License v3.0](./LICENSE), the same as NuvioTV. All upstream copyright
 notices, licence headers and author attributions are kept. Full credit to the NuvioTV maintainers and
@@ -190,12 +190,12 @@ Parts from other projects keep their own licences:
   cpu_features by Google (Apache-2.0).
 - libdovi by quietvoid (MIT). Matroska extractor files from AndroidX Media3 (Apache-2.0), changed.
 - Release group lists from TRaSH Guides (MIT).
-- Fonts Atkinson Hyperlegible Next and Source Sans 3 (SIL Open Font License 1.1, texts in
-  `app/src/main/assets/licenses/`).
+- Fonts Atkinson Hyperlegible Next, Source Sans 3, and the subtitle fonts Roboto, Montserrat, Noto Sans
+  and Asap Condensed (SIL Open Font License 1.1, texts in `app/src/main/assets/licenses/`).
 - Watch party avatars: made with DiceBear and Twemoji, under CC BY 4.0, CC0 1.0 and the Bottts terms.
   They are credited in the app under Settings > About > Licenses & attribution and are not covered by the GPL.
-- Calendar episode times come from TVmaze's schedule service, credited in the app under
-  Settings > About > Licenses & attribution.
+- Calendar episode times come from TVmaze's schedule service and TheTVDB (metadata provided by TheTVDB),
+  credited in the app under Settings > About > Licenses & attribution.
 - Other service logos and names belong to their owners and only show which service the app connects to.
 - Prebuilt libraries that come unchanged from the official app are covered by the official project's
   sources and notices.

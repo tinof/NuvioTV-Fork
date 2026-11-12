@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-12 | U1.5: rebased onto upstream 1.1.0-arc.2 (official 1.1.0) with no drop; both protected features kept every line; new fork commits keep both AAC-to-DTS transcodes on their proven paths, give local Shield builds a version above the installed one and index the fork's settings rows for search. | U1 | [log](docs/ROADMAP_LOG.md), PR #TBD |
 | 2026-11-10 | DV4.9 closed (owner): a full-length HLG WEB-DL episode streamed through AIOStreams, its manifest made on the PC from a dashboard job and served by the subtitles add-on, plays as 8.4 with every AU from the manifest (21151 on the first run, 14707 on a resume, 0 from the fallback), fetched in 639–733 ms; seeks and the resume kept it; 2 single drops only while scrubbing fast. | DV4 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-08 | DV4.8 closed: the manifest folder is a saved player setting with `https://subs.m4ntic.tech/dv/` as its default; after a Shield reboot the toggle stayed on and the next HLG playback took the folder from the setting and fetched its lookup (404, no manifest made yet). | DV4 | [log](docs/ROADMAP_LOG.md), PR #58, PR #59 |
 | 2026-11-07 | DV4.5 closed (owner): a plain HLG cut with a `mkvdovi manifest` served from a LAN folder plays as 8.4 with all 1526 AUs from the manifest; the dumped RPUs equal `mkvdovi`'s 8.4 file from the same source, no dropped frames, and the owner preferred it to static L1 (G-E). | DV4 | [log](docs/ROADMAP_LOG.md), PR #55 |
@@ -622,8 +623,9 @@ because a wrong passthrough path is invisible until measured.
 
 ### U1: upstream pull requests
 
-- **Status:** Open. The branch is 0 commits behind `upstream/main` after the U1.5 sync of 2026-11-04 (onto
-  1.1.0-nt.10). The open "Upstream drift" issue (label `upstream-drift`)
+- **Status:** Open. The U1.5 sync of 2026-11-11 put the branch onto 1.1.0-arc.2 (`96f0ca1bf`). At its publish on
+  2026-11-12 the branch was 12 first-parent commits behind `upstream/main` (`ecaa2c379`, 1.1.0-arc.3); the next
+  sync takes them. The open "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
   Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
