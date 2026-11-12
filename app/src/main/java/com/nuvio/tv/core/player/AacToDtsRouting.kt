@@ -22,13 +22,22 @@ object AacToDtsRouting {
      */
     const val DTS_HD_TRANSCODE_FORMAT_ID = "nuvio:aac-dts-hd-transcode"
 
+    /**
+     * Format.id of the DTS core transcode format. The FFmpeg renderer's own core format has no id
+     * (the AAR in app/libs predates it), so EncodedFrameCountingAudioSink sets it on every DTS
+     * format that renderer configures: the FFmpeg renderer writes DTS only when it transcodes.
+     */
+    const val DTS_CORE_TRANSCODE_FORMAT_ID = "nuvio:aac-dts-core-transcode"
+
     /** debug.nuvio.aac_dts_target: hd or core forces the target for testing (D6). */
     const val TARGET_OVERRIDE_PROPERTY = "debug.nuvio.aac_dts_target"
 
     // xHE-AAC (USAC). FFmpeg 7.0 has no decoder for it.
     private const val XHE_AAC_CODECS_PREFIX = "mp4a.40.42"
 
+    /** The DTS core transcode's sink format, marked so the own IEC track leaves it alone. */
     val DTS_OUTPUT_FORMAT: Format = Format.Builder()
+        .setId(DTS_CORE_TRANSCODE_FORMAT_ID)
         .setSampleMimeType(MimeTypes.AUDIO_DTS)
         .setChannelCount(OUTPUT_CHANNEL_COUNT)
         .setSampleRate(OUTPUT_SAMPLE_RATE)
@@ -55,6 +64,18 @@ object AacToDtsRouting {
     /** Whether [format] is the DTS-HD transcode's own query, not a real DTS-HD track. */
     fun isDtsHdTranscodeOutput(format: Format): Boolean =
         format.id == DTS_HD_TRANSCODE_FORMAT_ID && format.sampleMimeType == MimeTypes.AUDIO_DTS_HD
+
+    /** Whether [format] is the DTS core transcode's output, not a real DTS track. */
+    fun isDtsCoreTranscodeOutput(format: Format): Boolean =
+        format.id == DTS_CORE_TRANSCODE_FORMAT_ID && format.sampleMimeType == MimeTypes.AUDIO_DTS
+
+    /** The FFmpeg renderer's sink format with the core transcode marker set when it has no id. */
+    fun markTranscodeOutput(format: Format): Format =
+        if (format.sampleMimeType == MimeTypes.AUDIO_DTS && format.id == null) {
+            format.buildUpon().setId(DTS_CORE_TRANSCODE_FORMAT_ID).build()
+        } else {
+            format
+        }
 
     /** The forced target of the debug switch: hd, core, or null (automatic). */
     fun parseTargetOverride(value: String?): Target? = when (value?.trim()?.lowercase()) {

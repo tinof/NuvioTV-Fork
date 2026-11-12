@@ -6,6 +6,7 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.extractor.Ac3Util
 import androidx.media3.extractor.DtsUtil
+import com.nuvio.tv.core.player.AacToDtsRouting
 import com.nuvio.tv.ui.screens.player.iec.DtsHdAccessUnits
 import java.nio.ByteBuffer
 
@@ -20,6 +21,9 @@ import java.nio.ByteBuffer
  * frame. DefaultAudioSink takes the frames per unit from the DTS core at the buffer's position
  * for both DTS encodings. Counted as one, the sink's written-frame total falls behind and caps
  * the audio clock.
+ *
+ * It also marks the renderer's DTS format as the AAC-to-DTS core transcode
+ * ([AacToDtsRouting.markTranscodeOutput]), so the own IEC track leaves it on Android's output.
  */
 internal class EncodedFrameCountingAudioSink(sink: AudioSink) : ForwardingAudioSink(sink) {
 
@@ -28,7 +32,7 @@ internal class EncodedFrameCountingAudioSink(sink: AudioSink) : ForwardingAudioS
 
     override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
         inputMimeType = inputFormat.sampleMimeType
-        super.configure(inputFormat, specifiedBufferSize, outputChannels)
+        super.configure(AacToDtsRouting.markTranscodeOutput(inputFormat), specifiedBufferSize, outputChannels)
     }
 
     override fun handleBuffer(
