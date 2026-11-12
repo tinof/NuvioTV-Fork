@@ -1510,10 +1510,11 @@ class ShieldBuildScriptTest(unittest.TestCase):
         self.apk = self.dir.parent / "fixture.apk"
         target = "app/build/outputs/apk/full/debug"
         self.tool(self.dir / "gradlew", f"mkdir -p {target}\ncp {self.apk} {target}/app-full-arm64-v8a-debug.apk\n"
-                  'echo "$JAVA_HOME" > java-home.txt\n')
+                  'echo "$JAVA_HOME" > java-home.txt\necho "$@" > gradle-args.txt\n')
         self.env = dict(os.environ, HOME=str(self.home), ANDROID_HOME=str(tools.parents[1]),
                         JAVA17_HOME=str(self.bin.parent / "jdk17"), PATH=f"{self.bin}:{os.environ['PATH']}")
-        for name in ("NUVIO_DEBUG_STORE_FILE", "USE_LOCAL_FFMPEG_DECODER", "NUVIO_ALLOW_NATIVE_MISMATCH"):
+        for name in ("NUVIO_DEBUG_STORE_FILE", "USE_LOCAL_FFMPEG_DECODER", "NUVIO_ALLOW_NATIVE_MISMATCH",
+                     "NUVIO_VERSION_CODE", "NUVIO_VERSION_NAME"):
             self.env.pop(name, None)
         (self.dir / "native/rpu_builder").mkdir(parents=True)
         (self.dir / "native/rpu_builder/lib.rs").write_text("v1\n")
@@ -1558,6 +1559,25 @@ class ShieldBuildScriptTest(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stdout + r.stderr)
         jdk = subprocess.run(["/usr/libexec/java_home", "-v", "17"], capture_output=True, text=True).stdout.strip()
         self.assertEqual(jdk, (self.dir / "java-home.txt").read_text().strip())
+
+    def gradle_args(self):
+        return (self.dir / "gradle-args.txt").read_text().split()
+
+    def test_the_build_passes_a_version_above_upstreams_default(self):
+        # Upstream's build.gradle.kts falls back to 1568; installed fork builds are 1579.
+        self.assertEqual(0, self.build(self.GOOD).returncode)
+        args = self.gradle_args()
+        self.assertIn("-ParcVersionCode=1580", args)
+        self.assertIn("-ParcVersionName=1.1.0-nt.10.shield", args)
+
+    def test_the_version_can_be_set_and_must_be_a_number(self):
+        r = self.build(self.GOOD, NUVIO_VERSION_CODE="1590", NUVIO_VERSION_NAME="1.1.0-nt.10.shield2")
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        self.assertIn("-ParcVersionCode=1590", self.gradle_args())
+        self.assertIn("-ParcVersionName=1.1.0-nt.10.shield2", self.gradle_args())
+        r = self.build(self.GOOD, NUVIO_VERSION_CODE="15x0")
+        self.assertEqual(2, r.returncode, r.stdout + r.stderr)
+        self.assertIn("NUVIO_VERSION_CODE must be a whole number", r.stderr)
 
     def test_a_good_apk_is_built_and_logged(self):
         r = self.build(self.GOOD)
