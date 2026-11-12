@@ -6,6 +6,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.audio.AudioOffloadSupport
 import androidx.media3.exoplayer.audio.AudioSink
+import com.nuvio.tv.core.player.AacToDtsRouting
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -109,7 +110,7 @@ class IecDtsHdTranscodeSplitTest {
     private fun openSink(track: IecAudioTrack, inner: RecordingSink = RecordingSink()): IecPassthroughAudioSink {
         val sink = IecPassthroughAudioSink(sink = inner, trackFactory = Factory(track))
         sink.configure(
-            Format.Builder().setSampleMimeType(MimeTypes.AUDIO_DTS_HD).setChannelCount(2).setSampleRate(48_000).build(),
+            AacToDtsRouting.DTS_HD_OUTPUT_FORMAT,
             0,
             null
         )
