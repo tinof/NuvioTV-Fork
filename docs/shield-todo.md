@@ -22,6 +22,12 @@ SHA-256 certificate digest. A manual run stops with an error when `NUVIO_SUPABAS
 
 Install `app-full-arm64-v8a-debug.apk` from the `full-debug-apks` artifact with `adb install -r`.
 
+Since the sync of 2026-11-11, upstream's `app/build.gradle.kts` takes the version from `-ParcVersionCode` and
+`-ParcVersionName`. Without them it falls back to 1568 / "1.1.0-nt.9.2", below the fork builds already installed.
+`scripts/shield_build_install.sh` passes 1580 / "1.1.0-nt.10.shield" (51839059b), so `adb install -r` takes a local
+build as an update. Set `NUVIO_VERSION_CODE` and `NUVIO_VERSION_NAME` to override them; keep the code above the
+installed one. CI and release builds pass neither, so they get upstream's 1568 default.
+
 ## Nvidia defaults set without measuring
 
 The owner chose to take the likely-better side of each open question on Nvidia now. Each one:
@@ -37,7 +43,7 @@ lists). Restart playback, or the app for the rows marked *app*.
 
 | What changed on Nvidia | Switch (revert value) | What to look at |
 |---|---|---|
-| TrueHD/DTS-HD take the fork's IEC61937 packer by default, as on every box: since PR #42 "System Passthrough" reads as off unless saved, as upstream has it. Upstream's TrueHD keep-alive through seek, pause and resume (3aeb1e180, tightened in 2064a052d) runs on this path. A saved "System Passthrough" on sends them to the platform sink instead, where AudioFlinger's SPDIF encoder wraps them as IEC61937 at 192 kHz (ROADMAP Q1.2). | `hbr_iec` (`0` = platform sink, `1` = packer) | The AVR's Atmos / DTS:X indicator, A/V sync, the HUD underrun row, the AVR relocking after a seek or pause |
+| TrueHD/DTS-HD take the fork's IEC61937 packer by default, as on every box: since PR #42 "System Passthrough" reads as off unless saved, as upstream has it. Since the sync of 2026-11-11, plain DTS at 44.1 or 48 kHz takes this own IEC track too (upstream 5acc8e739). The AAC-to-DTS core transcode stays on Android's DTS output. Upstream's TrueHD keep-alive through seek, pause and resume (3aeb1e180, tightened in 2064a052d) runs on this path. A saved "System Passthrough" on sends them to the platform sink instead, where AudioFlinger's SPDIF encoder wraps them as IEC61937 at 192 kHz (ROADMAP Q1.2). | `hbr_iec` (`0` = platform sink for TrueHD, DTS-HD and plain DTS; `1` = packer) | The AVR's Atmos / DTS:X indicator, A/V sync, the HUD underrun row, the AVR relocking after a seek or pause |
 | TrueHD/DTS-HD passthrough buffer caps ×2 | `hbr_buffer_scale` (`1`) | Underruns, `dumpsys media.audio_flinger` |
 | A TrueHD/DTS-HD track that the platform sink plays keeps tunneling. Inert on mdarcy SE 9.2.4 (no decoder tunnels) | `hbr_tunnel` (`0`) | `PLAYBACK_TUNNELING: requested=… applied=`, stalls |
 | The surround decision uses the stereo / 5.1 / 7.1 probe union and the HDMI channel count | `audio_probe_union` (`0`) | Settings > Advanced > Source & hardware |
@@ -90,7 +96,9 @@ Changes for every device in this round:
 - New strings are translated in every locale; the changed `audio_tunneled_sub` is still missing in pt, sr and zh.
 - Audio for every device (not Nvidia-gated): on leanback boxes below API 33 the HDMI route holds under an idle
   Bluetooth pin, the lossless track default follows the passthrough policy, and the stall ledger is keyed by
-  decoder (c36153c3a, d02a4efb5, 2e98bb12c, caaf081ae). Device check: with a paired but idle Bluetooth
+  decoder (c36153c3a, d02a4efb5, 2e98bb12c, caaf081ae). Since the sync of 2026-11-11, upstream's transcode
+  exception (fc879c6da) applies on top of the passthrough policy, on every box. A lossless pick that would be
+  transcoded gives way to a surround track that plays directly. Device check: with a paired but idle Bluetooth
   headset, TrueHD still bitstreams (logcat `PASSTHROUGH_RETURN hdmi-under-bluetooth-pin`).
 - Two races found by flaky tests are fixed: a failed meta lookup could stick for the whole session, and a
   profile switch right after start could keep the old profile's watched list.
@@ -142,7 +150,8 @@ so there is no new Nvidia gate. Upstream's new defaults apply on the Shield too,
 - A "DTS-HD and DTS:X passthrough" setting (`dts_hd_tv_passthrough`, default Standard; ee09d86fc, d55a0681d,
   77eb738f3) sends DTS-HD and DTS:X through Android's own path on a TV panel that plays out of its ARC/eARC port.
   The row shows only on such a panel (`ro.hdmi.device_type` "0"; the Shield reports "4") and is greyed out while
-  System passthrough is on, so it never appears or applies on the Shield.
+  System passthrough is on, so it never appears or applies on the Shield. Since the sync of 2026-11-11, while it is
+  active it also keeps plain DTS off the own IEC track (5acc8e739).
 - The addon response timeout choices stop at 60 s (ee09d86fc). A saved 90 or 120 s reads as 60 s. The default
   stays 60 s.
 - The Device Assessment suggests turning Custom network off ("Connections: Automatic") whenever Automatic
@@ -162,8 +171,9 @@ Measurements taken before 2026-10-27 predate these defaults.
   unless 300 MB of room remains. Sizing no longer keeps the 32 MB arena reserve, and the first start of a heavy film
   can wait up to 6 s for a cushion, on top of the AFR settle hold.
 - The player build waits up to 500 ms, not 100 ms, for Home to release pictures (c5b872833).
-- Leaving the app with the player open releases the decoder; playback rebuilds paused at the saved position on
-  return (0b9269276). It does not switch the display mode back.
+- With "Release decoder in background" on, leaving the app with the player open releases the decoder; playback
+  rebuilds paused at the saved position on return (0b9269276). It does not switch the display mode back. Since the
+  sync of 2026-11-11 the setting is off by default, so the decoder stays (3412e2803).
 - Tunnelled playback is skipped while a USB audio output is listed; below API 33 any listed USB output counts
   (2a32c1532).
 - ASS render mode defaults to Overlay (d5da6bcaa). The new Video Effect mode tone-maps HDR to SDR and is refused on
@@ -211,6 +221,42 @@ pass sets. These apply on the Shield too, with no fork switch:
   packer is the Shield's default path, so this applies to TrueHD here.
 
 Measurements taken before 2026-11-04 predate these defaults.
+
+### Upstream defaults taken with the sync of 2026-11-11
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.1.0-arc.2 (official NuvioTV 1.1.0). The one value this pass sets
+that upstream touched is the lossless track default (the every-device list above). Plain DTS on the own IEC track
+is new; the `hbr_iec` row above now covers it. The settle holds stay as the `afr_settle_ms` row has them; upstream keeps its own at 2 s.
+These apply on the Shield too, with no fork switch unless a row says so:
+- Plain DTS at 44.1 or 48 kHz takes the own IEC track like TrueHD and DTS-HD (5acc8e739). `hbr_iec` `0` sends
+  it back to the platform sink.
+- Android's own DTS and DTS-HD outputs open as stereo, or as 7.1 for lossless, as Kodi does (5acc8e739).
+- DTS Express is decoded in the app when FFmpeg is available (5acc8e739).
+- A DTS film whose own IEC output fails twice is decoded in the app, with a notice (fc879c6da).
+- An MKV or WebM with no declared frame rate holds playback up to 6 s for a probe, then runs track AFR
+  (fc879c6da). The fork's settle hold and quiesce apply to that switch.
+- A saved frame rate is checked against the track's reported rate, as a seed is (fc879c6da).
+- Leaving the app with the player open keeps the decoder, unless "Release decoder in background" is on
+  (3412e2803). This makes the release from the sync of 2026-10-31 (0b9269276) opt-in.
+- mpv decodes MPEG-4 Part 2 (XviD, DivX) in software and no longer hands it to MediaCodec (8868e2efe).
+- The "Convert DV5 to DV8.1" row shows only while Dolby Vision handling converts to DV8.1, with new help
+  text (b858c96aa). Before, it was always shown and greyed out.
+- Forced subtitles and AutoSync start on when nothing is saved (7bc69ea42).
+- Home hero descriptions can auto-scroll when cut off, off by default (5d925b210). The scroll pauses while a
+  trailer plays (2670d72de).
+- Playback reports go nowhere unless `PLAYBACK_REPORTS_BASE_URL` is set: the example value is now blank. A new
+  `REPORTS_SIGNING_KEY` property signs them (86e7aa95a).
+- A new `SCOUT_ENABLED` build flag is read from `local.properties` and defaults to false (6760afcce).
+- Trakt progress refreshes pause while the app is not visible, and wait 5 minutes between refreshes during
+  playback (2792431cb).
+
+Fork rules kept on top of these, on every box, with no switch:
+- The AAC-to-DTS core transcode stays on Android's own DTS output, off upstream's new plain-DTS IEC path
+  (61bc391c0). Its buffers hold several core frames, which that path cannot pack as one burst.
+- The AAC-to-DTS-HD MA transcode keeps its 2-channel IEC carrier (period 2048), which the HT-A9 accepts
+  (1282ea139). Upstream now moves lossless DTS-HD to 8 channels; real DTS-HD tracks still move.
+
+Measurements taken before 2026-11-11 predate these defaults.
 
 ## History
 

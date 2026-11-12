@@ -10,6 +10,87 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-12: U1.5 sync of 2026-11-11 onto upstream 1.1.0-arc.2 (PR #TBD)
+
+- [U1.5][desk] Rebased `perf/shield-pass` from `1576c65e1` onto `96f0ca1bf` (1.1.0-arc.2, official NuvioTV 1.1.0):
+  132 upstream commits behind (33 first-parent, among them "Merge official NuvioTV 1.1.0"), 346 fork commits. All 346
+  were replayed and none dropped. The new tip is `fe3917d32`, with 351 fork commits: the 346 and 5 new ones. Tags:
+  `sync/2026-11-11/old-{perf,main,base}`. Published on 2026-11-12 with one atomic leased push: `main`
+  `d1d47c8ca` → `96f0ca1bf`, `perf/shield-pass` `1576c65e1` → `fe3917d32`. Upstream had moved on by 12 first-parent
+  commits (to `ecaa2c379`, 1.1.0-arc.3); the next sync takes them.
+
+**Classify (tier `fanout`, 9 analysts and a critic):** 54 files conflicted in the trial merge, among them the
+protected `MatroskaExtractor.java`, `README.md` and the `strings.xml` of 38 locales. 108 fork commits touched files
+upstream changed. Verdicts: 0 drops, 0 protected asks, 26 keep-resolve, 1 keep-adapt (`4f0e49b6f`), 81 keep-clean;
+238 commits touched nothing upstream changed.
+
+**Dry-run (U1.12):** 34 predicted stops, 26 real. 24 of the predicted stops came true, and 10 applied clean. Two
+protected commits stopped unpredicted, `5276d2504` and `be0bb62fc`. Each conflict came only from a line this sync
+added, and every fork line was kept.
+
+**Owner's decisions:**
+
+1. The AAC-to-DTS core transcode stays off upstream's new plain-DTS own-IEC path (5acc8e739). The transcode's
+   sink format carries an id marker, and `tryDtsCoreIec` skips it (`61bc391c0`). Its buffers hold several core
+   frames, which that path refuses, so every playback start fell back after an `iec_fallback_to_raw`.
+2. The AAC-to-DTS-HD MA transcode is exempt from upstream's move to the 8-channel carrier, by its `Format.id`
+   (`1282ea139`). It keeps the 2-channel carrier (period 2048) proven on the HT-A9.
+3. Local Shield builds pass a version above the installed one (`51839059b`). Upstream's `app/build.gradle.kts` now
+   falls back to 1568 / "1.1.0-nt.9.2" without `-ParcVersionCode` / `-ParcVersionName`. The fork-only
+   `scripts/shield_build_install.sh` passes 1580 / "1.1.0-nt.10.shield"; `build.gradle.kts` follows upstream.
+4. The old attribution trailers in earlier fork commits stay; no history rewrite for them. Five messages were
+   amended for this sync's resolutions (`4f0e49b6f`, `27d752bd7`, `a54f30a56`, `bba3b6edf`, `7e632f0c3`). Each
+   gained a "Sync 2026-11-11" paragraph and kept its author, date and trailers.
+5. `IecDtsHdTranscodeSplitTest` configures the sink with `AacToDtsRouting.DTS_HD_OUTPUT_FORMAT`, the format the
+   transcode really hands it (`b33377cb4`). This replaces "test unchanged" from decision 2: an id-less format
+   cannot take the exemption, and 4 of 6 tests failed.
+
+Settled by repo rules, with no owner question: the protected `7e632f0c3` uses its guidance's aliases, so every
+protected line survives verbatim. The lossless default stays an every-box fork rule, with upstream's transcode
+exception (fc879c6da) on top. `4f0e49b6f` was adapted: upstream's Hi10P route to mpv wins, the fork's duplicates
+went, and `mpeg4` left `mpvHwdecCodecs` as in 8868e2efe. `27d752bd7` ports upstream's `friendlyVideoHdrType`
+change into `VideoHdrLabel.kt`. A fifth new commit, `fe3917d32`, adds four fork rows to upstream's new settings
+search index (b858c96aa), whose test failed without them.
+
+**Setting decisions:** the one value this pass sets that upstream touched is the lossless default. It stays the
+fork's every-box rule, with upstream's exception on top. Plain DTS on the own IEC track is a new upstream default;
+the plan set no route for it, and `hbr_iec` now covers it. The settle holds needed nothing: upstream keeps its 2 s and the fork's
+`afr_settle_ms` row stands. The other upstream defaults apply on the Shield with no switch. They are listed in
+`docs/shield-todo.md` under "Upstream defaults taken with the sync of 2026-11-11". Four older rows there were
+corrected: `hbr_iec`, `dts_hd_tv_passthrough`, the lossless default and the 2026-10-31 decoder release, now opt-in
+(3412e2803).
+
+**Evidence**
+
+- `verify` (`1576c65e1` → `fe3917d32`): range-diff 310 identical, 36 changed, 0 dropped, 5 new. Protected lines:
+  aac-to-dts 45 commits, 5565 lines, 0 lost; hlg-to-dv 107 commits, 17030 lines, 0 lost. Result: all checks pass.
+- Waivers: `--allow-same` on `MpvHi10pFallback.kt` (the adapt takes upstream's file). `--allow-changed` on
+  `AacToDtsRouting.kt`, `EncodedFrameCountingAudioSink.kt`, `VideoHdrLabel.kt`, `VideoHdrLabelTest.kt`,
+  `IecDtsHdTranscodeSplitTest.kt`, `scripts/shield_build_install.sh` and `scripts/tests/test_upstream_sync.py`.
+  `--allow-new` on the 5 new commits `61bc391c0`, `1282ea139`, `51839059b`, `b33377cb4` and `fe3917d32`.
+- `judgement`: 65 paths differ from the mechanical merge, all 65 declared.
+- Tests before the push: two local Gradle runs of the touched suites (426 tests, then 646 with 0 failed). The
+  `ShieldBuildScript` pytest cases passed, 14 of 14. The first run's 4 failures led to decision 5.
+- APK: a local build passed `protected-apk` for `libffmpegJNI.so` (with the DTS-HD MA writer) and
+  `libnuvio_rpu.so`.
+- Independent review: no high findings, two low follow-ups. The README had lost upstream's subtitle-font and
+  TheTVDB credits; this PR restores them. The fork README has no badge row, so the licence badge stays out. The
+  second follow-up is open below.
+- CI: `Checks` run 43192825898 on `b33377cb4` failed the compare job. `SettingsSearchTest` was a new failure,
+  fixed by `fe3917d32`. `ParallelRangeReopenAtStartTest` failed on timing; its code equals upstream's, and it passed
+  locally and on a rerun. Run 43195893622 green on `fe3917d32`: no new failures, both runs complete. No device run
+  is on record for this sync.
+
+**Open, for the owner**
+
+- Review follow-up, for an issue: `MatroskaExtractor`'s early audio scan counters (`trueHdSamplesToAnalyze`,
+  `dtsTypeBlocksToRead`) are not reset when the DV2.10 retry runs the scan again. No issue is open for it yet.
+- CI and release builds pass no version, so they get upstream's 1568 / "1.1.0-nt.9.2". Only the local script is
+  fixed.
+
+**Resolution:** the fork is on upstream 1.1.0-arc.2, and `main` mirrors `96f0ca1bf`. Upstream's 12 newer
+first-parent commits wait for the next sync.
+
 ## 2026-11-10: DV4.9 A full-length HLG title through the real path
 
 - [DV4.9][device][owner][new-build] A full-length HLG title through the real path: the dashboard button, the
