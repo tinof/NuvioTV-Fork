@@ -18,6 +18,12 @@
 # key; installing a build with another key over it fails, so this script refuses that up front.
 # It never uninstalls and never clears app data.
 #
+# Version: upstream's app/build.gradle.kts falls back to versionCode 1568 / "1.1.0-nt.9.2" without
+# -ParcVersionCode / -ParcVersionName, below the 1579 / "1.1.0-nt.10" fork builds already installed,
+# so `install -r` would be refused as a downgrade. The script passes 1580 / "1.1.0-nt.10.shield"
+# (VersionUtils ranks that name above nt.10 and below a later nt.11 release);
+# NUVIO_VERSION_CODE and NUVIO_VERSION_NAME override them (keep the code above the installed one).
+#
 # Every build runs sync.py protected-apk on the APK and stops when it fails. It also checks where the
 # native code came from: libnuvio_rpu.so against the stamp build_rpu_builder.sh wrote, and whether
 # libffmpegJNI.so is the prebuilt AAR's or the local module's. NUVIO_ALLOW_NATIVE_MISMATCH=1 keeps a
@@ -36,7 +42,7 @@ while [ $# -gt 0 ]; do
     --debuggable) debuggable=true; shift ;;
     --install) install=true; shift ;;
     --allow-empty-config) allow_empty_config=true; shift ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -84,7 +90,13 @@ else
   echo "warning: cargo-ndk not found; the APK has no libnuvio_rpu.so, so Dolby Vision conversion is off" >&2
 fi
 
-gradle_args=(":app:assembleFull${variant}" "-PnuvioAppIdSuffix=${suffix}")
+version_code="${NUVIO_VERSION_CODE:-1580}"
+version_name="${NUVIO_VERSION_NAME:-1.1.0-nt.10.shield}"
+case "$version_code" in
+  ''|*[!0-9]*) echo "NUVIO_VERSION_CODE must be a whole number, was '$version_code'" >&2; exit 2 ;;
+esac
+gradle_args=(":app:assembleFull${variant}" "-PnuvioAppIdSuffix=${suffix}"
+  "-ParcVersionCode=${version_code}" "-ParcVersionName=${version_name}")
 $debuggable && gradle_args+=("-Pdebuggable=true")
 echo "== building ${gradle_args[*]} at ${head_sha:0:9}${dirty}, key: ${key_desc}"
 ./gradlew "${gradle_args[@]}"
