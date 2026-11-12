@@ -6,6 +6,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.extractor.DtsUtil
+import com.nuvio.tv.core.player.AacToDtsRouting
 import com.nuvio.tv.core.player.dvmkv.DtsStreamType
 import com.nuvio.tv.ui.screens.player.PassthroughWaterLevelPacer
 import java.nio.ByteBuffer
@@ -758,6 +759,9 @@ internal class IecPassthroughAudioSink(
     }
 
     private fun tryDtsCoreIec(format: Format): Boolean {
+        // Fork: the AAC-to-DTS core transcode stays on Android's own DTS output, the path it was
+        // proven on. Its buffers hold several core frames, which this path packs as one burst.
+        if (AacToDtsRouting.isDtsCoreTranscodeOutput(format)) return false
         if (coreIecFailed || iecFailedThisSession) return false
         if (!carriesDtsCoreOnIec(format.sampleMimeType, dtsHdIecEnabled) || !trackFactory.iec61937Ready()) return false
         if (format.sampleRate != 48_000 && format.sampleRate != 44_100) return false
