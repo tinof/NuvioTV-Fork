@@ -15,11 +15,13 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 
 /**
  * The AAC-to-DTS transcode keeps the routes it was proven on: the core goes to Android's own DTS
- * output, not to the own IEC track that plain DTS takes since the sync of 2026-11-11.
+ * output, not to the own IEC track that plain DTS takes since the sync of 2026-11-11, and DTS-HD MA
+ * keeps the 2-channel carrier that a real lossless DTS-HD track leaves for 8 channels.
  */
 class IecAacToDtsTranscodeRouteTest {
 
@@ -90,6 +92,37 @@ class IecAacToDtsTranscodeRouteTest {
         assertEquals(otherId, AacToDtsRouting.markTranscodeOutput(otherId))
     }
 
+    @Test
+    fun hdTranscode_keepsTheStereoCarrier() {
+        val factory = Tracks()
+        val sink = sink(factory, RecordingSink(), AacToDtsRouting.DTS_HD_OUTPUT_FORMAT)
+        assertTrue(sink.isIecActive)
+        assertTrue(sink.handleBuffer(ByteBuffer.wrap(units, 0, UNIT_0 + UNIT_1).slice(), 0L, 2))
+        assertEquals(listOf(192_000 to 2), factory.opened)
+        val written = factory.written()
+        assertEquals(2 * STEREO_BURST, written.size)
+        for (i in 0 until 2) {
+            assertEquals("type DTS-HD", 0x11, written[i * STEREO_BURST + 4].toInt() and 0xFF)
+            assertEquals("subtype 2 (period 2048)", 2, written[i * STEREO_BURST + 5].toInt() and 0xFF)
+        }
+    }
+
+    @Test
+    fun realLosslessDtsHd_stillMovesToTheEightChannelCarrier() {
+        val factory = Tracks()
+        val realDtsHd = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_DTS_HD)
+            .setChannelCount(2)
+            .setSampleRate(48_000)
+            .build()
+        val sink = sink(factory, RecordingSink(), realDtsHd)
+        assertTrue(sink.handleBuffer(ByteBuffer.wrap(units, 0, UNIT_0).slice(), 0L, 1))
+        assertEquals(listOf(192_000 to 2, 192_000 to 8), factory.opened)
+    }
+
+    private val units: ByteArray =
+        javaClass.getResourceAsStream("/dtshd/transcode_4units.dts")!!.use { it.readBytes() }
+
     private fun sink(factory: Tracks, inner: RecordingSink, format: Format): IecPassthroughAudioSink {
         val sink = IecPassthroughAudioSink(sink = inner, trackFactory = factory)
         sink.configure(format, 0, null)
@@ -99,10 +132,13 @@ class IecAacToDtsTranscodeRouteTest {
 
     private class Tracks : IecAudioTrackFactory {
         val opened = mutableListOf<Pair<Int, Int>>()
+        private val tracks = mutableListOf<RecordingTrack>()
+
+        fun written(): ByteArray = tracks.last().out.toByteArray()
 
         override fun open(sampleRate: Int, channelCount: Int, bufferSizeBytes: Int, sessionId: Int): IecAudioTrack {
             opened.add(sampleRate to channelCount)
-            return RecordingTrack(sampleRate, channelCount)
+            return RecordingTrack(sampleRate, channelCount).also { tracks.add(it) }
         }
 
         override fun canOpen(sampleRate: Int, channelCount: Int): Boolean = true
@@ -114,7 +150,11 @@ class IecAacToDtsTranscodeRouteTest {
         override val frameSizeBytes: Int = channels * 2
         override val payload: HbrPayload = HbrPayload.IEC_BURST
         override val bufferSizeBytes: Int = 1 shl 20
-        override fun write(data: ByteArray, offset: Int, size: Int): Int = size
+        val out = ByteArrayOutputStream()
+        override fun write(data: ByteArray, offset: Int, size: Int): Int {
+            out.write(data, offset, size)
+            return size
+        }
         override fun play() = Unit
         override fun pause() = Unit
         override fun flush() = Unit
@@ -159,5 +199,11 @@ class IecAacToDtsTranscodeRouteTest {
         override fun flush() = Unit
         override fun reset() = Unit
         override fun release() = Unit
+    }
+
+    private companion object {
+        const val UNIT_0 = 4188
+        const val UNIT_1 = 4216
+        const val STEREO_BURST = 8192
     }
 }
