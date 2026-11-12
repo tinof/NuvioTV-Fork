@@ -130,6 +130,9 @@ class ParallelRangeReopenAtStartTest {
         val first = source()
         first.open(spec(0))
         assertArrayEquals(file.copyOfRange(0, CHUNK + 10), readExactly(first, CHUNK + 10))
+        // The start's own downloads end before the resume point is opened: a piece still running takes a place in
+        // the speed-up depth, and only a read starts the pieces that then had no room.
+        awaitTrue("the start's downloads finished") { futures(first).values.all { it.isDone } }
         // The resume point, far into the file: the session holds pieces there.
         val far = 14L * CHUNK
         first.close()
