@@ -2376,7 +2376,12 @@ internal fun PlayerRuntimeController.initializePlayer(
                     override fun onTracksChanged(tracks: Tracks) {
                         val tunnelingApplied = this@apply.isTunnelingEnabled
                         if (_uiState.value.tunnelingApplied != tunnelingApplied) {
-                            _uiState.update { it.copy(tunnelingApplied = tunnelingApplied) }
+                            _uiState.update {
+                                it.withTrackSelectionFlags(
+                                    avQuiesceInFlight = afrAvQuiesceInFlight,
+                                    tunnelingApplied = tunnelingApplied
+                                )
+                            }
                         }
                         updateAvailableTracks(tracks)
                     }

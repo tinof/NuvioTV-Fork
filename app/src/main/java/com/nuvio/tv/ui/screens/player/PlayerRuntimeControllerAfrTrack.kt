@@ -101,6 +101,18 @@ internal fun selectedAudioMimeType(tracks: Tracks): String? {
 internal val PlayerRuntimeController.afrAvQuiesceInFlight: Boolean
     get() = afrQuiesce == TrackAfrQuiesce.AUDIO_AND_VIDEO
 
+/**
+ * Sets the UI flags a track change reports, except while audio and video are both off for a
+ * track-AFR mode switch ([avQuiesceInFlight]): that selection has no video and no tunnelling,
+ * so the flags keep the values of the real selection, which returns when the quiesce ends (B4).
+ */
+internal fun PlayerUiState.withTrackSelectionFlags(
+    avQuiesceInFlight: Boolean,
+    isHdrVideo: Boolean = this.isHdrVideo,
+    tunnelingApplied: Boolean = this.tunnelingApplied
+): PlayerUiState =
+    if (avQuiesceInFlight) this else copy(isHdrVideo = isHdrVideo, tunnelingApplied = tunnelingApplied)
+
 /** Forgets the quiesce without touching the player (its track parameters are being rebuilt). */
 internal fun PlayerRuntimeController.dropTrackAfrQuiesce() {
     afrQuiesce = TrackAfrQuiesce.NONE

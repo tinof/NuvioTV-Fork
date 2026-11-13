@@ -178,8 +178,12 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
     val effectiveVideoFormat = selectedVideoFormat ?: firstVideoFormat
     val chapters = chaptersFor(tracks)
     _uiState.update {
-        it.copy(
-            isHdrVideo = isHdrVideoFormat(selectedVideoFormat),
+        it.withTrackSelectionFlags(
+            // maybeRunTrackFormatAfr above can start the quiesce; only the both-off
+            // selection, which has no selected video, is held back.
+            avQuiesceInFlight = selectedVideoFormat == null && afrAvQuiesceInFlight,
+            isHdrVideo = isHdrVideoFormat(selectedVideoFormat)
+        ).copy(
             chapters = chapters,
             showChaptersPanel = it.showChaptersPanel && chapters.isNotEmpty()
         )
