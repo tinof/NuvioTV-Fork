@@ -10,6 +10,21 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-13: R2.1 Skip the switch-back when the activity is gone (PR #65)
+
+- [R2.1][desk] When the activity is finishing or destroyed, or the window is detached, return Skip plus
+  `clearOriginalDisplayMode()` on Nvidia instead of restoring at once (`FrameRateUtils.kt:808`, `:840-844`),
+  with a unit test for `displayModeRestorePlan`. Gate: test green.
+
+- **Evidence:** `FrameRateUtilsAfrTest` ("a gone activity skips on nvidia and restores at once on other
+  devices", "isActivityGone is true when finishing, destroyed, or decor is detached", and the skip-switch
+  cases on non-Nvidia). Full unit gate green (9573 tests, 0 failures). Tier 2 review on PR #65: codex and
+  claude both LGTM. Built by Gemini (agy).
+- **Resolution:** `displayModeRestorePlan` returns Skip for a gone activity on Nvidia and Immediate
+  elsewhere; the new `isActivityGone` adds a detached decor view to finishing and destroyed, so the
+  delayed path no longer restores at once for a detached window. The log line names why it skipped.
+  Whether a normal in-app Stop (activity alive) still hangs is left to the hot-Stop test (R2.4).
+
 ## 2026-11-12: U1.5 sync of 2026-11-11 onto upstream 1.1.0-arc.2 (PR #62)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `1576c65e1` onto `96f0ca1bf` (1.1.0-arc.2, official NuvioTV 1.1.0):
