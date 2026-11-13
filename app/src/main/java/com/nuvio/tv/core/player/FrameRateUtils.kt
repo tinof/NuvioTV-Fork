@@ -835,9 +835,11 @@ object FrameRateUtils {
     }
 
     /**
-     * debug.nuvio.afr_restore_skip=1 skips the switch-back. Otherwise the delay is
+     * debug.nuvio.afr_restore_skip=1 skips the switch-back. Otherwise, if the activity is
+     * gone (finishing, destroyed, or its window is detached), Nvidia skips the switch-back
+     * and clears the original mode while other devices restore at once. Otherwise the delay is
      * debug.nuvio.afr_restore_delay_ms, or 750 ms on Nvidia and 0 elsewhere, clamped to
-     * 0..5000 ms. No delay, or an activity that is finishing or destroyed, restores at once.
+     * 0..5000 ms; 0 ms restores at once.
      */
     internal fun displayModeRestorePlan(
         skipSwitch: Boolean?,
@@ -846,31 +848,52 @@ object FrameRateUtils {
         activityGone: Boolean
     ): DisplayModeRestorePlan {
         if (skipSwitch == true) return DisplayModeRestorePlan.Skip
+        if (activityGone) {
+            return if (isNvidia) DisplayModeRestorePlan.Skip else DisplayModeRestorePlan.Immediate
+        }
         val delayMs = (delaySwitchMs ?: if (isNvidia) RESTORE_DELAY_NVIDIA_MS else 0)
             .coerceIn(0, RESTORE_DELAY_MAX_MS)
-        if (delayMs == 0 || activityGone) return DisplayModeRestorePlan.Immediate
+        if (delayMs == 0) return DisplayModeRestorePlan.Immediate
         return DisplayModeRestorePlan.Delayed(delayMs.toLong())
     }
+
+    internal fun isActivityGone(
+        isFinishing: Boolean,
+        isDestroyed: Boolean,
+        isDecorAttached: Boolean
+    ): Boolean = isFinishing || isDestroyed || !isDecorAttached
 
     /**
      * The switch-back when the player closes (START_STOP). On the Shield a switch-back in
      * the same frames that destroy the player SurfaceView and resume the previous screen
-     * once hung the NVIDIA composer HAL, so Nvidia waits until the video surface is gone.
-     * A new playback that plans a mode before the delay ends cancels the restore and keeps
-     * the original UI mode for its own. Main thread.
+     * once hung the NVIDIA composer HAL, so Nvidia waits until the video surface is gone,
+     * and skips the switch-back (clearing the original mode) if the activity is already
+     * finishing, destroyed, or its window is detached. Non-Nvidia devices restore at once
+     * when the activity is gone. A new playback that plans a mode before the delay ends
+     * cancels the restore and keeps the original UI mode for its own. Main thread.
      */
     fun scheduleRestoreOriginalDisplayMode(activity: Activity) {
+        val skipSwitch = DebugSwitches.flag("debug.nuvio.afr_restore_skip")
         val plan = displayModeRestorePlan(
-            skipSwitch = DebugSwitches.flag("debug.nuvio.afr_restore_skip"),
+            skipSwitch = skipSwitch,
             delaySwitchMs = DebugSwitches.int("debug.nuvio.afr_restore_delay_ms"),
             isNvidia = DeviceProfile.isNvidia(),
-            activityGone = activity.isFinishing || activity.isDestroyed
+            activityGone = isActivityGone(
+                isFinishing = activity.isFinishing,
+                isDestroyed = activity.isDestroyed,
+                isDecorAttached = activity.window?.decorView?.isAttachedToWindow == true
+            )
         )
         val token = ++restoreToken
         when (plan) {
             DisplayModeRestorePlan.Skip -> {
                 if (originalModeId != null) {
-                    Log.i(TAG, "Leaving the display at the content mode (debug.nuvio.afr_restore_skip)")
+                    val reason = if (skipSwitch == true) {
+                        "debug.nuvio.afr_restore_skip"
+                    } else {
+                        "activity finishing/destroyed or window detached"
+                    }
+                    Log.i(TAG, "Leaving the display at the content mode ($reason)")
                 }
                 clearOriginalDisplayMode()
             }
@@ -881,7 +904,7 @@ object FrameRateUtils {
             is DisplayModeRestorePlan.Delayed -> {
                 if (originalModeId == null) return
                 val decorView = activity.window?.decorView
-                if (decorView == null || !decorView.isAttachedToWindow) {
+                if (decorView == null) {
                     Log.i(TAG, "Restoring display mode after 0ms")
                     restoreOriginalDisplayMode(activity)
                     return
