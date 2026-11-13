@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-13 | R2.1 closed: on Nvidia a finishing, destroyed or detached activity skips the switch-back after Stop and clears the saved mode; other devices still restore at once. | R2 | [log](docs/ROADMAP_LOG.md), PR #65 |
 | 2026-11-12 | U1.5: rebased onto upstream 1.1.0-arc.2 (official 1.1.0) with no drop; both protected features kept every line; new fork commits keep both AAC-to-DTS transcodes on their proven paths, give local Shield builds a version above the installed one and index the fork's settings rows for search. | U1 | [log](docs/ROADMAP_LOG.md), PR #62 |
 | 2026-11-10 | DV4.9 closed (owner): a full-length HLG WEB-DL episode streamed through AIOStreams, its manifest made on the PC from a dashboard job and served by the subtitles add-on, plays as 8.4 with every AU from the manifest (21151 on the first run, 14707 on a resume, 0 from the fallback), fetched in 639–733 ms; seeks and the resume kept it; 2 single drops only while scrubbing fast. | DV4 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-08 | DV4.8 closed: the manifest folder is a saved player setting with `https://subs.m4ntic.tech/dv/` as its default; after a Shield reboot the toggle stayed on and the next HLG playback took the folder from the setting and fetched its lookup (404, no manifest made yet). | DV4 | [log](docs/ROADMAP_LOG.md), PR #58, PR #59 |
@@ -233,13 +234,11 @@ because a wrong passthrough path is invisible until measured.
 
 ### R2: switch-back after Stop (incident 01)
 
-- **Status:** Partial. The 750 ms delay (b353ea5fc) ships but is unproven. Findings H1–H5, H7, B2, B3.
+- **Status:** Partial. The 750 ms delay ships but is unproven; on Nvidia a gone activity skips the
+  switch-back (R2.1, [log](docs/ROADMAP_LOG.md)). Open: R2.2–R2.4. Findings H1–H5, H7, B2, B3.
 - In the incident the video layer was already gone when the switch-back hung; HDCP read failures had
   started right after the switch-in. Of the strategies weighed, only skipping the switch-back removes the
   mode set at Stop (H4). A clean run of 30 Stops cannot tell the delay from no delay (H5).
-- [R2.1][desk] When the activity is finishing or destroyed, or the window is detached, return Skip plus
-  `clearOriginalDisplayMode()` on Nvidia instead of restoring at once (`FrameRateUtils.kt:808`, `:840-844`),
-  with a unit test for `displayModeRestorePlan`. Gate: test green.
 - [R2.2][desk] A pending restore is cancelled when any new player attaches, not only one that plans a mode
   (B2). Gate: unit test.
 - [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
