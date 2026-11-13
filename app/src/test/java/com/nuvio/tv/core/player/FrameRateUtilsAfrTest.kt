@@ -653,6 +653,11 @@ class FrameRateUtilsAfrTest {
         assertEquals(FrameRateUtils.DisplayModeRestorePlan.Skip, restorePlan(skip = true))
         assertEquals(FrameRateUtils.DisplayModeRestorePlan.Skip, restorePlan(skip = true, delayMs = 2_000))
         assertEquals(FrameRateUtils.DisplayModeRestorePlan.Skip, restorePlan(skip = true, activityGone = true))
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Skip, restorePlan(skip = true, nvidia = false))
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Skip,
+            restorePlan(skip = true, nvidia = false, activityGone = true)
+        )
         assertEquals(FrameRateUtils.DisplayModeRestorePlan.Delayed(750L), restorePlan(skip = false))
     }
 
@@ -665,12 +670,49 @@ class FrameRateUtilsAfrTest {
     }
 
     @Test
-    fun `a finishing or destroyed activity restores at once`() {
-        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Immediate, restorePlan(activityGone = true))
+    fun `a gone activity skips on nvidia and restores at once on other devices`() {
+        assertEquals(FrameRateUtils.DisplayModeRestorePlan.Skip, restorePlan(activityGone = true))
         assertEquals(
-            FrameRateUtils.DisplayModeRestorePlan.Immediate,
+            FrameRateUtils.DisplayModeRestorePlan.Skip,
             restorePlan(delayMs = 2_000, activityGone = true)
         )
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Skip,
+            restorePlan(delayMs = 0, activityGone = true)
+        )
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Skip,
+            restorePlan(delayMs = -50, activityGone = true)
+        )
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Skip,
+            restorePlan(skip = false, activityGone = true)
+        )
+
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Immediate,
+            restorePlan(nvidia = false, activityGone = true)
+        )
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Immediate,
+            restorePlan(delayMs = 2_000, nvidia = false, activityGone = true)
+        )
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Immediate,
+            restorePlan(delayMs = 0, nvidia = false, activityGone = true)
+        )
+        assertEquals(
+            FrameRateUtils.DisplayModeRestorePlan.Immediate,
+            restorePlan(skip = false, nvidia = false, activityGone = true)
+        )
+    }
+
+    @Test
+    fun `isActivityGone is true when finishing, destroyed, or decor is detached`() {
+        assertFalse(FrameRateUtils.isActivityGone(isFinishing = false, isDestroyed = false, isDecorAttached = true))
+        assertTrue(FrameRateUtils.isActivityGone(isFinishing = true, isDestroyed = false, isDecorAttached = true))
+        assertTrue(FrameRateUtils.isActivityGone(isFinishing = false, isDestroyed = true, isDecorAttached = true))
+        assertTrue(FrameRateUtils.isActivityGone(isFinishing = false, isDestroyed = false, isDecorAttached = false))
     }
 
     @Test
