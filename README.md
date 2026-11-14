@@ -28,7 +28,7 @@ revert values and what to look at on the device, is in [docs/shield-todo.md](doc
 | Area | Change on Nvidia |
 |---|---|
 | Audio passthrough | The TrueHD and DTS-HD passthrough buffer caps are doubled. The surround decision uses the stereo, 5.1 and 7.1 probe union and the HDMI channel count. |
-| Frame-rate matching | Starts in Start/Stop mode when nothing is saved. The settle wait after a switch has a 0.6 s floor instead of 2 s, before start and on a track switch; it then waits for the HDMI audio link, as upstream does. Stabilize detection reads the display off the main thread. After Stop, the switch back waits 750 ms, until the video surface is gone. |
+| Frame-rate matching | Starts in Start/Stop mode when nothing is saved. 25 and 30 fps titles take the exact refresh rate before the doubled one. The settle wait after a switch has a 0.6 s floor instead of 2 s, before start and on a track switch; it then waits for the HDMI audio link, as upstream does. Stabilize detection reads the display off the main thread. After Stop, the switch back waits 750 ms, until the video surface is gone. |
 | Video decoding | Video codec queueing is async (Media3 does this by itself only from API 31). |
 | HDR and Dolby Vision display | Dolby Vision plays untunnelled. Hardware DV decoders are tried first on DV displays. HDR10 metadata injection on DV strip is on. HDR video plays at Fit instead of a view-scaled aspect mode, so it can stay on an overlay plane. Dolby Vision Profile 7 is handled separately and is still in progress. |
 | mpv | Decodes with direct MediaCodec (`mediacodec,mediacodec-copy`) and tone maps with `bt.2446a`, no peak detection. |

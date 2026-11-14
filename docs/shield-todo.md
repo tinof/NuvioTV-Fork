@@ -49,6 +49,7 @@ lists). Restart playback, or the app for the rows marked *app*.
 | The surround decision uses the stereo / 5.1 / 7.1 probe union and the HDMI channel count | `audio_probe_union` (`0`) | Settings > Advanced > Source & hardware |
 | A track-AFR mode switch under tunneling with TrueHD/DTS-HD takes audio and video down and up together. Inert on mdarcy SE 9.2.4 (no decoder tunnels); `1` now forces it without tunneling too | `afr_quiesce_av` (`0`) | First play of a 24p TrueHD title: `Track AFR settle complete: … quiesced=AUDIO_AND_VIDEO`, and no stuck loading screen |
 | AFR settle hold of 0.6 s instead of 2 s (Q2.5, PR #43), on the track-AFR path and (since round 3) the pre-start path. Since the sync of 2026-11-14 it is the floor of upstream's settle wait (d14c13cbc): 0.6 s from the stabilized switch, then until the HDMI audio link is back, at most 3 s more. A longer saved "Delay after refresh rate change" wins | `afr_settle_ms` (`2000` = upstream's wait, counted from the switch request) | Logcat `Switching display mode` → `Display mode switch stabilized at … after N ms` → `Track AFR settle complete:` / `Preflight AFR settle complete: holdMs=` |
+| 25 and 29.97/30 fps titles take the exact refresh rate before the doubled one (Q2.8). Upstream prefers 50 and 59.94/60 Hz again since the sync of 2026-11-14, and 4K50 Dolby Vision dropped the HDMI link on this chain (2026-10-28). A display without the exact rate still gets the doubled one. Interlaced 25 and 29.97 sources lose the field rate this way | `afr_exact_first` (`0` = upstream's doubled rate first) | Logcat `Switching display mode` on a 25 fps title names 25 Hz; no HDMI hotplug storm on HLG 25p as Dolby Vision |
 | A tunneled start waits for the real first frame (only for decoders seen reporting frames) | `tunnel_real_first_frame` (`0`) | The loading screen ends with the picture |
 | Dolby Vision plays untunneled | `dv_no_tunnel` (`0`) | DV signalling on the TV, sync |
 | With "Convert HLG and HDR10+ to Dolby Vision" on, an HDR10+ MKV plays as Dolby Vision 8.1 with L1 from each AU's HDR10+ SEI (ROADMAP DV3.1) | `dv_hdr10plus` (`0` keeps PQ native) | The TV's Dolby Vision badge; logcat `DV_INJECT track N: HDR10+ 8.1`; the DV2.8 dump compared with `dovi_tool` (`scripts/rpu_dump_to_bin.py --order pts`) |
@@ -275,8 +276,8 @@ as the floor of upstream's new settle wait. These apply on the Shield too, with 
   (d14c13cbc, 2d30534d8). Auto is the default. On Nvidia, Auto means the 0.6 s floor; a saved delay wins over it.
 - 25 and 29.97/30 fps titles switch to 50 and 59.94/60 Hz again where the display has them (d14c13cbc). This
   reverses the exact-first order taken on 2026-10-26. On this chain, HLG 25p converted to Dolby Vision goes back
-  to 4K50, the mode of the HDMI hotplug storm of 2026-10-28. ROADMAP Q2.8 adds an Nvidia exact-first gate with a
-  revert switch; a build without it switches 25p to 50 Hz.
+  to 4K50, the mode of the HDMI hotplug storm of 2026-10-28. On Nvidia the `afr_exact_first` row above keeps
+  the exact rate first (Q2.8); a build of the sync tip without it switches 25p to 50 Hz.
 - 48 fps switches to 60 Hz on a display without 48, 96, 120 or 144 Hz. A video up to 2 % larger than a mode
   (1928x1080, 3848x2160) still counts as that mode (d14c13cbc).
 - The 23.976 preference covers 23.95 to 23.988 fps and no longer up to 23.999, on the track and the preflight
