@@ -10,6 +10,83 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-15: U1.5 sync of 2026-11-14 onto upstream 1.1.0-arc.4 (PR #69)
+
+- [U1.5][desk] Rebased `perf/shield-pass` from `8f3056e6d` onto `5575b0be0` (1.1.0-arc.4 plus two issue-form
+  commits): 24 upstream commits behind (all first-parent, no official merge), 362 fork commits. All 362 were
+  replayed, none dropped and none added. The new tip is `1c23d37d2`. Tags: `sync/2026-11-14/old-{perf,main,base}`.
+  Published on 2026-11-15 with one atomic leased push: `main` `96f0ca1bf` → `5575b0be0`, `perf/shield-pass`
+  `8f3056e6d` → `1c23d37d2`. Upstream had not moved, and drift issue #49 closed.
+
+**Classify (tier `fanout`, 8 analysts and a critic):** 15 files conflicted in the trial merge: the `strings.xml`
+of 8 locales, `README.md`, `MainActivity.kt`, `FrameRateUtils.kt`, `PlaybackConnectionEvents.kt`,
+`PlaybackVideoSettings.kt` and the AFR-track and initialization parts of the player controller. 107 fork commits
+touched files upstream changed. Verdicts: 0 drops, 0 protected asks, 13 keep-resolve, 0 keep-adapt, 94 keep-clean;
+255 commits touched nothing upstream changed. The retire question found no fork change that upstream now covers.
+
+**Dry-run (U1.12):** 15 predicted stops, 13 real. 11 of the predicted stops came true and 4 applied clean. Two
+stops were not predicted, `7bd7fde1c` and `e9420410f`; both re-conflict on lines an earlier resolution wrote.
+The one protected stop, `18c4f5c6d` (AAC-to-DTS), keeps upstream's `PlaybackMemoryFacts.onAudioFormat` line and
+the fork's `lastAudioInputMime` line.
+
+**Owner's decisions:**
+
+1. The Nvidia 0.6 s settle hold becomes the floor of upstream's new settle wait (`AfrSettle`, d14c13cbc), not a
+   replacement for it. `AfrSettle` gains a `floorMs` parameter that defaults to upstream's 2 s. On Nvidia the wait
+   is 0.6 s from the stabilized switch, then until the HDMI audio link is back, at most 3 s more. A longer saved
+   "Delay after refresh rate change" wins. `debug.nuvio.afr_settle_ms` counts from the switch request, as
+   upstream does, and `2000` gives upstream's wait exactly. The track-AFR deadline grows with the floor.
+2. Upstream's doubled-rate order for 25 and 29.97/30 fps is taken in this sync. An Nvidia exact-first gate with
+   a revert switch follows in its own PR (Q2.8), because 4K50 Dolby Vision caused the hotplug storm of
+   2026-10-28. A build of this tip switches 25p to 50 Hz.
+3. The pre-start hold runs through upstream's `afrSettleHolding` gate and counts from the stabilized switch, so
+   most of it passes during prepare. Q2.7 answers what it still delays.
+
+Settled by repo rules, with no owner question: the new setting's default (Auto) is upstream's. The fork's
+quiesce block returns at once when upstream's `needsSwitch` says the display already shows the best mode. The
+fork's off-main-thread stabilize poll uses upstream's `switchReported` test and starts upstream's refresh-rate
+measurement. The NET_CONN line carries upstream's `start=` field inside the fork's logcat gate. The fork README
+was kept whole. Five messages were amended for their resolutions (`c3503e699`, `785f08ada`, `625350d8a`,
+`ee8f1551a`, `112e1345a`); each kept its author, date and trailers.
+
+**Setting decisions:** the one value this pass sets that upstream touched is the settle hold; the `afr_settle_ms`
+row in `docs/shield-todo.md` now describes the floor. The other upstream defaults apply on the Shield with no
+switch and are listed there under "Upstream defaults taken with the sync of 2026-11-14". Among them: leaving the
+app releases a player that holds 500 MB or more of buffer. Three older rows were corrected: the exact-first
+order of 2026-10-26, the decoder release of 2026-10-31 and 2026-11-11, and "upstream keeps its own at 2 s". The
+README's Nvidia table had two stale cells (System Passthrough on by default, a 1.2 s hold); both are fixed.
+
+**Evidence**
+
+- `verify` (`8f3056e6d` → `1c23d37d2`): range-diff 342 identical, 20 changed, 0 dropped, 0 new. Protected lines:
+  aac-to-dts 48 commits, 6145 lines, 0 lost; hlg-to-dv 109 commits, 17700 lines, 0 lost. Result: all checks pass.
+- Waiver: `--allow-changed` on `TrackAfrSettleHoldTest.kt`, which gained the floor and deadline tests.
+- `judgement`: 17 paths differ from the mechanical merge, all 17 declared.
+- Tests before the push: one local Gradle run of 6 AFR and NET_CONN test classes during the rebase (104 tests,
+  0 failed).
+- APK: a local build passed `protected-apk` for `libffmpegJNI.so` (with the DTS-HD MA writer) and
+  `libnuvio_rpu.so` (the stamped build). It was not installed.
+- Independent review: no blocking finding. A scripted check of the 77 files both sides changed found every fork
+  line and every upstream line at the new tip, apart from the intended replacements. Two low notes: the Nvidia
+  deadline margin (now in Q2.3), and the user delay on Nvidia also counts from the stabilized switch, about one
+  switch time later than upstream.
+- CI: `Checks` run 43601469603 on `1c23d37d2`. Attempt 1 failed the compare job on upstream's new
+  `ContinueWithoutAccountTest` (2 tests, `expected:<SignedOut> but was:<Loading>`). The test and `AuthManager`
+  equal upstream's; the collector on `Dispatchers.IO` can set `Loading` after the test's call returns. It passed
+  3 of 3 locally. Attempt 2, a rerun of all jobs, was green: no new failures, both runs complete. No device run
+  is on record for this sync.
+
+**Open, for the owner**
+
+- Q2.8, the Nvidia exact-first gate, in its own PR. A build of this tip sends 25p to 50 Hz on the Shield.
+- Q2.3 now holds the Nvidia deadline margin; Q2.7 holds the pre-start anchor.
+- The Q2.5 measurement (600 ms, three clean starts) predates the link wait. A device run of a 25 fps DTS-HD
+  title shows what the wait adds on the HT-A9.
+- `ContinueWithoutAccountTest` can fail on CI by timing. A rerun of all jobs is the remedy; a second flake is a
+  reason for a base-layer test fix.
+
+**Resolution:** the fork is on upstream 1.1.0-arc.4, level with `upstream/main`, and `main` mirrors `5575b0be0`.
+
 ## 2026-11-14: Roadmap review: goal, ranking, Vulkan capability list (PR #67)
 
 The owner asked for a review of the roadmap against the goal "the best player for the Shield Pro and the

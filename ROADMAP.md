@@ -89,6 +89,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-15 | U1.5: rebased onto upstream 1.1.0-arc.4 with no drop; both protected features kept every line; the Nvidia 0.6 s settle hold is now the floor of upstream's new settle wait; upstream's 25p → 50 Hz order was taken, and Q2.8 adds an Nvidia exact-first gate. | U1, Q2 | [log](docs/ROADMAP_LOG.md), PR #69 |
 | 2026-11-14 | Roadmap review: the north star names the Shield → HT-A9 → C9 chain and the conversions are ranked in Priorities; Q5 moves to the top; a PC is an accepted dependency, so only idle analysis (T2) stays scheduled on the Shield; the Shield reports Vulkan 1.1.178 with compute and the AHardwareBuffer import; DV4.10 to DV4.12 and U1.17 added; upstream pull requests deferred. | all | [log](docs/ROADMAP_LOG.md), PR #67 |
 | 2026-11-14 | Q2.2 closed: while a track-AFR switch has audio and video off, the both-off selection no longer clears `isHdrVideo` or `tunnelingApplied` in the player UI state. | Q2 | [log](docs/ROADMAP_LOG.md), PR #66 |
 | 2026-11-13 | R2.1 closed: on Nvidia a finishing, destroyed or detached activity skips the switch-back after Stop and clears the saved mode; other devices still restore at once. | R2 | [log](docs/ROADMAP_LOG.md), PR #65 |
@@ -287,12 +288,16 @@ hdr-analyze.
 ### Q2: AFR plan and settle correctness
 
 - **Status:** Partial. Q2.5 and Q2.2 are done: a 600 ms Nvidia settle hold, and the quiesce keeps the HDR
-  and tunnel flags ([log](docs/ROADMAP_LOG.md)). Open: Q2.1, Q2.3, Q2.4, Q2.6, Q2.7. Findings B1, B4, B5, D1, D5.
+  and tunnel flags ([log](docs/ROADMAP_LOG.md)). Open: Q2.1, Q2.3, Q2.4, Q2.6, Q2.7, Q2.8. Findings B1, B4, B5, D1, D5.
+  Since the sync of 2026-11-14 the 600 ms is the floor of upstream's settle wait (d14c13cbc), which then waits
+  for the HDMI audio link.
 - [Q2.1][desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that
   the display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
   `FrameRateUtils.kt:681`). Gate: unit test of the plan.
-- [Q2.3][desk] Clamp the settle hold to 3000 ms so the track-AFR deadline cannot run out (B5). Gate: unit
-  test.
+- [Q2.3][desk] Keep the track-AFR deadline from running out during the settle wait (B5). Since the sync of
+  2026-11-14 the deadline grows with the settle floor (`trackAfrDeadlineMs`, tested), so the 3000 ms clamp is
+  not needed. Left: on Nvidia the wait counts from the stabilized switch, so a 4 s switch timeout and a 3 s
+  link wait leave under 1 s of the 8.6 s deadline. Make the Nvidia deadline cover that case. Gate: unit test.
 - [Q2.4][device][new-build] Re-entry: Stop a title whose rate differs from the UI mode, then start another of
   the same rate while the restore to the UI mode is issued but not yet reached. Gate: the new title plays at
   its own rate. Needs: Q2.1.
@@ -301,7 +306,12 @@ hdr-analyze.
   mode or the plan lost it. Gate: the cause in the log; a fix step added if the app is at fault.
 - [Q2.7][desk] The preflight "AFR settle complete" line logs 0.6–1.2 s after `PLAYBACK_STARTED`, so the hold may
   not hold the start. Read `startPlaybackThroughAfrGates` and say what the hold delays. Gate: the answer in the
-  log, with a unit test if the hold is not applied.
+  log, with a unit test if the hold is not applied. The sync of 2026-11-14 replaced that code: the hold is
+  upstream's `afrSettleHolding` gate and counts from the stabilized switch on Nvidia (owner, 2026-11-14).
+  Answer for the new code.
+- [Q2.8][desk] On Nvidia, pick the exact refresh rate before the doubled one for 25 and 29.97/30 fps, with a
+  `debug.nuvio.*` revert switch (owner, 2026-11-14). Upstream prefers 50 and 60 Hz again (d14c13cbc), and 4K50
+  Dolby Vision caused the HDMI hotplug storm of 2026-10-28 on this chain. Gate: unit test of the mode choice.
 
 ### Q3: frame pacing and display-listener leak
 
@@ -623,9 +633,8 @@ hdr-analyze.
 ### U1: upstream pull requests
 
 - **Status:** Open. Upstream pull requests are deferred (owner, 2026-11-14); the sync and its cost steps stay.
-  The U1.5 sync of 2026-11-11 put the branch onto 1.1.0-arc.2 (`96f0ca1bf`). At its publish on
-  2026-11-12 the branch was 12 first-parent commits behind `upstream/main` (`ecaa2c379`, 1.1.0-arc.3); the next
-  sync takes them. The open "Upstream drift" issue (label `upstream-drift`)
+  The U1.5 sync of 2026-11-14 put the branch onto 1.1.0-arc.4 (`5575b0be0`). At its publish on
+  2026-11-15 the branch was level with `upstream/main`. The "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
 - Deferred (owner, 2026-11-14): upstream pull requests, U1.2 to U1.4. Upstream has merged one outside pull
