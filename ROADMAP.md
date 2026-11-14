@@ -6,18 +6,22 @@ progress step, the device report numbers and the finding IDs are in
 quick reference are in [`docs/shield-todo.md`](docs/shield-todo.md). The patched engine AARs are described
 in [`app/libs/README.md`](app/libs/README.md).
 
-> **North star:** on an NVIDIA Shield TV Pro 2019, a Remux plays at the right rate and pacing, TrueHD and
-> DTS-HD MA reach the AVR bit-exact, and the UI answers every key press at once. Each claim is measured
-> against a baseline, and for the UI against the upstream app on the same box.
+> **North star (owner, 2026-11-14):** the best player for one chain, an NVIDIA Shield TV Pro 2019 into a
+> Sony HT-A9 and an LG OLED C9. A Remux plays at the right rate and pacing, TrueHD and DTS-HD MA reach
+> the AVR bit-exact, and the UI answers every key press at once. HLG, HDR10+ and HDR10 titles reach the
+> TV as Dolby Vision with the best dynamic metadata at hand, wherever the owner's A/B on the C9 prefers
+> that to native playback. Each claim is measured against a baseline, and for the UI against the upstream
+> app on the same box.
 
-**Target:** Shield TV Pro 2019 (`mdarcy`, Tegra X1+, 3 GB RAM, Android 11, SHIELD Experience 9.2.4).
-Older Shields are handled case by case.
+**Target:** Shield TV Pro 2019 (`mdarcy`, Tegra X1+, 3 GB RAM, Android 11, SHIELD Experience 9.2.4) →
+Sony HT-A9 → LG OLED C9. Older Shields and other displays are handled case by case.
 
 **Scope.** In scope: video and audio quality (Remux, TrueHD, DTS-HD MA, Atmos and DTS:X passthrough),
-UI speed, and bugs and performance in the HDR10, HDR10+, HLG and Dolby Vision playback paths. Out of
-scope: HDR features and pipelines (a separate development process) and all conversions (libdovi,
-Dolby Vision 7 → 8.1, HDR10+ → Dolby Vision). The conversion track has its own plan in
-[Appendix A](#appendix-a-on-device-dolby-vision-conversion).
+UI speed, bugs and performance in the HDR10, HDR10+, HLG and Dolby Vision playback paths, and the two
+conversions this chain uses: AAC → DTS-HD MA (Q6) and Dolby Vision from HLG, HDR10+ and HDR10
+([Appendix A](#appendix-a-on-device-dolby-vision-conversion), built on `tinof/hdr-analyze`). Both are
+ranked in [Priorities](#priorities) since 2026-11-14. Out of scope: anything that re-encodes the
+picture, and FEL playback (the Shield's decoder ignores the enhancement layer).
 
 Status meanings: **Open** has not shipped; **Partial** has useful pieces in place but does not meet the
 gate; **Core complete** meets the gate but keeps named follow-up work; **Deferred** is intentionally not
@@ -48,43 +52,25 @@ takes 1 + the highest number ever used for that item in `ROADMAP.md`, `docs/ROAD
 - A review finding that only the Shield can settle becomes a new `[device]` step with a fresh ID.
 - An item with no steps left moves to the log.
 
-## Current status (updated 2026-10-15)
+## Current status (updated 2026-11-14)
 
-The branch is 63 commits ahead of `main` and 0 behind, so it merges as a fast-forward. It adds 20 Nvidia
-defaults, each with a revert switch, and its unit tests pass in CI (run 38585630985).
+`perf/shield-pass` is the default branch: the last synced upstream release plus the fork's commits,
+rebased at every sync (U1.5), with `main` as a mirror of upstream. GitHub builds no APK, so every `new-build` step needs a
+local build of HEAD (`scripts/shield_build_install.sh`). The device report of 2026-10-14 and its numbers
+are in the log; they predate every sync since, so a claim needs a fresh M1 measurement.
 
-The device report of 2026-10-14 ran on a build from before round 3 (CI run 38561775458). That build is
-still the one installed on the Shield (APK hash checked on 2026-10-15), so every `new-build` step needs a
-fresh CI build of HEAD first. The report found two incidents:
-
-- **Incident 02 (regression from this branch):** with "True black bars" on, the letterbox bars show the
-  previous screen and old subtitle lines. The cause is the Nvidia `opaque_window` default (be0ce8ec9):
-  it creates the app's renderer opaque, so the transparent bars are never cleared (R1).
-- **Incident 01:** after Stop, the switch back to the UI refresh rate hung the NVIDIA composer HAL until a
-  power cycle. The 750 ms delay added in round 3 does not touch the condition seen before the hang
-  (HDCP read failures from the switch-in onwards), so it is not a proven fix (R2).
-
-The report also measured about 3 s from click to first frame, seeks of 81–4187 ms, a 500–750 ms freeze
-of the main thread at Stop, and an unpaced 4K seek-thumbnail sweep during playback (43 % CPU, 387 MB
-native heap). Home scrolled at 0.23 % janky frames; on the player route single frames took up to 1442 ms
-at start and 748 ms at Stop. The findings of the start, seek and memory lane (S1,
-S2) were not checked by a skeptic pass; their first step is a re-read.
-
-The owner reported moving the UI from 2160p 25 Hz to 24 Hz; on 2026-10-15 the Shield still read mode 21
-(2160p 25 Hz) as active and default. Whatever the UI rate, a title at that rate needs no HDMI mode switch,
-and every UI animation runs at it. Device steps that test switching use titles whose rate differs from
-the UI mode.
-
-**Upstream sync (2026-10-20).** The branch was rebased onto upstream 1.1.0-nt.7.3. Where upstream changed a
-setting this pass also sets, the fork's value stays: AV1 trailers need hardware on Nvidia, full swap still
-refuses thumbnail decodes on `mdarcy`, TrueHD stays on the platform sink (Q1.2 now covers upstream's
-keep-alive) and the fork's datasource AAR stays. Elsewhere upstream's new defaults apply on the Shield too,
-listed in [`docs/shield-todo.md`](docs/shield-todo.md). Device numbers above predate them, and the installed
-build predates the sync.
-
-**Appendix A (2026-10-24).** On the separate Dolby Vision track, DV2.1 to DV2.4, DV2.7 and DV2.8 are done
-and DV1.4 is closed. HLG titles can now play as Dolby Vision 8.4 with the setting on; DV3.2 (HLG → 8.4 on
-the Shield), DV1.8 and DV2.9 (the dump's device checks) are next. A.4 ends with how device builds are made.
+- **Sound.** TrueHD and DTS-HD MA take the IEC61937 packer (Q1.2), E-AC3 JOC shows as Atmos on the HT-A9
+  (Q1.3), and mono and stereo AAC can go out as DTS-HD MA (Q6, default off).
+- **Picture.** With the setting on, HLG plays as Dolby Vision 8.4 with per-shot L1 from an hdr-analyze
+  manifest where one exists and static L1 elsewhere (DV4.9), and HDR10+ plays as 8.1 with L1 from its own
+  SEI (DV3.1, DV3.4). Plain HDR10 still plays native: its manifest path is DV4.10.
+- **Stutter.** The 4K stutter under memory pressure (Q5) has no closed step yet. The same memory limit
+  rules out analysis on the Shield during playback (DV5).
+- **Incidents.** 02 (letterbox bars): the `opaque_window` default is reverted and the incident did not
+  reproduce (R1, deferred). 01 (composer hang at the switch-back after Stop): a gone activity now skips
+  the switch-back on Nvidia (R2.1); the hot-Stop test is R2.4.
+- **AFR and baselines.** The settle hold after a mode switch is 600 ms (Q2.5). `PLAYBACK_STARTED` and
+  `shield_measure.py` exist (M1.1, M1.2); the baseline tables are not in the log yet (M1).
 
 ### Waiting for the owner
 
@@ -103,6 +89,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-14 | Roadmap review: the north star names the Shield → HT-A9 → C9 chain and the conversions are ranked in Priorities; Q5 moves to the top; a PC is an accepted dependency, so only idle analysis (T2) stays scheduled on the Shield; the Shield reports Vulkan 1.1.178 with compute and the AHardwareBuffer import; DV4.10 to DV4.12 and U1.17 added; upstream pull requests deferred. | all | [log](docs/ROADMAP_LOG.md), PR #67 |
 | 2026-11-14 | Q2.2 closed: while a track-AFR switch has audio and video off, the both-off selection no longer clears `isHdrVideo` or `tunnelingApplied` in the player UI state. | Q2 | [log](docs/ROADMAP_LOG.md), PR #66 |
 | 2026-11-13 | R2.1 closed: on Nvidia a finishing, destroyed or detached activity skips the switch-back after Stop and clears the saved mode; other devices still restore at once. | R2 | [log](docs/ROADMAP_LOG.md), PR #65 |
 | 2026-11-12 | U1.5: rebased onto upstream 1.1.0-arc.2 (official 1.1.0) with no drop; both protected features kept every line; new fork commits keep both AAC-to-DTS transcodes on their proven paths, give local Shield builds a version above the installed one and index the fork's settings rows for search. | U1 | [log](docs/ROADMAP_LOG.md), PR #62 |
@@ -177,8 +164,8 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
   problem it fixes.
 - **Device safety.** Every device session follows [M2](#m2-device-safety-protocol). The Shield is in
   daily use.
-- **Upstreamable by default.** The Shield work is meant to reach the upstream fork
-  (`ysosrs123/NuvioTV-Fork`) as pull requests later. A change is Nvidia-gated, revertible and tested, or
+- **Upstreamable by default.** The Shield work is written so that it can reach the upstream fork
+  (`ysosrs123/NuvioTV-Fork`) as pull requests; the pull requests themselves are deferred (U1, 2026-11-14). A change is Nvidia-gated, revertible and tested, or
   it states why it applies to every device. Commits that only make sense in this fork (README,
   CONTRIBUTING, CI tweaks, this roadmap, the Claude skill, the Shield docs) start their subject with
   `fork:` so they are easy to leave out. See [U1](#u1-upstream-pull-requests).
@@ -192,29 +179,43 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 ## Priorities
 
-Order (2026-10-15): the regression this branch introduced; then the safety protocol and the baselines
-every later claim needs; then what runs at every start and Stop; then the owner's two goals, sound first
-because a wrong passthrough path is invisible until measured.
+Order (owner, 2026-11-14; first set 2026-10-15): what the owner sees in every 4K title; then the
+baselines every later claim needs and the safety of every Stop; then the owner's goals, sound before
+picture because a wrong passthrough path is invisible until measured; then latency and the UI. The
+conversions are ranked here since 2026-11-14, by step ID. A step that no entry names is not scheduled:
+today that is analysis on the Shield during playback (T3: DV1.3, DV1.7, DV2.6, DV5.2, DV5.4, DV5.5,
+DV5.7, DV5.9, DV5.10, DV5.12), which waits for Q5, and the FEL provider DV7.8, which waits for
+hdr-analyze.
 
-1. **Incident 02, letterbox bleed** (R1). Deferred on 2026-10-18: R1.1 shipped; the ASS subtitle check
-   (R1.3) waits until ASS subtitles are in use.
-2. **Device safety and baselines** (M2, M1). Gate: the protocol tested once; baseline tables for this
-   app and the upstream app in the log. The playback start stage is logged before the playback baseline.
+1. **Playback stutter under memory pressure** (Q5). The owner sees it in every 4K title, and the same
+   limit blocks DV5. Gate: Q5.7 beats the Q5.2 baseline.
+2. **Device safety and baselines** (M2, M1). Gate: baseline tables for this app and the upstream app in
+   the log.
 3. **Switch-back safety and AFR plan** (R2, Q2). Gate: the mitigation ships; the re-entry test passes.
-4. **Playback stutter under memory pressure** (Q5). Added 2026-10-21: the owner sees it in every 4K title.
-   Gate: Q5.7 beats the Q5.2 baseline.
-5. **Passthrough correctness** (Q1). Gate: AVR readings recorded for TrueHD, DTS-HD MA and E-AC3; the
-   `hbr_iec` default decided.
+4. **Passthrough and transcode correctness** (Q1, Q6). Gate: AVR readings recorded for TrueHD, DTS-HD MA
+   and E-AC3; the `hbr_iec` default decided; the open Q6 checks closed.
+5. **Dolby Vision for HDR10 from a manifest** (DV4.10, DV4.11). HDR10 is the most common 4K
+   HDR format. Gate:
+   the owner's G-E A/B on the C9 against native HDR10 decides the default.
 6. **Start and Stop latency** (S1, S3). Gate: click → playing and the Stop stall beat the M1 baseline.
 7. **Seek and thumbnails** (S2). Gate: CPU, native heap and drops with thumbnails on within the S2
    tolerance of thumbnails off. The measured 43 % CPU load comes before UI tuning.
 8. **Small correctness fixes** (R3). Gate: unit tests; the CEC check passes.
-9. **UI frames and navigation** (S4). Gate: the M1 journeys beat the baseline and the upstream app at the
-   chosen refresh rate.
-10. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4).
-11. **Media3 backports** (E1), only on a symptom; the ready grace is startable.
-12. **Diagnostics and docs** (M3, D1).
-13. **Upstream pull requests** (U1). The commit sorting can start any time; the pull requests follow the items they carry.
+9. **Conversion correctness** (DV3.2, DV3.3, DV3.5, DV2.9, DV7.1, DV7.2, DV7.3, DV7.4, DV7.5, DV7.6,
+   DV7.7). Gate: the HLG static session finished, the frame 0 seek
+   fixed, and no libdovi abort path reachable from a Profile 7 title.
+10. **UI frames and navigation** (S4). Gate: the M1 journeys beat the baseline and the upstream app at the
+    chosen refresh rate.
+11. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4).
+12. **Media3 backports** (E1), only on a symptom; the ready grace is startable.
+13. **Manifest reach** (DV4.12, DV4.2, DV4.3, DV1.1, DV5.1). The per-shot curve in the manifest (DV4.12) and the live
+    server for a title no manifest was made for (DV4.2, DV4.3, with the renderer replacement). Gate: each
+    step's own.
+14. **Analysis on the Shield while idle, T2** (DV1.2, DV1.5, DV1.6, DV2.5, DV5.11, DV5.3, DV5.8, DV5.6). It buys independence from the PC, nothing else, so it comes after the manifest path. Gate:
+    DV5.6.
+15. **Diagnostics and docs** (M3, D1).
+16. **Upstream** (U1). The sync (U1.5) runs whenever the drift issue says a batch is due; its cost steps
+    follow. Upstream pull requests are deferred.
 
 ## Reliability
 
@@ -621,22 +622,18 @@ because a wrong passthrough path is invisible until measured.
 
 ### U1: upstream pull requests
 
-- **Status:** Open. The U1.5 sync of 2026-11-11 put the branch onto 1.1.0-arc.2 (`96f0ca1bf`). At its publish on
+- **Status:** Open. Upstream pull requests are deferred (owner, 2026-11-14); the sync and its cost steps stay.
+  The U1.5 sync of 2026-11-11 put the branch onto 1.1.0-arc.2 (`96f0ca1bf`). At its publish on
   2026-11-12 the branch was 12 first-parent commits behind `upstream/main` (`ecaa2c379`, 1.1.0-arc.3); the next
   sync takes them. The open "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
-  Upstream has merged one outside pull request so far, so a single pull request of the whole branch is
-  unlikely to land.
-- [U1.2][desk] Sort the commits in `git log upstream/main..perf/shield-pass` into fork-only and upstreamable,
-  and list the every-device changes with the reason each applies everywhere (audio route under a Bluetooth
-  pin, lossless track default, controller buttons, native libraries loaded from the APK). Gate: the table in
-  the log; fork-only commits named.
-- [U1.3][desk] For each theme, one branch from `upstream/main` with the upstreamable commits cherry-picked
-  (themes: AFR and display, audio passthrough, UI and performance, engine AARs with their rebuild recipes).
-  Gate: each branch builds and passes the unit tests in CI. Needs: U1.2.
-- [U1.4][desk] Pull request text per theme with the M1 numbers it rests on and the revert switches. Gate: the
-  numbers come from the log. Needs: U1.3, M1.4.
+- Deferred (owner, 2026-11-14): upstream pull requests, U1.2 to U1.4. Upstream has merged one outside pull
+  request, and the owner dropped U1.1 (asking its maintainer). The plan was: sort
+  `git log upstream/main..perf/shield-pass` into fork-only and upstreamable commits (U1.2), one branch per
+  theme from `upstream/main` (U1.3), and pull request text with the M1 numbers (U1.4). The `fork:` prefix
+  and the Nvidia gates stay, because every sync relies on them. Restore the steps with their IDs when
+  upstreaming is wanted again.
 - [U1.5][desk] Keep `perf/shield-pass` rebased on `upstream/main` while upstream moves: run `/upstream-sync`
   when the drift issue is open. One rebased branch, never merged: `perf/shield-pass` (the default branch) =
   `upstream/main` + the fork's CI, test and fix commits and the drift watcher + the Shield work; `main` mirrors
@@ -657,39 +654,47 @@ because a wrong passthrough path is invisible until measured.
     tests and a replay of the 2026-10-27 sync pass; then the default branch switches and `main` moves to the
     base, each with the owner's go. Landed: PR #25; gate passed 2026-10-28 (default branch `perf/shield-pass`,
     `main` at upstream `2b51aba36`, drift dry run green, preflight exits 3).
-  - [U1.10][desk][owner] Held since 2026-10-31: the light path fired on 0 of 4 syncs, so this run would almost
-    never start. Redefine it after U1.9 and U1.15 prove out, as a run that prepares every settled batch for the
-    owner's tap. Until then, as first planned: nightly cloud run at 02:07 Helsinki time: light syncs only, pushed as
-    `claude/sync/<date>-<n>` with a manifest of the exact verify inputs; anything else stops with a comment on
-    the drift issue. The run unshallows its clone first, and the routine is created without connectors.
-    Gate: a one-off run on a replay branch matches the local result, and its commits, PR text and comments carry
-    no attribution footer. Needs: U1.6, U1.8, U1.9.
-  - [U1.11][desk][owner] One-tap publish: a GitHub Actions workflow that runs only after the owner approves the
-    `sync-publish` environment. It re-checks the candidate with trusted code and the manifest's upstream SHA, then
-    pushes both refs atomically with leases, keeps rollback tags per run, and can roll back both refs.
-    `sync-publish` deploys only from `perf/shield-pass`, and a ruleset refuses a merge into `perf/shield-pass`
-    from the Claude App token while the owner's merges go through. Gate: dry run, a publish and a rollback on
-    spike branches; a cloud REST merge into a protected spike branch is refused. Needs: U1.6, U1.10.
+- [U1.10][desk][owner] Held since 2026-10-31: the light path fired on 0 of 4 syncs, so this run would almost
+  never start. Redefine it after U1.9 and U1.15 prove out, as a run that prepares every settled batch for the
+  owner's tap. Until then, as first planned: nightly cloud run at 02:07 Helsinki time: light syncs only, pushed as
+  `claude/sync/<date>-<n>` with a manifest of the exact verify inputs; anything else stops with a comment on
+  the drift issue. The run unshallows its clone first, and the routine is created without connectors.
+  Gate: a one-off run on a replay branch matches the local result, and its commits, PR text and comments carry
+  no attribution footer. Needs: U1.6, U1.8, U1.9.
+- [U1.11][desk][owner] One-tap publish: a GitHub Actions workflow that runs only after the owner approves the
+  `sync-publish` environment. It re-checks the candidate with trusted code and the manifest's upstream SHA, then
+  pushes both refs atomically with leases, keeps rollback tags per run, and can roll back both refs.
+  `sync-publish` deploys only from `perf/shield-pass`, and a ruleset refuses a merge into `perf/shield-pass`
+  from the Claude App token while the owner's merges go through. Gate: dry run, a publish and a rollback on
+  spike branches; a cloud REST merge into a protected spike branch is refused. Needs: U1.6, U1.10.
 - Sync cost (study of 2026-10-31, see the log): the cost sits in reading, hand execution and fixed ceremony, not
   in conflicts. Steps:
-  - [U1.12][desk] Tooling: `sync.py dry-run`, `due`, `official-preview`, `judgement` and `docs-entry`, a heap hint
-    in `test-failures`, the rebase in one fresh subagent, and the docs follow-up on gate-skip paths. Gate: the
-    script tests, and the next sync uses them. Landed: PR #36; gate pending.
-  - [U1.13][desk][owner] Clean the stack inside the next sync's rebase, after DV3.4 merges, so nothing is rewritten
-    twice. Fold the superseded RPU dump chain into its replacement (the owner's narrow exception to one finding
-    per commit, for superseded findings only, with an archive tag). Move Shield strings to `strings_shield.xml`
-    per locale, with a new key instead of overriding `audio_tunneled_sub` in 38 locales. Move the fork README to
-    `.github/README.md`. Gate: an identical tree for the fold, an identical key-to-value map per locale for the
-    strings, and one local APK build. Needs: DV3.4.
-  - [U1.15][desk] Classify by exception: one resolver, up to 3 readers with an attachment checklist, and a short
-    critic whose findings count. It replaces per-commit classify only after a blind test on frozen 2026-10-31
-    state finds all 5 known adapts, and after one real sync run in shadow. Gate: that eval and that shadow run.
-    The first eval failed on 2026-11-01: 4 of 5, 1.09M tokens and 30 min against 1.38M and 25, so per-commit classify
-    stays the default. A changed prompt needs a new blind test on the frozen 2026-10-26 state. Landed: PR #36;
-    gate pending.
-  - [U1.16][desk] The compare step fails on any upstream test class the candidate did not run, unless the sync
-    names it as removed or renamed. Today up to 5 % may be missing with only a note (review finding F1 on PR #36:
-    99 of 100 classes passed). Gate: a run with one unexplained missing class fails, and a named removal passes.
+- [U1.12][desk] Tooling: `sync.py dry-run`, `due`, `official-preview`, `judgement` and `docs-entry`, a heap hint
+  in `test-failures`, the rebase in one fresh subagent, and the docs follow-up on gate-skip paths. Gate: the
+  script tests, and the next sync uses them. The syncs of 2026-11-03, 2026-11-04 and 2026-11-12 used `dry-run`
+  and `judgement`, the first two also `due` (log); the log does not show `official-preview`, `docs-entry` or
+  the subagent rebase in use, so the next sync's entry names each. Landed: PR #36; gate pending.
+- [U1.13][desk][owner] Clean the stack inside the next sync's rebase, so nothing is rewritten twice. It has
+  been unblocked since DV3.4 merged (PR #37, 2026-11-01), and the syncs of 2026-11-03, 2026-11-04 and
+  2026-11-12 ran without it; the `strings.xml` of 38 locales conflicted again on 2026-11-12 (log). Fold the superseded RPU
+  dump chain into its replacement (the owner's narrow exception to one finding per commit, for superseded findings only, with an archive tag). Move Shield strings to `strings_shield.xml`
+  per locale, with a new key instead of overriding `audio_tunneled_sub` in 38 locales. Move the fork README to
+  `.github/README.md`. Gate: an identical tree for the fold, an identical key-to-value map per locale for the
+  strings, and one local APK build.
+- [U1.15][desk] Classify by exception: one resolver, up to 3 readers with an attachment checklist, and a short
+  critic whose findings count. It replaces per-commit classify only after a blind test on frozen 2026-10-31
+  state finds all 5 known adapts, and after one real sync run in shadow. Gate: that eval and that shadow run.
+  The first eval failed on 2026-11-01: 4 of 5, 1.09M tokens and 30 min against 1.38M and 25, so per-commit classify
+  stays the default. A changed prompt needs a new blind test on the frozen 2026-10-26 state. Landed: PR #36;
+  gate pending.
+- [U1.16][desk] The compare step fails on any upstream test class the candidate did not run, unless the sync
+  names it as removed or renamed. Today up to 5 % may be missing with only a note (review finding F1 on PR #36:
+  99 of 100 classes passed). Gate: a run with one unexplained missing class fails, and a named removal passes.
+- [U1.17][desk] Each sync's log entry records its cost: wall time, the share spent waiting for the owner, and
+  new tokens per stage (classify, rebase, verify, follow-up). No sync since the study of 2026-10-31 (136 min,
+  1.66M new tokens) has a figure, so its 30 to 45 min target is still an estimate; the sync of 2026-11-12
+  ran the full fan-out of 9 analysts and a critic. Gate: `sync.py docs-entry` writes the fields, and the next
+  sync's entry fills them.
 
 ## Docs
 
@@ -704,8 +709,9 @@ because a wrong passthrough path is invisible until measured.
 
 ## Appendix A: on-device Dolby Vision conversion
 
-A separate track, outside the north star and the Priorities list. `/ship:roadmap-next` does not rank these
-steps; they are picked by hand. Steps use the format above, with item IDs DV1 to DV7. Work in
+The Dolby Vision conversion track. Since 2026-11-14 (owner) it is part of the north star and its steps
+are ranked in [Priorities](#priorities); a step no entry names there is not scheduled. Steps use the
+format above, with item IDs DV1 to DV7. Work in
 `hdr-analyze` (`tinof/hdr-analyze`) is named as such. Conversion steps follow the development
 principles: each conversion is gated by `DeviceProfile`, yields to a saved setting, has a
 `debug.nuvio.*` revert switch and is documented. The plan was drafted on 2026-10-16 with Codex
@@ -755,8 +761,10 @@ The evidence, the architecture, the budget and the risks are in
 - Dolby Vision is signalled at track init from container metadata and the SPS; an unknown transfer or
   contradicting colour tags mean native playback. Untagged HLG range, matrix and primaries follow the
   logged defaults of `DESIGN.md` 2.5. Matroska first.
-- CUDA is not available to Shield apps. Vulkan compute needs raw Vulkan (`ash` or C++) for the frame
-  import; what the current firmware offers is for DV1.2 to find out.
+- CUDA is not available to Shield apps. Vulkan compute is: SE 9.2.4 reports Vulkan 1.1.178 with compute,
+  the AHardwareBuffer import and YCbCr sampling of 10-bit 4:2:0 (capability list of 2026-11-14, log). The
+  frame import still needs raw Vulkan (`ash` or C++), and importing the decoder's real output is for
+  DV1.2 to prove. Memory, not the GPU, is the limit (`docs/nvidia-shield.md`, resource use).
 
 ### A.3 Tiers
 
@@ -845,10 +853,12 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   `onQueueInputBuffer` per container, the reconfiguration prefix, the real input-buffer capacity for 4K
   HEVC (`KEY_MAX_INPUT_SIZE` is only the request), and how flushes and releases reach the renderer.
   Gate: findings with file:line in the log.
-- [DV1.2][device] G-A probe for PQ and HLG. Gate: the report in the log and the G-A rows of the
+- [DV1.2][device] G-A probe for PQ and HLG. The capability list is answered (log, 2026-11-14); the probe
+  starts at the `ImageReader` on the HEVC decoder. Gate: the report in the log and the G-A rows of the
   qualification matrix set to pass or fail.
-- [DV1.3][device] G-B probe per mode at 4K24 and 4K60. Gate: the report in the log and the G-B rows of
-  the qualification matrix set to pass or fail.
+- [DV1.3][device] G-B probe per mode at 4K24 and 4K60. A second 4K decode sits behind the memory limit
+  Q5 works on, so the probe waits for it (owner, 2026-11-14). Gate: the report in the log and the G-B rows
+  of the qualification matrix set to pass or fail. Needs: Q5.7.
 - [DV1.5][desk] In hdr-analyze, measure what decimation costs: per-shot L1 at sample rates 2 and 3,
   downscale 2 and 4, without top-layer `_N` pictures and IRAP only, against full analysis on the
   validation corpus. Gate: error table in hdr-analyze `docs/VALIDATION.md`.
@@ -922,8 +932,9 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   `dovi_tool generate`; still to run: the canary, a start from frame 0, seeks with both refresh
   settings and the `mkvdovi` comparison. The owner saw highlights slightly too bright (static L1; G-E).
 - [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. The MaxCLL/MaxFALL heuristic is
-  not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); where it lives is decided when this step
-  starts. Gate: G-E A/B recorded; the default stays off unless the owner prefers it. Needs: DV2.7.
+  not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); DV4.10 decides where it lives and builds the
+  static RPU as its fallback, and this step adds the opt-in. Gate: G-E A/B recorded; the default stays off
+  unless the owner prefers it. Needs: DV2.7, DV4.10 (code).
 - [DV3.5][desk] A file with Tracks behind the Clusters loses frame 0 on a seek back. Reading to the end parses Tracks
   a second time and builds new `Track` objects, so `dvFirstAuClusterPosition` is gone; a later seek to the first
   Cluster then gets no scene refresh on frame 0. Found by U1.14; with Tracks in front the same seek is right. Gate:
@@ -934,7 +945,7 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 - **Status:** Open. DV4.1 (the HLG shot-list provider, opt-in by `debug.nuvio.dv_manifest_url`), DV4.4,
   DV4.5 (the device run, owner preferred it to static L1), DV4.6, DV4.7 and DV4.8 (a saved setting for the
   manifest folder, default `https://subs.m4ntic.tech/dv/`) and DV4.9 (a full-length title through the PC → Oracle →
-  Shield path) are done (log). Open: the DV4.2 server mode and DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05). The Shield
+  Shield path) are done (log). Open: HDR10 from a manifest (DV4.10, DV4.11), the per-shot curve (DV4.12), the DV4.2 server mode and DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05). The Shield
   reaches the Oracle host only through its public reverse proxy (DV4.5 log). Manifests are made and served by
   the subtitles add-on (owner, 2026-11-07): a dashboard button queues a played HLG release, a worker on the PC
   runs `mkvdovi manifest`, and the add-on serves `https://subs.m4ntic.tech/dv/<lookup_key>.dvmanifest.json`
@@ -948,10 +959,32 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   reaches the injector before that shot's commitment deadline; other fixtures, including a seek inside
   a long uncut shot, keep the fallback until an eligible shot is ready, and the time to the first usable
   finished shot is recorded; no added dropped frames. Needs: DV4.1, DV4.2, DV4.5, DV5.1.
+- [DV4.10][desk] The shot-list provider takes an 8.1 manifest for a PQ (HDR10) track. hdr-analyze's manifest
+  already covers HDR10 → 8.1 (`docs/PLAYBACK_MANIFEST.md`, scope of version 1); the provider keeps such a
+  track on its fallback today, because 8.1 needs a fallback RPU before the first validated IRAP and after
+  a rejection (`ShotListDvRpuSource.kt:17-18`). That fallback is a static 8.1 RPU from the MaxCLL/MaxFALL
+  heuristic DV3.3 describes; this step decides where the heuristic lives, and DV3.3 then only adds its
+  opt-in. The step also settles what a PQ track without a manifest does: stay native HDR10, which needs
+  the lookup answered before the formats are published, or follow DV3.3's opt-in. Gate: extractor unit
+  tests with an 8.1 manifest fixture: every AU carries the manifest's RPU, equal to `mkvdovi`'s 8.1 output
+  for the same source; a rejection hands over to the static RPU; a PQ track without a manifest keeps the
+  Format the step decided. Needs: DV4.1.
+- [DV4.11][device][owner][new-build] A full-length HDR10 title through the PC → add-on → Shield path, once
+  the add-on's job accepts an HDR10 release. Gate: the release line shows every AU from the manifest and
+  0 from the fallback; the dumped RPUs equal `mkvdovi`'s for the same source; no added dropped frames;
+  and the owner's G-E A/B on the C9 against the same title as native HDR10, with the TV set as in daily
+  use, is in the log. The default follows that verdict. Needs: DV4.10.
+- [DV4.12][desk] A manifest version that carries each shot's reshaping and its curve-mapped L1 and L3
+  (hdr-analyze P14, per-shot dynamic contrast, 8.1 only), built into every AU's RPU by the injector.
+  Version 1 cannot carry it. It starts when hdr-analyze's P14.2 has passed on the C9; the manifest
+  version is specified there first. Gate: on a fixture, every RPU equals
+  `mkvdovi --dynamic-contrast` output for the same source and strength, and a version 1 manifest still
+  plays. Needs: DV4.10.
 
 #### DV5: T2 and T3, analysed on the Shield
 
-- **Status:** Open. T2 depends on G-A and G-F; T3 also on G-B.
+- **Status:** Open. T2 (idle analysis) is the target and depends on G-A and G-F. T3 (during playback)
+  also needs G-B and is not scheduled until Q5.7 passes (owner, 2026-11-14), through DV1.3.
 - [DV5.11][device] Vulkan frame import and synchronization (`ash` or C++): fences, image lifetime,
   buffer reuse. Gate: the G-A lifetime, fence and reuse tests pass on the Shield. Needs: DV1.2.
 - [DV5.3][desk] PQ statistics and reductions in Vulkan: workgroup-local histograms and partial sums, a
@@ -1047,7 +1080,8 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 - Parity tolerances. Proposal: for identical frames, per-shot L1 median within 4 codes and maximum
   within 16 codes of the desktop; for approximation policies, the error table of DV1.5 decides.
 - Whether static HDR10 → 8.1 is ever on by default (after G-E).
-- Whether a LAN PC running hdr-analyze is an acceptable dependency.
+- Decided 2026-11-14: a PC running hdr-analyze is an acceptable dependency. Manifests made ahead of time
+  are the main path (DV4); on the Shield only idle analysis (T2) is scheduled, and T3 waits for Q5.7.
 - Whether Profile 7 FEL titles stay on mode 2 on Nvidia after DV7.7, and whether an RPU-only FEL
   provider (DV7.8) is wanted once hdr-analyze has measured what it gains; a default change needs
   FEL_PLAN gate 6 (real playback against dual-layer playback of the disc).
