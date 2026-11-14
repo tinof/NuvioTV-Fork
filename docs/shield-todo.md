@@ -294,7 +294,8 @@ as the floor of upstream's new settle wait. These apply on the Shield too, with 
   (bb6c553a8), and the details prefetch waits up to 750 ms after focus settles (04c569908). The S4.2 focus
   debounce candidates now sit on top of these.
 - Upstream's new thread caps (24 IO threads, 8 background lanes) apply to 32-bit, low-RAM and 2560 MB-and-under
-  boxes only (679ecd174). The Shield TV Pro 2019 (2946 MB, 64-bit) keeps the uncapped pool.
+  boxes only (679ecd174). The Shield TV Pro 2019 (2946 MB, 64-bit) keeps an uncapped IO pool; its new shared
+  lane for big background jobs is 16 wide.
 
 Measurements taken before 2026-11-14 predate these defaults.
 
