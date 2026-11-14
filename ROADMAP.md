@@ -103,6 +103,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-14 | Q2.2 closed: while a track-AFR switch has audio and video off, the both-off selection no longer clears `isHdrVideo` or `tunnelingApplied` in the player UI state. | Q2 | [log](docs/ROADMAP_LOG.md), PR #66 |
 | 2026-11-13 | R2.1 closed: on Nvidia a finishing, destroyed or detached activity skips the switch-back after Stop and clears the saved mode; other devices still restore at once. | R2 | [log](docs/ROADMAP_LOG.md), PR #65 |
 | 2026-11-12 | U1.5: rebased onto upstream 1.1.0-arc.2 (official 1.1.0) with no drop; both protected features kept every line; new fork commits keep both AAC-to-DTS transcodes on their proven paths, give local Shield builds a version above the installed one and index the fork's settings rows for search. | U1 | [log](docs/ROADMAP_LOG.md), PR #62 |
 | 2026-11-10 | DV4.9 closed (owner): a full-length HLG WEB-DL episode streamed through AIOStreams, its manifest made on the PC from a dashboard job and served by the subtitles add-on, plays as 8.4 with every AU from the manifest (21151 on the first run, 14707 on a resume, 0 from the fallback), fetched in 639–733 ms; seeks and the resume kept it; 2 single drops only while scrubbing fast. | DV4 | [log](docs/ROADMAP_LOG.md) |
@@ -284,13 +285,11 @@ because a wrong passthrough path is invisible until measured.
 
 ### Q2: AFR plan and settle correctness
 
-- **Status:** Partial. Q2.5 is done: the Nvidia settle hold is 600 ms (PR #43, see the log). Q2.1–Q2.4,
-  Q2.6 and Q2.7 are open. Findings B1, B4, B5, D1, D5.
+- **Status:** Partial. Q2.5 and Q2.2 are done: a 600 ms Nvidia settle hold, and the quiesce keeps the HDR
+  and tunnel flags ([log](docs/ROADMAP_LOG.md)). Open: Q2.1, Q2.3, Q2.4, Q2.6, Q2.7. Findings B1, B4, B5, D1, D5.
 - [Q2.1][desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that
   the display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
   `FrameRateUtils.kt:681`). Gate: unit test of the plan.
-- [Q2.2][desk] Do not update `isHdrVideo` and `tunnelingApplied` from the both-off selection during an
-  audio-and-video quiesce (B4, `PlayerRuntimeControllerTracks.kt:174`). Gate: unit test.
 - [Q2.3][desk] Clamp the settle hold to 3000 ms so the track-AFR deadline cannot run out (B5). Gate: unit
   test.
 - [Q2.4][device][new-build] Re-entry: Stop a title whose rate differs from the UI mode, then start another of
