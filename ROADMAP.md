@@ -89,6 +89,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-15 | Q2.8 closed: on Nvidia, 25 and 29.97/30 fps titles take the exact refresh rate before the doubled one, with `afr_exact_first` as the revert switch; other boxes keep upstream's doubled-rate order. | Q2 | [log](docs/ROADMAP_LOG.md), PR #70 |
 | 2026-11-15 | U1.5: rebased onto upstream 1.1.0-arc.4 with no drop; both protected features kept every line; the Nvidia 0.6 s settle hold is now the floor of upstream's new settle wait; upstream's 25p → 50 Hz order was taken, and Q2.8 adds an Nvidia exact-first gate. | U1, Q2 | [log](docs/ROADMAP_LOG.md), PR #69 |
 | 2026-11-14 | Roadmap review: the north star names the Shield → HT-A9 → C9 chain and the conversions are ranked in Priorities; Q5 moves to the top; a PC is an accepted dependency, so only idle analysis (T2) stays scheduled on the Shield; the Shield reports Vulkan 1.1.178 with compute and the AHardwareBuffer import; DV4.10 to DV4.12 and U1.17 added; upstream pull requests deferred. | all | [log](docs/ROADMAP_LOG.md), PR #67 |
 | 2026-11-14 | Q2.2 closed: while a track-AFR switch has audio and video off, the both-off selection no longer clears `isHdrVideo` or `tunnelingApplied` in the player UI state. | Q2 | [log](docs/ROADMAP_LOG.md), PR #66 |
@@ -287,10 +288,9 @@ hdr-analyze.
 
 ### Q2: AFR plan and settle correctness
 
-- **Status:** Partial. Q2.5 and Q2.2 are done: a 600 ms Nvidia settle hold, and the quiesce keeps the HDR
-  and tunnel flags ([log](docs/ROADMAP_LOG.md)). Open: Q2.1, Q2.3, Q2.4, Q2.6, Q2.7, Q2.8. Findings B1, B4, B5, D1, D5.
-  Since the sync of 2026-11-14 the 600 ms is the floor of upstream's settle wait (d14c13cbc), which then waits
-  for the HDMI audio link.
+- **Status:** Partial. Q2.5, Q2.2 and Q2.8 are done: a 600 ms Nvidia settle floor, the quiesce keeps the HDR and
+  tunnel flags, and 25 and 30 fps take the exact rate first on Nvidia ([log](docs/ROADMAP_LOG.md)). Open: Q2.1,
+  Q2.3, Q2.4, Q2.6, Q2.7. Findings B1, B4, B5, D1, D5.
 - [Q2.1][desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that
   the display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
   `FrameRateUtils.kt:681`). Gate: unit test of the plan.
@@ -309,9 +309,6 @@ hdr-analyze.
   log, with a unit test if the hold is not applied. The sync of 2026-11-14 replaced that code: the hold is
   upstream's `afrSettleHolding` gate and counts from the stabilized switch on Nvidia (owner, 2026-11-14).
   Answer for the new code.
-- [Q2.8][desk] On Nvidia, pick the exact refresh rate before the doubled one for 25 and 29.97/30 fps, with a
-  `debug.nuvio.*` revert switch (owner, 2026-11-14). Upstream prefers 50 and 60 Hz again (d14c13cbc), and 4K50
-  Dolby Vision caused the HDMI hotplug storm of 2026-10-28 on this chain. Gate: unit test of the mode choice.
 
 ### Q3: frame pacing and display-listener leak
 
