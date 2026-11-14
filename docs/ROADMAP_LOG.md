@@ -10,6 +10,24 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-15: Q2.8 Exact refresh rate first on Nvidia for 25 and 30 fps (PR #70)
+
+- [Q2.8][desk] On Nvidia, pick the exact refresh rate before the doubled one for 25 and 29.97/30 fps, with a
+  `debug.nuvio.*` revert switch (owner, 2026-11-14). Upstream prefers 50 and 60 Hz again (d14c13cbc), and 4K50
+  Dolby Vision caused the HDMI hotplug storm of 2026-10-28 on this chain. Gate: unit test of the mode choice.
+
+- **Evidence:** `AfrExactFirstTest` ("exact first sends 25 and 30 fps to their own rates", "upstream's order
+  sends 25 and 30 fps to the doubled rates", "exact first falls back to the doubled rate when the display
+  lacks the exact one", "the switch wins over the device"). Without the wiring line the first one fails
+  (expected 25.0, was 50.0). Full unit gate green (10050 tests, 0 failures); an earlier full run had one
+  failure in `HomeEnrichmentRetryTest`, a real-time debounce test in Home code, which passed 3 of 3 alone.
+  Tier 2 review on PR #70: codex and gemini both LGTM. No run on the Shield.
+- **Resolution:** `AfrExactFirst` decides the order, and `chooseBestCadence` asks it before taking the doubled
+  rate. On Nvidia the exact rate goes first; `debug.nuvio.afr_exact_first` `0` gives upstream's order back and
+  `1` turns exact-first on for any box. A display that offers the doubled rate as a seamless switch still takes
+  it, as upstream's seamless rule decides after the cadence choice. Interlaced 25 and 29.97 sources lose the
+  field rate on Nvidia. The `afr_exact_first` row in `docs/shield-todo.md` names what to check on the device.
+
 ## 2026-11-15: U1.5 sync of 2026-11-14 onto upstream 1.1.0-arc.4 (PR #69)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `8f3056e6d` onto `5575b0be0` (1.1.0-arc.4 plus two issue-form
@@ -78,7 +96,8 @@ README's Nvidia table had two stale cells (System Passthrough on by default, a 1
 
 **Open, for the owner**
 
-- Q2.8, the Nvidia exact-first gate, in its own PR. A build of this tip sends 25p to 50 Hz on the Shield.
+- Q2.8, the Nvidia exact-first gate, in its own PR (done in PR #70). A build of the sync tip without it sends
+  25p to 50 Hz on the Shield.
 - Q2.3 now holds the Nvidia deadline margin; Q2.7 holds the pre-start anchor.
 - The Q2.5 measurement (600 ms, three clean starts) predates the link wait. A device run of a 25 fps DTS-HD
   title shows what the wait adds on the HT-A9.
