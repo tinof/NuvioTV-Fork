@@ -10,6 +10,20 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-14: Q2.2 Keep the HDR and tunnel flags through the quiesce (PR #66)
+
+- [Q2.2][desk] Do not update `isHdrVideo` and `tunnelingApplied` from the both-off selection during an
+  audio-and-video quiesce (B4, `PlayerRuntimeControllerTracks.kt:174`). Gate: unit test.
+
+- **Evidence:** `TrackSelectionFlagsTest` ("the both-off selection of an audio-and-video quiesce keeps hdr
+  and tunnelling", "outside the quiesce a track change sets hdr and tunnelling"). Full unit gate green
+  (9575 tests, 0 failures). Tier 2 review on PR #66: codex and gemini both LGTM.
+- **Resolution:** `onTracksChanged` and `updateAvailableTracks` set the flags through
+  `withTrackSelectionFlags`, which leaves them alone while the audio-and-video quiesce is in flight; for
+  `isHdrVideo` only a selection without a selected video is held back. The test covers the helper, not
+  the call-site condition. Gemini's P2 note: a both-off `onTracksChanged` that arrives after the quiesce
+  ends (no display switch, or the absolute deadline) can still clear the flags briefly.
+
 ## 2026-11-13: R2.1 Skip the switch-back when the activity is gone (PR #65)
 
 - [R2.1][desk] When the activity is finishing or destroyed, or the window is detached, return Skip plus
