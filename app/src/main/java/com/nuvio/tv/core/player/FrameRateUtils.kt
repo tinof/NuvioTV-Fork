@@ -485,7 +485,7 @@ object FrameRateUtils {
         // 25 and 29.97/30 fps play at 50 and 59.94/60 Hz when the display has them: the same clean cadence,
         // with menus, subtitles and the TV's motion handling at their usual rate. Interlaced sources show up
         // here as 25/29.97 and need the field rate anyway.
-        if (!allowLowRates && prefersDoubleRate(frameRate)) {
+        if (!allowLowRates && prefersDoubleRate(frameRate) && !AfrExactFirst.enabled()) {
             pickBestForTarget(modes, frameRate * 2f)?.let {
                 return ModeChoice(it, ModeMatchQuality.DOUBLE)
             }
