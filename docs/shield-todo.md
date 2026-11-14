@@ -48,7 +48,7 @@ lists). Restart playback, or the app for the rows marked *app*.
 | A TrueHD/DTS-HD track that the platform sink plays keeps tunneling. Inert on mdarcy SE 9.2.4 (no decoder tunnels) | `hbr_tunnel` (`0`) | `PLAYBACK_TUNNELING: requested=… applied=`, stalls |
 | The surround decision uses the stereo / 5.1 / 7.1 probe union and the HDMI channel count | `audio_probe_union` (`0`) | Settings > Advanced > Source & hardware |
 | A track-AFR mode switch under tunneling with TrueHD/DTS-HD takes audio and video down and up together. Inert on mdarcy SE 9.2.4 (no decoder tunnels); `1` now forces it without tunneling too | `afr_quiesce_av` (`0`) | First play of a 24p TrueHD title: `Track AFR settle complete: … quiesced=AUDIO_AND_VIDEO`, and no stuck loading screen |
-| AFR settle hold of 0.6 s instead of 2 s (Q2.5, PR #43), on the track-AFR path and (since round 3) the pre-start path | `afr_settle_ms` (`2000`) | Logcat `Switching display mode` → `Display mode switch stabilized at … after N ms` → `Track AFR settle complete:` / `Preflight AFR settle complete: holdMs=` |
+| AFR settle hold of 0.6 s instead of 2 s (Q2.5, PR #43), on the track-AFR path and (since round 3) the pre-start path. Since the sync of 2026-11-14 it is the floor of upstream's settle wait (d14c13cbc): 0.6 s from the stabilized switch, then until the HDMI audio link is back, at most 3 s more. A longer saved "Delay after refresh rate change" wins | `afr_settle_ms` (`2000` = upstream's wait, counted from the switch request) | Logcat `Switching display mode` → `Display mode switch stabilized at … after N ms` → `Track AFR settle complete:` / `Preflight AFR settle complete: holdMs=` |
 | A tunneled start waits for the real first frame (only for decoders seen reporting frames) | `tunnel_real_first_frame` (`0`) | The loading screen ends with the picture |
 | Dolby Vision plays untunneled | `dv_no_tunnel` (`0`) | DV signalling on the TV, sync |
 | With "Convert HLG and HDR10+ to Dolby Vision" on, an HDR10+ MKV plays as Dolby Vision 8.1 with L1 from each AU's HDR10+ SEI (ROADMAP DV3.1) | `dv_hdr10plus` (`0` keeps PQ native) | The TV's Dolby Vision badge; logcat `DV_INJECT track N: HDR10+ 8.1`; the DV2.8 dump compared with `dovi_tool` (`scripts/rpu_dump_to_bin.py --order pts`) |
@@ -127,7 +127,8 @@ has no setting, upstream's new default applies on the Shield too, with no fork s
   values parse, so the fork's canvas-overlay default and its `libass_overlay_canvas` switch are gone. A new render
   scale setting defaults to Full; libass itself stays off by default.
 - Frame-rate matching picks the exact refresh rate before the doubled one (bbdac4577). On a chain without QMS, PAL
-  25p now switches to 25 Hz instead of 50 Hz.
+  25p now switches to 25 Hz instead of 50 Hz. Since the sync of 2026-11-14 the doubled rate comes first again for
+  25 and 29.97/30 fps (d14c13cbc); see that section.
 - Buffer sizing keeps a 28 MB margin instead of 100 + 40 MB (47d1c5834), so about 112 MB more buffer can be sized
   at start. Chunk sizes gain a 12 MB step (5ff59fca0). Seek thumbnails fetch with up to 4 lanes while playing
   instead of 3 (5ea64a68c).
@@ -172,7 +173,8 @@ Measurements taken before 2026-10-27 predate these defaults.
 - The player build waits up to 500 ms, not 100 ms, for Home to release pictures (c5b872833).
 - With "Release decoder in background" on, leaving the app with the player open releases the decoder; playback
   rebuilds paused at the saved position on return (0b9269276). It does not switch the display mode back. Since the
-  sync of 2026-11-11 the setting is off by default, so the decoder stays (3412e2803).
+  sync of 2026-11-11 the setting is off by default, so the decoder stays (3412e2803). Since the sync of 2026-11-14
+  a player that holds 500 MB or more of buffer is released anyway (d14c13cbc).
 - Tunnelled playback is skipped while a USB audio output is listed; below API 33 any listed USB output counts
   (2a32c1532).
 - ASS render mode defaults to Overlay (d5da6bcaa). The new Video Effect mode tone-maps HDR to SDR and is refused on
@@ -225,7 +227,8 @@ Measurements taken before 2026-11-04 predate these defaults.
 
 `perf/shield-pass` was rebased onto ysosrs123's 1.1.0-arc.2 (official NuvioTV 1.1.0). The one value this pass sets
 that upstream touched is the lossless track default (the every-device list above). Plain DTS on the own IEC track
-is new; the `hbr_iec` row above now covers it. The settle holds stay as the `afr_settle_ms` row has them; upstream keeps its own at 2 s.
+is new; the `hbr_iec` row above now covers it. The settle holds stay as the `afr_settle_ms` row has them;
+upstream keeps its own at 2 s (replaced by a settle wait in the sync of 2026-11-14).
 These apply on the Shield too, with no fork switch unless a row says so:
 - Plain DTS at 44.1 or 48 kHz takes the own IEC track like TrueHD and DTS-HD (5acc8e739). `hbr_iec` `0` sends
   it back to the platform sink.
@@ -236,7 +239,8 @@ These apply on the Shield too, with no fork switch unless a row says so:
   (fc879c6da). The fork's settle hold and quiesce apply to that switch.
 - A saved frame rate is checked against the track's reported rate, as a seed is (fc879c6da).
 - Leaving the app with the player open keeps the decoder, unless "Release decoder in background" is on
-  (3412e2803). This makes the release from the sync of 2026-10-31 (0b9269276) opt-in.
+  (3412e2803). This makes the release from the sync of 2026-10-31 (0b9269276) opt-in. Since the sync of
+  2026-11-14 a player that holds 500 MB or more of buffer is released anyway (d14c13cbc).
 - mpv decodes MPEG-4 Part 2 (XviD, DivX) in software and no longer hands it to MediaCodec (8868e2efe).
 - The "Convert DV5 to DV8.1" row shows only while Dolby Vision handling converts to DV8.1, with new help
   text (b858c96aa). Before, it was always shown and greyed out.
@@ -256,6 +260,41 @@ Fork rules kept on top of these, on every box, with no switch:
   (1282ea139). Upstream now moves lossless DTS-HD to 8 channels; real DTS-HD tracks still move.
 
 Measurements taken before 2026-11-11 predate these defaults.
+
+### Upstream defaults taken with the sync of 2026-11-14
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.1.0-arc.4 (`5575b0be0`, two issue-form commits past the tag). The
+one value this pass sets that upstream touched is the settle hold: the `afr_settle_ms` row above now describes it
+as the floor of upstream's new settle wait. These apply on the Shield too, with no fork switch unless a row says so:
+- After a display-mode switch, playback waits on upstream's settle wait and no longer a fixed time (d14c13cbc): a
+  minimum, then until the HDMI audio link reports up, at most 3 s more. The minimum is 2 s on other boxes and the
+  fork's 0.6 s on Nvidia. Logcat tag `AfrSettle` prints `settled after N ms (hdmiAudio=…)`. mpv keeps upstream's
+  2 s on every box.
+- A new setting "Delay after refresh rate change" (Auto, or 3 to 10 s) is shown while frame-rate matching is on
+  (d14c13cbc, 2d30534d8). Auto is the default. On Nvidia, Auto means the 0.6 s floor; a saved delay wins over it.
+- 25 and 29.97/30 fps titles switch to 50 and 59.94/60 Hz again where the display has them (d14c13cbc). This
+  reverses the exact-first order taken on 2026-10-26. On this chain, HLG 25p converted to Dolby Vision goes back
+  to 4K50, the mode of the HDMI hotplug storm of 2026-10-28. ROADMAP Q2.8 adds an Nvidia exact-first gate with a
+  revert switch; a build without it switches 25p to 50 Hz.
+- 48 fps switches to 60 Hz on a display without 48, 96, 120 or 144 Hz. A video up to 2 % larger than a mode
+  (1928x1080, 3848x2160) still counts as that mode (d14c13cbc).
+- The 23.976 preference covers 23.95 to 23.988 fps and no longer up to 23.999, on the track and the preflight
+  path (d14c13cbc). This touches the open Q2.6.
+- Leaving the app releases the player when it holds 500 MB or more of buffer, even with "Release decoder in
+  background" off (d14c13cbc). The buffer budget on `mdarcy` is about 500 MB, so a film with a full buffer is
+  usually released; playback rebuilds paused at the saved position on return.
+- While paused with less than 300 MB of free memory, the buffer stops loading beyond what it holds, until
+  playback resumes (d14c13cbc). The open Q5.4 sets no value here.
+- When the measured refresh rate differs from the one Android reports, the player shows the display info again,
+  and a one-time card offers "Turn off", which saves Frame Rate Matching as off (c113f7eb5). The Start/Stop
+  default above yields to that saved value.
+- Home waits 200 ms more before a focused card's lookups when focus steps come less than 450 ms apart
+  (bb6c553a8), and the details prefetch waits up to 750 ms after focus settles (04c569908). The S4.2 focus
+  debounce candidates now sit on top of these.
+- Upstream's new thread caps (24 IO threads, 8 background lanes) apply to 32-bit, low-RAM and 2560 MB-and-under
+  boxes only (679ecd174). The Shield TV Pro 2019 (2946 MB, 64-bit) keeps the uncapped pool.
+
+Measurements taken before 2026-11-14 predate these defaults.
 
 ## History
 
