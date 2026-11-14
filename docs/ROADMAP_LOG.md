@@ -10,6 +10,102 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-14: Roadmap review: goal, ranking, Vulkan capability list (PR #67)
+
+The owner asked for a review of the roadmap against the goal "the best player for the Shield Pro and the
+LG OLED C9", of the hdr-analyze integration, of Vulkan compute on the Shield, and of the sync strategy,
+and accepted its recommendations the same day.
+
+**Decisions (owner, 2026-11-14):**
+
+- The north star names the chain Shield TV Pro 2019 → Sony HT-A9 → LG OLED C9 and includes the
+  conversions. Until now the Scope excluded them and Appendix A was unranked, while both protected
+  features are conversions.
+- Priorities are re-ranked. Q5 (stutter under memory pressure) is first: the owner sees it in every 4K
+  title, none of its 7 steps has closed since 2026-10-21, and the same memory limit blocks DV5. The
+  conversion steps are ranked by step ID, because the parser does not read the `####` items of Appendix A.
+- A PC running hdr-analyze is an accepted dependency. On the Shield only idle analysis (T2) stays
+  scheduled; analysis during playback (T3) waits for Q5.7 through DV1.3.
+- Upstream pull requests (U1.2 to U1.4) are deferred. Their text stays in the U1 item.
+
+**New steps:** DV4.10 and DV4.11 (HDR10 → 8.1 from a manifest: hdr-analyze's manifest version 1 already
+covers it, the fork's provider keeps a Profile 8.1 target on its fallback), DV4.12 (a manifest version for
+hdr-analyze P14's per-shot curve), U1.17 (a cost figure in every sync's entry).
+
+**Corrections:** "Current status" was dated 2026-10-15 (63 commits ahead of `main`). The open sync steps
+U1.10 to U1.16 were indented under a context bullet, so `roadmap-ready.sh` did not read them; they now
+start at column 0. U1.13 lost its `Needs: DV3.4`, which has been met since PR #37.
+
+**Vulkan capability list.** Read-only, with nothing playing and no setting changed:
+`adb shell pm list features` and `adb shell cmd gpu vkjson` on `mdarcy`, Android 11, SE 9.2.4
+(`NVIDIA/mdarcy/mdarcy:11/RQ1A.210105.003/7825230_4387.0822`). The dump is in
+`~/shield-snapshots/20261114-vkjson/vkjson.json`.
+
+- Features: `android.hardware.vulkan.compute`, `android.hardware.vulkan.level=1`,
+  `android.hardware.vulkan.version=4198400` (1.1.0).
+- Device: "NVIDIA Tegra X1 (rev B) (nvgpu)", API 1.1.178, driver 495.00, conformance 1.1.3.6, 99 device
+  extensions, one queue family with 16 queues (graphics, compute, transfer).
+- Present: `VK_ANDROID_external_memory_android_hardware_buffer`, `VK_KHR_sampler_ycbcr_conversion`
+  (`samplerYcbcrConversion` 1), `VK_EXT_queue_family_foreign`, `VK_KHR_external_memory_fd`,
+  `VK_KHR_external_fence_fd`, `VK_KHR_external_semaphore_fd`, `VK_KHR_dedicated_allocation`,
+  `VK_KHR_16bit_storage` (storage buffers yes, shader input and output no), `shaderInt64`, `shaderInt16`.
+- Absent: `VK_KHR_timeline_semaphore`, `VK_KHR_shader_float16_int8`, `VK_EXT_external_memory_host`.
+- Limits: compute shared memory 49152 bytes, 1536 invocations per work group (1536 × 1024 × 64), subgroup
+  size 32.
+- Formats: `G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16` lists sampled image, linear filter, transfer,
+  midpoint and cosited chroma (optimal tiling features `0x8fd001`): no storage image and no disjoint
+  planes. `G8_B8R8_2PLANE_420_UNORM` adds disjoint planes (`0xcfd001`). `R16_UNORM` and `R32_UINT` are
+  storage image formats.
+
+Reading: the capability half of DV1.2 is answered, and CUDA stays unavailable. Unrun: an `ImageReader` on
+`OMX.Nvidia` HEVC output, the import of its buffers, code-value parity with the desktop (G-A), and a second
+4K decode (G-B). The resource check of 2026-10-26 still names memory, not the GPU, as the limit.
+
+**Sync review.** The strategy stays (one rebased branch, `main` as mirror, CI on the candidate, the
+protected-line check, one atomic publish); the study of 2026-10-31 rejected the alternatives on numbers.
+Open points, now in U1: no cost figure since that study (U1.17); U1.13 not done in the three syncs since
+DV3.4 merged (2026-11-03, 2026-11-04, 2026-11-12); and U1.12's gate only partly shown: those three entries
+name `dry-run` and `judgement`, the first two also `due`, none names `official-preview`, `docs-entry` or
+the subagent rebase. `sync.py due` on 2026-11-14: due, 24 behind, first-parent quiet 25.5 h.
+
+**The "Current status" text of 2026-10-15 that this change replaced**, kept for its rules and numbers:
+
+> The branch is 63 commits ahead of `main` and 0 behind, so it merges as a fast-forward. It adds 20 Nvidia
+> defaults, each with a revert switch, and its unit tests pass in CI (run 38585630985).
+>
+> The device report of 2026-10-14 ran on a build from before round 3 (CI run 38561775458). That build is
+> still the one installed on the Shield (APK hash checked on 2026-10-15), so every `new-build` step needs a
+> fresh CI build of HEAD first. The report found two incidents:
+>
+> - **Incident 02 (regression from this branch):** with "True black bars" on, the letterbox bars show the
+>   previous screen and old subtitle lines. The cause is the Nvidia `opaque_window` default (be0ce8ec9):
+>   it creates the app's renderer opaque, so the transparent bars are never cleared (R1).
+> - **Incident 01:** after Stop, the switch back to the UI refresh rate hung the NVIDIA composer HAL until a
+>   power cycle. The 750 ms delay added in round 3 does not touch the condition seen before the hang
+>   (HDCP read failures from the switch-in onwards), so it is not a proven fix (R2).
+>
+> The report also measured about 3 s from click to first frame, seeks of 81–4187 ms, a 500–750 ms freeze
+> of the main thread at Stop, and an unpaced 4K seek-thumbnail sweep during playback (43 % CPU, 387 MB
+> native heap). Home scrolled at 0.23 % janky frames; on the player route single frames took up to 1442 ms
+> at start and 748 ms at Stop. The findings of the start, seek and memory lane (S1,
+> S2) were not checked by a skeptic pass; their first step is a re-read.
+>
+> The owner reported moving the UI from 2160p 25 Hz to 24 Hz; on 2026-10-15 the Shield still read mode 21
+> (2160p 25 Hz) as active and default. Whatever the UI rate, a title at that rate needs no HDMI mode switch,
+> and every UI animation runs at it. Device steps that test switching use titles whose rate differs from
+> the UI mode.
+>
+> **Upstream sync (2026-10-20).** The branch was rebased onto upstream 1.1.0-nt.7.3. Where upstream changed a
+> setting this pass also sets, the fork's value stays: AV1 trailers need hardware on Nvidia, full swap still
+> refuses thumbnail decodes on `mdarcy`, TrueHD stays on the platform sink (Q1.2 now covers upstream's
+> keep-alive) and the fork's datasource AAR stays. Elsewhere upstream's new defaults apply on the Shield too,
+> listed in [`docs/shield-todo.md`](docs/shield-todo.md). Device numbers above predate them, and the installed
+> build predates the sync.
+>
+> **Appendix A (2026-10-24).** On the separate Dolby Vision track, DV2.1 to DV2.4, DV2.7 and DV2.8 are done
+> and DV1.4 is closed. HLG titles can now play as Dolby Vision 8.4 with the setting on; DV3.2 (HLG → 8.4 on
+> the Shield), DV1.8 and DV2.9 (the dump's device checks) are next. A.4 ends with how device builds are made.
+
 ## 2026-11-14: Q2.2 Keep the HDR and tunnel flags through the quiesce (PR #66)
 
 - [Q2.2][desk] Do not update `isHdrVideo` and `tunnelingApplied` from the both-off selection during an

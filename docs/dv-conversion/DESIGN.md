@@ -88,11 +88,16 @@ Checked in code on 2026-10-16; fork references re-checked on 2026-10-23, after D
   7.0; 1R7 dropped CUDA). One NVIDIA forum thread (forums.developer.nvidia.com/t/77215, June 2019)
   reports `cudaErrorInsufficientDriver` on Shield TV with Android 8.0. hdr-analyze's GPU path needs
   CUDA 12 and NVRTC.
-- **Vulkan on the Shield is not confirmed for this firmware.** The Shield TV reports on
-  vulkan.gpuinfo.org are from Android 7.0 (driver 361.0.0.0): report 2952 at Vulkan 1.0.61 with
-  `VK_KHR_sampler_ycbcr_conversion`, report 1977 at 1.0.56 without it. Both list `shaderInt64` and
-  48 KB compute shared memory, and neither lists `VK_ANDROID_external_memory_android_hardware_buffer`.
-  What counts is the import extension, the formats and the features on SE 9.2.4, not the version number.
+- **Vulkan on the Shield has what the import needs, on paper.** `cmd gpu vkjson` on SE 9.2.4
+  (2026-11-14, `docs/ROADMAP_LOG.md`) reports Vulkan 1.1.178, NVIDIA driver 495.00, the feature
+  `android.hardware.vulkan.compute`, `VK_ANDROID_external_memory_android_hardware_buffer`,
+  `VK_KHR_sampler_ycbcr_conversion` with its feature on, `VK_EXT_queue_family_foreign`,
+  `VK_KHR_external_fence_fd`, `VK_KHR_16bit_storage`, `shaderInt64` and 48 KB compute shared memory.
+  `G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16` can be sampled (midpoint and cosited chroma) but is no
+  storage image. `VK_KHR_timeline_semaphore` is absent. The public reports on vulkan.gpuinfo.org are
+  from Android 7.0 (Vulkan 1.0.x, no AHardwareBuffer import) and no longer describe this box. Not shown
+  by a capability list: that the decoder's output buffers import, in which format, and with exact code
+  values (G-A, DV1.2).
 - **wgpu cannot import decoder frames.** It has no YCbCr samplers or external formats
   (github.com/water-rs/wgpu-external-frame issue 16 and PR 17); the import needs raw Vulkan (`ash` or
   C++). wgpu could still run the reductions after a copy. The public `YCBCR_P010` image format starts at

@@ -8,8 +8,8 @@ playback and display chain, and links the log entry with the measurements.
 
 | Gate | Tiers | Configuration | Result | Date | Evidence |
 |---|---|---|---|---|---|
-| G-A | T2, T3 | PQ, 4K, ImageReader PRIVATE → AHardwareBuffer → Vulkan | not run | | DV1.2 |
-| G-A | T2, T3 | HLG, 4K, ImageReader PRIVATE → AHardwareBuffer → Vulkan | not run | | DV1.2 |
+| G-A | T2, T3 | PQ, 4K, ImageReader PRIVATE → AHardwareBuffer → Vulkan | not run; the driver lists the import, YCbCr sampling and compute (capability list, 2026-11-14, log) | | DV1.2 |
+| G-A | T2, T3 | HLG, 4K, ImageReader PRIVATE → AHardwareBuffer → Vulkan | not run; capability list as for PQ | | DV1.2 |
 | G-A | T2, T3 | PQ, 4K, P010 ByteBuffer read on the CPU | not run | | DV1.2 |
 | G-B | T3 | 4K24, every frame | not run | | DV1.3 |
 | G-B | T3 | 4K24, without top-layer `_N` pictures | not run | | DV1.3 |
