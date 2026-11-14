@@ -627,8 +627,9 @@ also every AU's fallback. Per AU the matcher's `Inject` gives the shot's RPU (re
 `Fallback` the static RPU; a rejection or a native failure gives the static RPU for the rest of the
 playback. An AU whose provider differs from the previous AU of the generation is a provider switch
 (2.2), so the first injected AU after a seek's leading fallback AUs is refreshed too. Profile 8.1 keeps
-its own sources until DV3.3 gives it a fallback. Not checked: that the file has one video track, since
-the extractor decides each TrackEntry as it ends; the CodecPrivate digest and the AU checks stand in.
+its own sources until DV4.10 gives it a fallback, a static 8.1 RPU; DV3.3 then only adds the static
+opt-in. Not checked: that the file has one video track, since the extractor decides each TrackEntry as
+it ends; the CodecPrivate digest and the AU checks stand in.
 
 ### 2.9 Measuring on the Shield
 
