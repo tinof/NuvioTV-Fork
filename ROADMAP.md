@@ -83,14 +83,6 @@ Steps that need a decision or a reading from the owner. Other steps of the same 
 - **Hot-Stop session (R2.4).** The owner must be able to power-cycle the Shield during the session.
 - **Default after measuring (R2.4).** Whether "keep the content frame rate after playback" becomes the
   Nvidia default.
-- **R2.2 review finding (PR #75).** Merge anyway, with R2.5 as the follow-up for the OFF restore in
-  `PlayerScreen` that the review found, or leave the PR open. Recommendation: merge; the finding is on the
-  base and outside the diff (batch, 2026-11-15).
-- **Track-AFR deadline margin (Q2.3).** By the code the case in the step already fits: 4000 ms switch wait +
-  600 ms floor + 3000 ms link wait = 7600 ms against the 8600 ms deadline, which leaves under 1 s for the
-  work before the switch. Options: add the switch wait to the Nvidia deadline a second time (12.6 s), raise
-  the margin only on Nvidia (for example to 2 s), or close Q2.3 as covered. Recommendation: raise the Nvidia
-  margin to 2 s; Q2.3 changes a Tier 2 path, so the batch did not choose (2026-11-15).
 
 ## Progress log
 
@@ -98,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-15 | R2.2 closed: any new player cancels a pending switch-back after Stop, not only one that plans a display mode; R2.5 follows up on the review finding in `PlayerScreen`. | R2 | [log](docs/ROADMAP_LOG.md), PR #75 |
 | 2026-11-15 | DV3.5 closed: with Tracks behind the Clusters, the Tracks read again at the file's end keep frame 0's Cluster, so a seek back gets its scene refresh. | DV3 | [log](docs/ROADMAP_LOG.md), PR #74 |
 | 2026-11-15 | R3.2 and R3.3 dropped by the owner: they save and check progress on the mpv pause, and the owner uses only ExoPlayer. | R3 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-15 | Q2.8 closed: on Nvidia, 25 and 29.97/30 fps titles take the exact refresh rate before the doubled one, with `afr_exact_first` as the revert switch; other boxes keep upstream's doubled-rate order. | Q2 | [log](docs/ROADMAP_LOG.md), PR #70 |
@@ -249,18 +242,11 @@ hdr-analyze.
 ### R2: switch-back after Stop (incident 01)
 
 - **Status:** Partial. The 750 ms delay ships but is unproven; on Nvidia a gone activity skips the
-  switch-back (R2.1, [log](docs/ROADMAP_LOG.md)). Open: R2.2 (PR #75, waits for the owner) to R2.5. Findings H1–H5, H7, B2, B3.
+  switch-back (R2.1, [log](docs/ROADMAP_LOG.md)); any new player cancels a pending switch-back (R2.2, PR #75).
+  Open: R2.3–R2.5. Findings H1–H5, H7, B2, B3.
 - In the incident the video layer was already gone when the switch-back hung; HDCP read failures had
   started right after the switch-in. Of the strategies weighed, only skipping the switch-back removes the
   mode set at Stop (H4). A clean run of 30 Stops cannot tell the delay from no delay (H5).
-- [R2.2][desk][batch] A pending restore is cancelled when any new player attaches, not only one that plans a mode
-  (B2). Files: `FrameRateUtils.kt` (`restoreToken`), one wiring line in `PlayerRuntimeControllerInitialization.kt`,
-  `FrameRateUtilsAfrTest.kt`. Gate: unit test.
-  - **Status (batch 2026-11-15):** built and reviewed in PR #75 (branch `fix/r2-2-cancel-restore-on-attach`,
-    head 225cd5dd8, resumed 1), CI green; left open with `review:needs-human` for F1 (Gemini, P1,
-    NEEDS-HUMAN): a new `PlayerScreen` composes with `frameRateMatchingMode` OFF, so its effect restores the
-    display at once before the settings load (`PlayerScreen.kt:715`); the code is outside the diff and on the
-    base. The owner decides merge or leave open; R2.5 is the follow-up.
 - [R2.5][desk] Hold `PlayerScreen`'s OFF restore (`PlayerScreen.kt:715`, `LaunchedEffect(uiState.frameRateMatchingMode)`)
   until the player settings have loaded: the `PlayerUiState` default OFF (`PlayerUiState.kt:247`) restores the
   UI mode at once on every new player, before `PlayerRuntimeControllerInitialization.kt:623` sets the real
@@ -314,11 +300,13 @@ hdr-analyze.
 - [Q2.1][desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that
   the display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
   `FrameRateUtils.kt:681`). Gate: unit test of the plan.
-- [Q2.3][desk][batch] Keep the track-AFR deadline from running out during the settle wait (B5). Since the sync of
-  2026-11-14 the deadline grows with the settle floor (`trackAfrDeadlineMs`, tested), so the 3000 ms clamp is
-  not needed. Left: on Nvidia the wait counts from the stabilized switch, so a 4 s switch timeout and a 3 s
-  link wait leave under 1 s of the 8.6 s deadline. Make the Nvidia deadline cover that case. Files:
-  `PlayerRuntimeControllerAfrTrack.kt` (`trackAfrDeadlineMs`), `TrackAfrSettleHoldTest.kt`. Gate: unit test.
+- [Q2.3][desk][batch] Keep the track-AFR deadline from running out during the settle wait (B5): on Nvidia, where
+  the wait counts from the stabilized switch, raise the deadline's margin (`TRACK_AFR_MARGIN_MS`) from 1000 to
+  2000 ms; other boxes keep 1000 ms. Files: `PlayerRuntimeControllerAfrTrack.kt` (`trackAfrDeadlineMs`),
+  `TrackAfrSettleHoldTest.kt`, `FrameRateKodiRulesTest.kt` (its deadline assertions). Gate: unit test of the
+  Nvidia and non-Nvidia deadlines.
+  - **Decided 2026-11-15 (owner):** a 2 s margin on Nvidia (deadline 9.6 s at the 600 ms floor). Not taken:
+    counting the 4 s switch wait twice (12.6 s), or closing Q2.3 as covered (4 + 0.6 + 3 = 7.6 s fits 8.6 s).
 - [Q2.4][device][new-build] Re-entry: Stop a title whose rate differs from the UI mode, then start another of
   the same rate while the restore to the UI mode is issued but not yet reached. Gate: the new title plays at
   its own rate. Needs: Q2.1.
