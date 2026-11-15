@@ -39,6 +39,7 @@ takes 1 + the highest number ever used for that item in `ROADMAP.md`, `docs/ROAD
 | `device` | Needs the Shield over adb (see [M2](#m2-device-safety-protocol)) |
 | `owner` | Needs the owner: a decision, a reading from the TV or AVR, or a power cycle at hand |
 | `new-build` | Needs a debug APK of the current HEAD installed on the Shield |
+| `batch` | Routed to an unattended `/ship:roadmap-batch` run; set by `/ship:roadmap-init` or `/ship:roadmap-assess` with the owner's yes |
 
 **How to update.** Change the item's status and open steps in place. Add one row to the progress log
 (one sentence plus the PR) and the full text of the step to
@@ -244,8 +245,9 @@ hdr-analyze.
 - In the incident the video layer was already gone when the switch-back hung; HDCP read failures had
   started right after the switch-in. Of the strategies weighed, only skipping the switch-back removes the
   mode set at Stop (H4). A clean run of 30 Stops cannot tell the delay from no delay (H5).
-- [R2.2][desk] A pending restore is cancelled when any new player attaches, not only one that plans a mode
-  (B2). Gate: unit test.
+- [R2.2][desk][batch] A pending restore is cancelled when any new player attaches, not only one that plans a mode
+  (B2). Files: `FrameRateUtils.kt` (`restoreToken`), one wiring line in `PlayerRuntimeControllerInitialization.kt`,
+  `FrameRateUtilsAfrTest.kt`. Gate: unit test.
 - [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
   default off. Gate: setting persists; switch still overrides.
 - [R2.4][device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
@@ -272,9 +274,10 @@ hdr-analyze.
 
 - **Status:** Partial. Q1.2 and Q1.3 are done: the IEC61937 packer is the TrueHD/DTS-HD default (PR #42, see
   the log). Q1.1 and Q1.4–Q1.7 are open. Findings A1–A3, A6, D2, D3.
-- [Q1.1][desk] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
+- [Q1.1][desk][batch] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
   skipped and the first cluster time in `MKV_RESYNC` (A2); the delta and time since the last seek on
-  `UnexpectedDiscontinuityException` (A3). Gate: tests on the log helpers.
+  `UnexpectedDiscontinuityException` (A3). Files: `IecPassthroughAudioSink.kt`, `dvmkv/MatroskaExtractor.java`,
+  `PlaybackOutputWatch.kt`. Gate: tests on the log helpers.
 - [Q1.4][device] `hbr_buffer_scale` 1 against 2 over 10 seeks: time from `SEEK_READY` to the first advance of
   the AudioTrack playback head (logcat), and underruns. Gate: numbers in the log; the ×2 cap kept or dropped.
 - [Q1.5][device][owner] TrueHD stress: 20 seeks and 10 pause/resume cycles, then switch the AVR input away and
@@ -293,10 +296,11 @@ hdr-analyze.
 - [Q2.1][desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that
   the display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
   `FrameRateUtils.kt:681`). Gate: unit test of the plan.
-- [Q2.3][desk] Keep the track-AFR deadline from running out during the settle wait (B5). Since the sync of
+- [Q2.3][desk][batch] Keep the track-AFR deadline from running out during the settle wait (B5). Since the sync of
   2026-11-14 the deadline grows with the settle floor (`trackAfrDeadlineMs`, tested), so the 3000 ms clamp is
   not needed. Left: on Nvidia the wait counts from the stabilized switch, so a 4 s switch timeout and a 3 s
-  link wait leave under 1 s of the 8.6 s deadline. Make the Nvidia deadline cover that case. Gate: unit test.
+  link wait leave under 1 s of the 8.6 s deadline. Make the Nvidia deadline cover that case. Files:
+  `PlayerRuntimeControllerAfrTrack.kt` (`trackAfrDeadlineMs`), `TrackAfrSettleHoldTest.kt`. Gate: unit test.
 - [Q2.4][device][new-build] Re-entry: Stop a title whose rate differs from the UI mode, then start another of
   the same rate while the restore to the UI mode is issued but not yet reached. Gate: the new title plays at
   its own rate. Needs: Q2.1.
@@ -333,7 +337,7 @@ hdr-analyze.
 - [Q4.1][desk] The Dolby Vision 7 flag is set from the setting and the probe without a content check, so an
   HDR10 file logs `dv7dovi=true` and runs the DV extractor factory
   (`PlayerRuntimeControllerInitialization.kt:746-747`). Require a DV7 track. Gate: unit test.
-- [Q4.2][desk] HDR Fit lock: while HDR video is locked to Fit, show "Fit (HDR)" and do not cycle or save the
+- [Q4.2][desk][batch] HDR Fit lock: while HDR video is locked to Fit, show "Fit (HDR)" and do not cycle or save the
   aspect mode (`PlayerAspectScaleUtils.kt:34`). Gate: unit test.
 - [Q4.3][device] `async_codec` 0 against 1 on a 4K60 title: dropped frames with thumbnails on. Gate: numbers
   in the log; default kept or reverted.
@@ -599,7 +603,8 @@ hdr-analyze.
 - **Status:** Open. M3.3 is done (log); open: M3.1 playback-head stalls, M3.2 `STHRESH` on API 31+.
 - [M3.1][desk] Count playback-head stalls (the client's `disabled due to previous underrun` restarts) on the
   HUD, cumulative across track rebuilds (A4). Gate: unit test.
-- [M3.2][desk] Log `STHRESH` only on API 31+ (A5). Gate: unit test.
+- [M3.2][desk][batch] Log `STHRESH` only on API 31+ (A5). Files: `PlayerRuntimeControllerInitialization.kt`
+  (the `STHRESH:` line). Gate: unit test.
 
 ## Engine
 
@@ -707,7 +712,8 @@ hdr-analyze.
 
 - **Status:** Partial. The corrections to [`docs/shield-todo.md`](docs/shield-todo.md) listed in the log
   (2026-10-15) were applied with this roadmap. Findings A-M1, A-M4 to A-M6, B6, C12, W5, H6, H7, P-09, P-10.
-- [D1.1][desk] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Gate: string present in every locale.
+- [D1.1][desk][batch] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Files: `strings.xml` in
+  `app/src/main/res/values-pt`, `values-sr` and `values-zh`. Gate: string present in every locale.
 - Closed by the sync of 2026-10-26: D1.2, the settings label for libass. Upstream's atlas pipeline (4f2fd58e2)
   always renders the same way and the settings no longer offer a render type, so there is no label to fix.
 - Closed: the Shield thermal threshold is not readable without root on SE 9.2.4; it stays unset.
@@ -940,10 +946,10 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); DV4.10 decides where it lives and builds the
   static RPU as its fallback, and this step adds the opt-in. Gate: G-E A/B recorded; the default stays off
   unless the owner prefers it. Needs: DV2.7, DV4.10 (code).
-- [DV3.5][desk] A file with Tracks behind the Clusters loses frame 0 on a seek back. Reading to the end parses Tracks
+- [DV3.5][desk][batch] A file with Tracks behind the Clusters loses frame 0 on a seek back. Reading to the end parses Tracks
   a second time and builds new `Track` objects, so `dvFirstAuClusterPosition` is gone; a later seek to the first
-  Cluster then gets no scene refresh on frame 0. Found by U1.14; with Tracks in front the same seek is right. Gate:
-  a real-extractor test of that seek, red first.
+  Cluster then gets no scene refresh on frame 0. Found by U1.14; with Tracks in front the same seek is right. Files:
+  `dvmkv/MatroskaExtractor.java`, `MatroskaRpuInjectionTest.kt`. Gate: a real-extractor test of that seek, red first.
 
 #### DV4: T1, shot lists made on a PC
 
@@ -1053,9 +1059,10 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   `DolbyVisionMatroskaTransformer.kt:453`, MP4 `dovi_bridge.cpp:757`, TS `dovi_bridge.cpp:878`), with
   `docs/shield-todo.md:49` kept accurate. Gate: unit tests per path that a mode-2 failure is retried in
   mode 1; the HUD's mode count shows the mode used.
-- [DV7.5][desk] One log line per Dolby Vision load: conversion taken or not, with the first reason in a
-  fixed order (setting, `DeviceProfile`, revert switch, profile, mode, abandon). Gate: unit tests for
-  each reason.
+- [DV7.5][desk][batch] One log line per Dolby Vision load: conversion taken or not, with the first reason in a
+  fixed order (setting, `DeviceProfile`, revert switch, profile, mode, abandon). Files: a new fork-owned
+  helper beside `PlayerRuntimeControllerInitialization.kt`, with one wiring line there (the `DV7_` log
+  block). Gate: unit tests for each reason.
 - [DV7.6][desk] In hdr-analyze (its step WS6.7), an offline fixed-pixel HDR10 test clip in three
   Profile 8.1 variants that differ only in their RPUs: an identity control, a mapping canary whose
   chroma mapping turns the picture green on a device that applies the 8.1 mapping (like the 8.4
