@@ -10,6 +10,25 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-15: R2.2 Any new player cancels a pending switch-back (PR #75)
+
+- [R2.2][desk][batch] A pending restore is cancelled when any new player attaches, not only one that plans a mode
+  (B2). Files: `FrameRateUtils.kt` (`restoreToken`), one wiring line in `PlayerRuntimeControllerInitialization.kt`,
+  `FrameRateUtilsAfrTest.kt`. Gate: unit test.
+
+- **Evidence:** `FrameRateUtilsAfrTest` "a new player cancels a pending switch-back even without planning a
+  mode" and "a later switch-back supersedes an earlier pending one"; `:app:testFullDebugUnitTest` passed
+  locally before and after the rebase, and CI on PR #75 passed on both heads.
+- **Review:** routed batch run; Tier 2 (`FrameRateUtils.kt`) with one family left, run as Tier 1 by Gemini
+  (gemini-4-hydrogen-high). F1 (P1, NEEDS-HUMAN): a new `PlayerScreen` composes with `frameRateMatchingMode`
+  OFF, so its effect restores the display at once before the settings load (`PlayerScreen.kt:715`); it is on
+  the base and outside the diff. The owner chose merge anyway; R2.5 is the follow-up.
+- **Resolution:** `FrameRateUtils.cancelPendingRestore()` bumps the restore token, and `initializePlayer`
+  calls it next to `dropTrackAfrQuiesce()`, so a delayed restore posted by the last player stands down. The
+  wiring line has no unit test; a quick Stop then Play on the Shield would show it.
+- **Owner decision, same day:** Q2.3 gets a 2 s track-AFR deadline margin on Nvidia; the other options were
+  counting the switch wait twice or closing Q2.3 as covered.
+
 ## 2026-11-15: DV3.5 Frame 0 after a seek back with Tracks behind the Clusters (PR #74)
 
 - [DV3.5][desk][batch] A file with Tracks behind the Clusters loses frame 0 on a seek back. Reading to the end parses Tracks
