@@ -500,6 +500,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             // A new or reused player gets fresh track parameters below, which
             // already undo a quiesce the previous stream's AFR step left.
             dropTrackAfrQuiesce()
+            FrameRateUtils.cancelPendingRestore()
             afrModeAppliedPreStart = false
             afrSeededRateRaw = 0f
             // Never carry a preview position into a new player /
