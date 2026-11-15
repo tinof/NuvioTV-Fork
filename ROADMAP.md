@@ -83,6 +83,14 @@ Steps that need a decision or a reading from the owner. Other steps of the same 
 - **Hot-Stop session (R2.4).** The owner must be able to power-cycle the Shield during the session.
 - **Default after measuring (R2.4).** Whether "keep the content frame rate after playback" becomes the
   Nvidia default.
+- **R2.2 review finding (PR #75).** Merge anyway, with R2.5 as the follow-up for the OFF restore in
+  `PlayerScreen` that the review found, or leave the PR open. Recommendation: merge; the finding is on the
+  base and outside the diff (batch, 2026-11-15).
+- **Track-AFR deadline margin (Q2.3).** By the code the case in the step already fits: 4000 ms switch wait +
+  600 ms floor + 3000 ms link wait = 7600 ms against the 8600 ms deadline, which leaves under 1 s for the
+  work before the switch. Options: add the switch wait to the Nvidia deadline a second time (12.6 s), raise
+  the margin only on Nvidia (for example to 2 s), or close Q2.3 as covered. Recommendation: raise the Nvidia
+  margin to 2 s; Q2.3 changes a Tier 2 path, so the batch did not choose (2026-11-15).
 
 ## Progress log
 
@@ -90,6 +98,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-15 | DV3.5 closed: with Tracks behind the Clusters, the Tracks read again at the file's end keep frame 0's Cluster, so a seek back gets its scene refresh. | DV3 | [log](docs/ROADMAP_LOG.md), PR #74 |
 | 2026-11-15 | R3.2 and R3.3 dropped by the owner: they save and check progress on the mpv pause, and the owner uses only ExoPlayer. | R3 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-15 | Q2.8 closed: on Nvidia, 25 and 29.97/30 fps titles take the exact refresh rate before the doubled one, with `afr_exact_first` as the revert switch; other boxes keep upstream's doubled-rate order. | Q2 | [log](docs/ROADMAP_LOG.md), PR #70 |
 | 2026-11-15 | U1.5: rebased onto upstream 1.1.0-arc.4 with no drop; both protected features kept every line; the Nvidia 0.6 s settle hold is now the floor of upstream's new settle wait; upstream's 25p → 50 Hz order was taken, and Q2.8 adds an Nvidia exact-first gate. | U1, Q2 | [log](docs/ROADMAP_LOG.md), PR #69 |
@@ -205,9 +214,8 @@ hdr-analyze.
 7. **Seek and thumbnails** (S2). Gate: CPU, native heap and drops with thumbnails on within the S2
    tolerance of thumbnails off. The measured 43 % CPU load comes before UI tuning.
 8. **Small correctness fixes** (R3). Gate: unit tests.
-9. **Conversion correctness** (DV3.2, DV3.3, DV3.5, DV2.9, DV7.1, DV7.2, DV7.3, DV7.4, DV7.5, DV7.6,
-   DV7.7). Gate: the HLG static session finished, the frame 0 seek
-   fixed, and no libdovi abort path reachable from a Profile 7 title.
+9. **Conversion correctness** (DV3.2, DV3.3, DV2.9, DV7.1, DV7.2, DV7.3, DV7.4, DV7.5, DV7.6,
+   DV7.7). Gate: the HLG static session finished and no libdovi abort path reachable from a Profile 7 title.
 10. **UI frames and navigation** (S4). Gate: the M1 journeys beat the baseline and the upstream app at the
     chosen refresh rate.
 11. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4).
@@ -241,13 +249,23 @@ hdr-analyze.
 ### R2: switch-back after Stop (incident 01)
 
 - **Status:** Partial. The 750 ms delay ships but is unproven; on Nvidia a gone activity skips the
-  switch-back (R2.1, [log](docs/ROADMAP_LOG.md)). Open: R2.2–R2.4. Findings H1–H5, H7, B2, B3.
+  switch-back (R2.1, [log](docs/ROADMAP_LOG.md)). Open: R2.2 (PR #75, waits for the owner) to R2.5. Findings H1–H5, H7, B2, B3.
 - In the incident the video layer was already gone when the switch-back hung; HDCP read failures had
   started right after the switch-in. Of the strategies weighed, only skipping the switch-back removes the
   mode set at Stop (H4). A clean run of 30 Stops cannot tell the delay from no delay (H5).
 - [R2.2][desk][batch] A pending restore is cancelled when any new player attaches, not only one that plans a mode
   (B2). Files: `FrameRateUtils.kt` (`restoreToken`), one wiring line in `PlayerRuntimeControllerInitialization.kt`,
   `FrameRateUtilsAfrTest.kt`. Gate: unit test.
+  - **Status (batch 2026-11-15):** built and reviewed in PR #75 (branch `fix/r2-2-cancel-restore-on-attach`,
+    head 225cd5dd8, resumed 1), CI green; left open with `review:needs-human` for F1 (Gemini, P1,
+    NEEDS-HUMAN): a new `PlayerScreen` composes with `frameRateMatchingMode` OFF, so its effect restores the
+    display at once before the settings load (`PlayerScreen.kt:715`); the code is outside the diff and on the
+    base. The owner decides merge or leave open; R2.5 is the follow-up.
+- [R2.5][desk] Hold `PlayerScreen`'s OFF restore (`PlayerScreen.kt:715`, `LaunchedEffect(uiState.frameRateMatchingMode)`)
+  until the player settings have loaded: the `PlayerUiState` default OFF (`PlayerUiState.kt:247`) restores the
+  UI mode at once on every new player, before `PlayerRuntimeControllerInitialization.kt:623` sets the real
+  mode. Found by the review of R2.2 (PR #75, F1). Files: `PlayerScreen.kt`, `PlayerUiState.kt`,
+  `PlayerRuntimeControllerInitialization.kt`. Gate: unit test of the extracted decision.
 - [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
   default off. Gate: setting persists; switch still overrides.
 - [R2.4][device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
@@ -714,6 +732,10 @@ hdr-analyze.
   (2026-10-15) were applied with this roadmap. Findings A-M1, A-M4 to A-M6, B6, C12, W5, H6, H7, P-09, P-10.
 - [D1.1][desk][batch] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Files: `strings.xml` in
   `app/src/main/res/values-pt`, `values-sr` and `values-zh`. Gate: string present in every locale.
+- [D1.3][desk] `PlayerLoadingSourcePreferencesTest` "image subtitle size stays independent of text and other
+  profiles" failed once in CI on PR #74 (1 of 10051 tests) and passed on the rerun; the change did not touch
+  it. Find what makes it order- or timing-dependent and fix the test or its setup. Gate: the cause named in
+  the log and the test green in repeated runs.
 - Closed by the sync of 2026-10-26: D1.2, the settings label for libass. Upstream's atlas pipeline (4f2fd58e2)
   always renders the same way and the settings no longer offer a render type, so there is no label to fix.
 - Closed: the Shield thermal threshold is not readable without root on SE 9.2.4; it stays unset.
@@ -928,8 +950,9 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
 #### DV3: T0, no pixels
 
-- **Status:** Open. DV3.1 and DV3.4 are done (PR #30, PR #37, log): HDR10+ MKV titles convert to 8.1 with
-  the setting on, with RPUs equal to real `mkvdovi` on the device dump. DV3.2 and DV3.3 are open.
+- **Status:** Open. DV3.1, DV3.4 and DV3.5 are done (PR #30, PR #37, PR #74, log): HDR10+ MKV titles convert to
+  8.1 with the setting on, and a seek back keeps frame 0's scene refresh with Tracks behind the Clusters. DV3.2
+  and DV3.3 are open.
 - [DV3.2][device][owner][new-build] HLG → 8.4 static provider: `DoviRpuBuilder.createStatic84(BT2100)`
   (the crate's `static_84_params`) with `static84L1()` (`STATIC_84_L1`, 0 / 1283 / 3079, V29 average
   floor). The RPU carries the default L6 and the crate's CM v4.0 L3 and
@@ -946,10 +969,6 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); DV4.10 decides where it lives and builds the
   static RPU as its fallback, and this step adds the opt-in. Gate: G-E A/B recorded; the default stays off
   unless the owner prefers it. Needs: DV2.7, DV4.10 (code).
-- [DV3.5][desk][batch] A file with Tracks behind the Clusters loses frame 0 on a seek back. Reading to the end parses Tracks
-  a second time and builds new `Track` objects, so `dvFirstAuClusterPosition` is gone; a later seek to the first
-  Cluster then gets no scene refresh on frame 0. Found by U1.14; with Tracks in front the same seek is right. Files:
-  `dvmkv/MatroskaExtractor.java`, `MatroskaRpuInjectionTest.kt`. Gate: a real-extractor test of that seek, red first.
 
 #### DV4: T1, shot lists made on a PC
 

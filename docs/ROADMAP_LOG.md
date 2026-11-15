@@ -10,6 +10,24 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-15: DV3.5 Frame 0 after a seek back with Tracks behind the Clusters (PR #74)
+
+- [DV3.5][desk][batch] A file with Tracks behind the Clusters loses frame 0 on a seek back. Reading to the end parses Tracks
+  a second time and builds new `Track` objects, so `dvFirstAuClusterPosition` is gone; a later seek to the first
+  Cluster then gets no scene refresh on frame 0. Found by U1.14; with Tracks in front the same seek is right. Files:
+  `dvmkv/MatroskaExtractor.java`, `MatroskaRpuInjectionTest.kt`. Gate: a real-extractor test of that seek, red first.
+
+- **Evidence:** `MatroskaRpuInjectionTest` "behind the Clusters Tracks read again at the end keep frame 0 for a
+  seek back" reads a Tracks-last file the way Media3 does, checks that the end-of-file Tracks read built a new
+  `Track`, then seeks to Cluster 1 and back to Cluster 0. On the old code it failed on the refresh flags
+  (all false); with the fix frame 0 carries the scene refresh. `:app:testFullDebugUnitTest` passed locally
+  and in CI on PR #74 (the first CI run failed in the unrelated `PlayerLoadingSourcePreferencesTest`, which
+  passed on a rerun; D1.3).
+- **Review:** routed batch run, Tier 1, Gemini (gemini-4-hydrogen-high) LGTM.
+- **Resolution:** the new `Track` takes `dvFirstAuClusterPosition` over from the `Track` it replaces
+  (`Track.keepDvFrameZeroOf`, one wiring line at the `ID_TRACK_ENTRY` end). The second Tracks parse stays,
+  because the DV2.10 retry in `seek()` relies on it.
+
 ## 2026-11-15: R3.2 and R3.3 dropped (owner)
 
 - [R3.2][desk] Save watch progress on the mpv lifecycle pause (`PlayerRuntimeControllerMpv.kt:247-254`), so a
