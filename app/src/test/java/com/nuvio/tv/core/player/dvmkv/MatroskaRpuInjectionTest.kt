@@ -245,6 +245,23 @@ class MatroskaRpuInjectionTest {
     }
 
     @Test
+    fun `behind the Clusters Tracks read again at the end keep frame 0 for a seek back`() {
+        val file = mkvTracksLast(trackEntry("hlg_tagged", hlgColour), *clusters.toTypedArray())
+        val extractor = LiveExtractor(transformer())
+        val collector = SampleCollector()
+        init(extractor, collector)
+        readFollowingSeeks(extractor, file)
+        assertTrue(extractor.track !== extractor.firstTrack)
+        collector.samples.clear()
+        extractor.seek(clusterPosition(file, 1).toLong(), 120_000)
+        readFrom(extractor, file, clusterPosition(file, 1))
+        collector.samples.clear()
+        extractor.seek(clusterPosition(file, 0).toLong(), 0)
+        readFrom(extractor, file, clusterPosition(file, 0))
+        assertEquals(listOf(true, false, false, false, false, false), refreshFlags(collector.samples))
+    }
+
+    @Test
     fun `in a laced first block only the first frame carries scene refresh`() {
         // Fixed-size lacing (flags bit 0x04): two frames of equal size in one SimpleBlock.
         val laced = element(
