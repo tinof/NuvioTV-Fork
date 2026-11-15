@@ -734,6 +734,24 @@ class FrameRateUtilsAfrTest {
     }
 
     @Test
+    fun `a new player cancels a pending switch-back even without planning a mode`() {
+        val pending = FrameRateUtils.newRestoreToken()
+        assertTrue(FrameRateUtils.isRestoreCurrent(pending))
+        FrameRateUtils.cancelPendingRestore()
+        assertFalse(FrameRateUtils.isRestoreCurrent(pending))
+    }
+
+    @Test
+    fun `a later switch-back supersedes an earlier pending one`() {
+        val first = FrameRateUtils.newRestoreToken()
+        val second = FrameRateUtils.newRestoreToken()
+        assertFalse(FrameRateUtils.isRestoreCurrent(first))
+        assertTrue(FrameRateUtils.isRestoreCurrent(second))
+        FrameRateUtils.cancelPendingRestore()
+        assertFalse(FrameRateUtils.isRestoreCurrent(second))
+    }
+
+    @Test
     fun `cleanupDisplayListener is a safe no-op for API compatibility`() {
         FrameRateUtils.cleanupDisplayListener()
         FrameRateUtils.cleanupDisplayListener()

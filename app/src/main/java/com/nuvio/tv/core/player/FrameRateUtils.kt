@@ -59,9 +59,10 @@ object FrameRateUtils {
     private var originalModeId: Int? = null
 
     // Switch-back after Stop (scheduleRestoreOriginalDisplayMode). Main thread only.
-    //  - restoreToken: bumped when a new playback plans a mode, so a delayed
-    //    restore posted under an older token stands down and originalModeId
-    //    keeps the UI mode for the next restore.
+    //  - restoreToken: bumped when a new player attaches (cancelPendingRestore)
+    //    and when a playback plans a mode, so a delayed restore posted under an
+    //    older token stands down and originalModeId keeps the UI mode for the
+    //    next restore.
     //  - restoreRequestedModeId: the mode a restore last asked the window for.
     //    A playback that starts before the display gets there records it as the
     //    original, not the content mode the display is still leaving.
@@ -952,8 +953,9 @@ object FrameRateUtils {
      * once hung the NVIDIA composer HAL, so Nvidia waits until the video surface is gone,
      * and skips the switch-back (clearing the original mode) if the activity is already
      * finishing, destroyed, or its window is detached. Non-Nvidia devices restore at once
-     * when the activity is gone. A new playback that plans a mode before the delay ends
-     * cancels the restore and keeps the original UI mode for its own. Main thread.
+     * when the activity is gone. A new player that attaches before the delay ends cancels
+     * the restore (see [cancelPendingRestore]) and keeps the original UI mode for its own.
+     * Main thread.
      */
     fun scheduleRestoreOriginalDisplayMode(activity: Activity) {
         val skipSwitch = DebugSwitches.flag("debug.nuvio.afr_restore_skip")
@@ -967,7 +969,7 @@ object FrameRateUtils {
                 isDecorAttached = activity.window?.decorView?.isAttachedToWindow == true
             )
         )
-        val token = ++restoreToken
+        val token = newRestoreToken()
         when (plan) {
             DisplayModeRestorePlan.Skip -> {
                 if (originalModeId != null) {
@@ -993,7 +995,7 @@ object FrameRateUtils {
                     return
                 }
                 decorView.postDelayed({
-                    if (token == restoreToken) {
+                    if (isRestoreCurrent(token)) {
                         Log.i(TAG, "Restoring display mode after ${plan.delayMs}ms")
                         restoreOriginalDisplayMode(activity)
                     }
@@ -1001,6 +1003,21 @@ object FrameRateUtils {
             }
         }
     }
+
+    /**
+     * A new player attaches: a delayed switch-back still pending from the last player stands
+     * down, whether or not the new one plans a mode, so it cannot land in the middle of the
+     * new playback. originalModeId keeps the UI mode for the next restore. Main thread.
+     */
+    fun cancelPendingRestore() {
+        restoreToken++
+    }
+
+    /** The token a switch-back is posted under; any later token makes it stale. Main thread. */
+    internal fun newRestoreToken(): Int = ++restoreToken
+
+    /** True while no new player or switch-back has superseded [token]. Main thread. */
+    internal fun isRestoreCurrent(token: Int): Boolean = token == restoreToken
 
     /** Elapsed-realtime of the last display mode request, for the settle wait. 0 before any. */
     @Volatile var lastSwitchRequestedAtElapsed: Long = 0L
