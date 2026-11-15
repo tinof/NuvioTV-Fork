@@ -89,6 +89,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-15 | R3.2 and R3.3 dropped by the owner: they save and check progress on the mpv pause, and the owner uses only ExoPlayer. | R3 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-15 | Q2.8 closed: on Nvidia, 25 and 29.97/30 fps titles take the exact refresh rate before the doubled one, with `afr_exact_first` as the revert switch; other boxes keep upstream's doubled-rate order. | Q2 | [log](docs/ROADMAP_LOG.md), PR #70 |
 | 2026-11-15 | U1.5: rebased onto upstream 1.1.0-arc.4 with no drop; both protected features kept every line; the Nvidia 0.6 s settle hold is now the floor of upstream's new settle wait; upstream's 25p → 50 Hz order was taken, and Q2.8 adds an Nvidia exact-first gate. | U1, Q2 | [log](docs/ROADMAP_LOG.md), PR #69 |
 | 2026-11-14 | Roadmap review: the north star names the Shield → HT-A9 → C9 chain and the conversions are ranked in Priorities; Q5 moves to the top; a PC is an accepted dependency, so only idle analysis (T2) stays scheduled on the Shield; the Shield reports Vulkan 1.1.178 with compute and the AHardwareBuffer import; DV4.10 to DV4.12 and U1.17 added; upstream pull requests deferred. | all | [log](docs/ROADMAP_LOG.md), PR #67 |
@@ -202,7 +203,7 @@ hdr-analyze.
 6. **Start and Stop latency** (S1, S3). Gate: click → playing and the Stop stall beat the M1 baseline.
 7. **Seek and thumbnails** (S2). Gate: CPU, native heap and drops with thumbnails on within the S2
    tolerance of thumbnails off. The measured 43 % CPU load comes before UI tuning.
-8. **Small correctness fixes** (R3). Gate: unit tests; the CEC check passes.
+8. **Small correctness fixes** (R3). Gate: unit tests.
 9. **Conversion correctness** (DV3.2, DV3.3, DV3.5, DV2.9, DV7.1, DV7.2, DV7.3, DV7.4, DV7.5, DV7.6,
    DV7.7). Gate: the HLG static session finished, the frame 0 seek
    fixed, and no libdovi abort path reachable from a Profile 7 title.
@@ -258,14 +259,12 @@ hdr-analyze.
 
 ### R3: small correctness fixes
 
-- **Status:** Open. Findings A-M3, A-M7.
+- **Status:** Open. Finding A-M3; A-M7 (mpv) dropped.
 - [R3.1][desk] Make the four `PlayerSettings` data-class defaults Nvidia-aware, the way `libassRenderType` was
   until the sync of 2026-10-26 made it inert (a `default…()` function with a `debug.nuvio.*` switch) (`PlayerSettingsDataStore.kt:263, 307, 309, 311`); the corrupt-store fallback at `:1418` uses them. Gate:
   unit test on a Nvidia profile.
-- [R3.2][desk] Save watch progress on the mpv lifecycle pause (`PlayerRuntimeControllerMpv.kt:247-254`), so a
-  CEC sleep keeps the resume point. Gate: unit or integration test.
-- [R3.3][device][owner][new-build] CEC sleep: turn the TV off during playback with ExoPlayer and with mpv,
-  kill the app, check the resume point. Gate: progress saved on both. Needs: R3.2.
+- Dropped by the owner on 2026-11-15: R3.2 and R3.3, the mpv progress save and its CEC check. The owner
+  uses only ExoPlayer ([log](docs/ROADMAP_LOG.md)).
 
 ## Playback quality
 
