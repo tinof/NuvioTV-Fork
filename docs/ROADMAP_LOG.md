@@ -10,6 +10,15 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-15: R3.2 and R3.3 dropped (owner)
+
+- [R3.2][desk] Save watch progress on the mpv lifecycle pause (`PlayerRuntimeControllerMpv.kt:247-254`), so a
+  CEC sleep keeps the resume point. Gate: unit or integration test.
+- [R3.3][device][owner][new-build] CEC sleep: turn the TV off during playback with ExoPlayer and with mpv,
+  kill the app, check the resume point. Gate: progress saved on both. Needs: R3.2.
+- **Resolution:** dropped by the owner on 2026-11-15. The owner uses only ExoPlayer, so finding A-M7 (the mpv
+  pause does not save progress) is not fork work. R3's gate no longer names the CEC check.
+
 ## 2026-11-15: Q2.8 Exact refresh rate first on Nvidia for 25 and 30 fps (PR #70)
 
 - [Q2.8][desk] On Nvidia, pick the exact refresh rate before the doubled one for 25 and 29.97/30 fps, with a
