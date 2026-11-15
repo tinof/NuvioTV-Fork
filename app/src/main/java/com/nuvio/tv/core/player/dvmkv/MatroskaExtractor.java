@@ -1694,6 +1694,7 @@ public class MatroskaExtractor implements Extractor {
           if (isCodecSupported(currentTrack.codecId)) {
             // Fork (DV4.1): the time base of the track's raw ticks, for a playback manifest's track check.
             currentTrack.dvTimestampScaleNs = timecodeScale;
+            currentTrack.keepDvFrameZeroOf(tracks.get(currentTrack.number));
             currentTrack.initializeFormat(currentTrack.number, dolbyVisionSampleTransformer);
             if (chaptersMetadata != null) {
               currentTrack.addChaptersMetadata(chaptersMetadata);
@@ -4900,6 +4901,16 @@ public class MatroskaExtractor implements Extractor {
             (DvSignallingDecision.Convert) dvSignalling,
             nalUnitLengthFieldLength,
             dvTrackFacts());
+      }
+    }
+
+    /**
+     * Fork (DV3.5): a Tracks element read again (Tracks behind the Clusters, reached at the file's
+     * end) builds a new Track; it keeps the Cluster of frame 0 that the one it replaces recorded.
+     */
+    void keepDvFrameZeroOf(@Nullable Track replaced) {
+      if (replaced != null && dvFirstAuClusterPosition == C.INDEX_UNSET) {
+        dvFirstAuClusterPosition = replaced.dvFirstAuClusterPosition;
       }
     }
 
