@@ -121,6 +121,7 @@ class FrameRateKodiRulesTest {
     fun `the track path deadline covers the switch and the longest settle`() {
         assertEquals(10_000L, trackAfrDeadlineMs(0L))
         assertEquals(18_000L, trackAfrDeadlineMs(10_000L))
+        assertEquals(19_000L, trackAfrDeadlineMs(10_000L, nvidia = true))
     }
 
     @Test
