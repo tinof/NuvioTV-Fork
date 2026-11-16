@@ -25,7 +25,8 @@ enum class AspectMode(@StringRes val labelResId: Int) {
 
 /**
  * The mode the Exo surface gets. Every mode but Fit scales the video view, so tunneled playback,
- * and HDR video where [hdrScaleAllowed] is false, fall back to Fit. The chosen mode stays saved.
+ * and HDR video where [hdrScaleAllowed] is false, fall back to Fit. The chosen mode stays saved;
+ * while HDR is locked to Fit, [aspectModeToggle] does not cycle it.
  */
 internal fun aspectModeAppliedToExoSurface(
     tunnelingEnabled: Boolean,
@@ -33,8 +34,30 @@ internal fun aspectModeAppliedToExoSurface(
     hdrVideo: Boolean = false,
     hdrScaleAllowed: Boolean = true
 ): AspectMode {
-    return if (tunnelingEnabled || (hdrVideo && !hdrScaleAllowed)) AspectMode.ORIGINAL else aspectMode
+    return if (tunnelingEnabled || hdrFitLocked(hdrVideo, hdrScaleAllowed)) AspectMode.ORIGINAL else aspectMode
 }
+
+/** HDR video on a box where [hdrViewScaleAllowed] is false always shows Fit on the Exo surface. */
+internal fun hdrFitLocked(hdrVideo: Boolean, hdrScaleAllowed: Boolean): Boolean = hdrVideo && !hdrScaleAllowed
+
+/** What one press of the aspect toggle does: the next mode, its label, and whether to save it. */
+internal data class AspectModeToggle(
+    val mode: AspectMode,
+    @StringRes val labelResId: Int,
+    val cycles: Boolean
+)
+
+/**
+ * While HDR is locked to Fit, a press shows "Fit (HDR)" and keeps [current] unsaved and unchanged,
+ * so the saved mode applies again on SDR video. Otherwise the mode cycles as usual.
+ */
+internal fun aspectModeToggle(current: AspectMode, hdrVideo: Boolean, hdrScaleAllowed: Boolean): AspectModeToggle =
+    if (hdrFitLocked(hdrVideo, hdrScaleAllowed)) {
+        AspectModeToggle(current, R.string.player_aspect_fit_hdr, cycles = false)
+    } else {
+        val next = nextAspectMode(current)
+        AspectModeToggle(next, next.labelResId, cycles = true)
+    }
 
 /**
  * Whether HDR video may use a view-scaling aspect mode: not on Nvidia by default (a scaled HDR
