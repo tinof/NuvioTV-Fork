@@ -10,6 +10,48 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-16: Q1.1 Passthrough and MKV resync log lines name their cause (PR #81)
+
+- [Q1.1][desk][batch] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
+  skipped and the first cluster time in `MKV_RESYNC` (A2); the delta and time since the last seek on
+  `UnexpectedDiscontinuityException` (A3). Files: `IecPassthroughAudioSink.kt`, `dvmkv/MatroskaExtractor.java`,
+  `PlaybackOutputWatch.kt`. Gate: tests on the log helpers.
+
+- **Evidence:** `IecForwardLinesTest`, `MatroskaResyncLogTest` and two new cases in `PlaybackOutputLinesTest`;
+  `:app:testFullDebugUnitTest` passed locally before and after the rebase onto PR #80, and CI on PR #81 passed
+  on the rebased head. The first CI run failed on two untouched tests, `ContinueWithoutAccountTest` and
+  `ThumbnailCopyDebridTest` (D1.5, D1.4); one local full run after the rebase failed on
+  `ContinueWithoutAccountTest` alone, which passed 3 of 3 runs on its own and in the next full run.
+- **Review:** routed batch run; Tier 2 (`iec/IecPassthroughAudioSink.kt`) with one family left, run as Tier 1
+  by Gemini (gemini-4-hydrogen-high): LGTM, no findings.
+- **Resolution:** A1: `iec/IecForwardLines.kt` logs "HBR DIRECT" and the event `iec_hbr_direct` when the
+  packer was never meant to run (`!hbrAllowed` or a format IEC does not carry); a real fallback keeps "HBR RAW"
+  and `iec_hbr_raw_fallback`. A2: `dvmkv/MatroskaResyncLog.java` adds one line with the bytes skipped after
+  upstream's `MKV_RESYNC`, and one with the landing Cluster's time once it is read; a seek clears it. A3:
+  `PlaybackOutputLines.sinkError` ends the discontinuity line with `sinceSeekMs=N`, or `none` before the first
+  seek, from `lastSeekWallMs` on the same `elapsedRealtime` clock. Upstream-owned files get wiring lines only.
+
+## 2026-11-16: Q2.3 Two second track-AFR deadline margin on Nvidia (PR #80)
+
+- [Q2.3][desk][batch] Keep the track-AFR deadline from running out during the settle wait (B5): on Nvidia, where
+  the wait counts from the stabilized switch, raise the deadline's margin (`TRACK_AFR_MARGIN_MS`) from 1000 to
+  2000 ms; other boxes keep 1000 ms. Files: `PlayerRuntimeControllerAfrTrack.kt` (`trackAfrDeadlineMs`),
+  `TrackAfrSettleHoldTest.kt`, `FrameRateKodiRulesTest.kt` (its deadline assertions). Gate: unit test of the
+  Nvidia and non-Nvidia deadlines.
+  - **Decided 2026-11-15 (owner):** a 2 s margin on Nvidia (deadline 9.6 s at the 600 ms floor). Not taken:
+    counting the 4 s switch wait twice (12.6 s), or closing Q2.3 as covered (4 + 0.6 + 3 = 7.6 s fits 8.6 s).
+
+- **Evidence:** `TrackAfrSettleHoldTest` (off Nvidia 10.0 s and 8.6 s; on Nvidia 9.6 s at the 600 ms floor,
+  11.0 s at the default floor, 19.0 s with a 10 s delay) and one Nvidia case in `FrameRateKodiRulesTest`; the
+  four existing deadline assertions are unchanged. `:app:testFullDebugUnitTest` passed locally; CI on PR #80
+  passed.
+- **Review:** routed batch run; Tier 2 (`PlayerRuntimeControllerAfrTrack.kt`) with one family left, run as
+  Tier 1 by Gemini (gemini-4-hydrogen-high): LGTM, no findings.
+- **Resolution:** `trackAfrDeadlineMs` takes `nvidia: Boolean = DeviceProfile.isNvidia()` and adds 2000 ms on
+  Nvidia, 1000 ms elsewhere; the timeout and the "exceeded absolute deadline" log read one shared value. The
+  2 s margin also applies on Nvidia when `debug.nuvio.afr_settle_ms` is set, where the wait counts from the
+  request; there it is more than needed, as the step text asks ("on Nvidia").
+
 ## 2026-11-16: U1.5 sync of 2026-11-16 onto upstream 1.2.0-arc.1 (PR #79)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `1116a6401` onto `343b27591` (tag 1.2.0-arc.1, which merges
