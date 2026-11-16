@@ -90,6 +90,8 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-16 | Q1.1 closed: the passthrough sink logs "HBR DIRECT" when the packer is off by design, `MKV_RESYNC` gives the bytes skipped and the landing Cluster's time, and a sink discontinuity gives the time since the last seek. | Q1 | [log](docs/ROADMAP_LOG.md), PR #81 |
+| 2026-11-16 | Q2.3 closed: on Nvidia the track-AFR deadline has a 2 s margin (9.6 s at the 600 ms floor), so it no longer runs out during the settle wait; other boxes keep 1 s. | Q2 | [log](docs/ROADMAP_LOG.md), PR #80 |
 | 2026-11-16 | U1.5: rebased onto upstream 1.2.0-arc.1 (official 1.2.0-beta.1); the Nvidia 300 MB image cache tier was retired because upstream gives 500 MB; both protected features kept every line; the Nvidia exact-first gate now sits beside upstream's new "Allow 25 and 30 Hz" setting. | U1, Q2 | [log](docs/ROADMAP_LOG.md), PR #79 |
 | 2026-11-15 | R2.2 closed: any new player cancels a pending switch-back after Stop, not only one that plans a display mode; R2.5 follows up on the review finding in `PlayerScreen`. | R2 | [log](docs/ROADMAP_LOG.md), PR #75 |
 | 2026-11-15 | DV3.5 closed: with Tracks behind the Clusters, the Tracks read again at the file's end keep frame 0's Cluster, so a seek back gets its scene refresh. | DV3 | [log](docs/ROADMAP_LOG.md), PR #74 |
@@ -277,12 +279,8 @@ hdr-analyze.
 
 ### Q1: audio passthrough correctness
 
-- **Status:** Partial. Q1.2 and Q1.3 are done: the IEC61937 packer is the TrueHD/DTS-HD default (PR #42, see
-  the log). Q1.1 and Q1.4–Q1.7 are open. Findings A1–A3, A6, D2, D3.
-- [Q1.1][desk][batch] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
-  skipped and the first cluster time in `MKV_RESYNC` (A2); the delta and time since the last seek on
-  `UnexpectedDiscontinuityException` (A3). Files: `IecPassthroughAudioSink.kt`, `dvmkv/MatroskaExtractor.java`,
-  `PlaybackOutputWatch.kt`. Gate: tests on the log helpers.
+- **Status:** Partial. Q1.1 to Q1.3 are done: the IEC61937 packer is the TrueHD/DTS-HD default and the log
+  lines name their cause (PRs #42, #81, see the log). Q1.4–Q1.7 are open. Findings A6, D2, D3.
 - [Q1.4][device] `hbr_buffer_scale` 1 against 2 over 10 seeks: time from `SEEK_READY` to the first advance of
   the AudioTrack playback head (logcat), and underruns. Gate: numbers in the log; the ×2 cap kept or dropped.
 - [Q1.5][device][owner] TrueHD stress: 20 seeks and 10 pause/resume cycles, then switch the AVR input away and
@@ -295,19 +293,12 @@ hdr-analyze.
 
 ### Q2: AFR plan and settle correctness
 
-- **Status:** Partial. Q2.5, Q2.2 and Q2.8 are done: a 600 ms Nvidia settle floor, the quiesce keeps the HDR and
-  tunnel flags, and 25 and 30 fps take the exact rate first on Nvidia ([log](docs/ROADMAP_LOG.md)). Open: Q2.1,
-  Q2.3, Q2.4, Q2.6, Q2.7. Findings B1, B4, B5, D1, D5.
+- **Status:** Partial. Q2.5, Q2.2, Q2.8 and Q2.3 are done on Nvidia: a 600 ms settle floor, HDR and tunnel
+  flags kept, exact 25/30 fps first, a 2 s track-AFR deadline margin ([log](docs/ROADMAP_LOG.md)). Open: Q2.1,
+  Q2.4, Q2.6, Q2.7. Findings B1, B4, D1, D5.
 - [Q2.1][desk] Before planning a mode, wait off the main thread, with a timeout, for an issued restore that
   the display has not reached yet, so a quick re-entry does not keep the UI rate (B1,
   `FrameRateUtils.kt:681`). Gate: unit test of the plan.
-- [Q2.3][desk][batch] Keep the track-AFR deadline from running out during the settle wait (B5): on Nvidia, where
-  the wait counts from the stabilized switch, raise the deadline's margin (`TRACK_AFR_MARGIN_MS`) from 1000 to
-  2000 ms; other boxes keep 1000 ms. Files: `PlayerRuntimeControllerAfrTrack.kt` (`trackAfrDeadlineMs`),
-  `TrackAfrSettleHoldTest.kt`, `FrameRateKodiRulesTest.kt` (its deadline assertions). Gate: unit test of the
-  Nvidia and non-Nvidia deadlines.
-  - **Decided 2026-11-15 (owner):** a 2 s margin on Nvidia (deadline 9.6 s at the 600 ms floor). Not taken:
-    counting the 4 s switch wait twice (12.6 s), or closing Q2.3 as covered (4 + 0.6 + 3 = 7.6 s fits 8.6 s).
 - [Q2.4][device][new-build] Re-entry: Stop a title whose rate differs from the UI mode, then start another of
   the same rate while the restore to the UI mode is issued but not yet reached. Gate: the new title plays at
   its own rate. Needs: Q2.1.
@@ -725,6 +716,14 @@ hdr-analyze.
   profiles" failed once in CI on PR #74 (1 of 10051 tests) and passed on the rerun; the change did not touch
   it. Find what makes it order- or timing-dependent and fix the test or its setup. Gate: the cause named in
   the log and the test green in repeated runs.
+- [D1.4][desk] `ThumbnailCopyDebridTest` "aCallCancelledWhileItsRequestIsCountedGivesTheSlotBack" failed once
+  in CI on PR #81 (with `ContinueWithoutAccountTest`), and the change did not touch it. Find what makes it
+  order- or timing-dependent and fix the test or its setup. Gate: the cause named in the log and the test green
+  in repeated runs.
+- [D1.5][desk] `ContinueWithoutAccountTest` "with no sign-in on the box nothing is cleared" failed again on
+  2026-11-16, in CI on PR #81 and in a local full run (`ContinueWithoutAccountTest.kt:52`); it passes alone.
+  The log of 2026-11-14 calls a second flake a reason for a base-layer test fix. Find the timing dependency
+  and fix the test or its setup. Gate: the cause named in the log and the test green in repeated full runs.
 - Closed by the sync of 2026-10-26: D1.2, the settings label for libass. Upstream's atlas pipeline (4f2fd58e2)
   always renders the same way and the settings no longer offer a render type, so there is no label to fix.
 - Closed: the Shield thermal threshold is not readable without root on SE 9.2.4; it stays unset.
