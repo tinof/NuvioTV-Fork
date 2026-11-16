@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-16 | D1.1 closed: `audio_tunneled_sub` is translated in pt, sr and zh, so every locale has it. | D1 | [log](docs/ROADMAP_LOG.md), PR #86 |
 | 2026-11-16 | M3.2 closed: `STHRESH` is logged only on API 31 and up, where the start threshold applies. | M3 | [log](docs/ROADMAP_LOG.md), PR #84 |
 | 2026-11-16 | Q4.2 closed: while HDR video is locked to Fit, the aspect toggle shows "Fit (HDR)" and neither cycles nor saves the mode. | Q4 | [log](docs/ROADMAP_LOG.md), PR #83 |
 | 2026-11-16 | Q1.1 closed: the passthrough sink logs "HBR DIRECT" when the packer is off by design, `MKV_RESYNC` gives the bytes skipped and the landing Cluster's time, and a sink discontinuity gives the time since the last seek. | Q1 | [log](docs/ROADMAP_LOG.md), PR #81 |
@@ -708,14 +709,8 @@ hdr-analyze.
 
 ### D1: docs and hygiene
 
-- **Status:** Partial. The corrections to [`docs/shield-todo.md`](docs/shield-todo.md) listed in the log
-  (2026-10-15) were applied with this roadmap. Findings A-M1, A-M4 to A-M6, B6, C12, W5, H6, H7, P-09, P-10.
-- [D1.1][desk][batch] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Files: `strings.xml` in
-  `app/src/main/res/values-pt`, `values-sr` and `values-zh`. Gate: string present in every locale.
-- [D1.3][desk] `PlayerLoadingSourcePreferencesTest` "image subtitle size stays independent of text and other
-  profiles" failed once in CI on PR #74 (1 of 10051 tests) and passed on the rerun; the change did not touch
-  it. Find what makes it order- or timing-dependent and fix the test or its setup. Gate: the cause named in
-  the log and the test green in repeated runs.
+- **Status:** Partial. The `docs/shield-todo.md` corrections of 2026-10-15 and D1.1's translations (PR #86) are
+  done (log); D1.3 to D1.5 are open. Findings A-M1, A-M5, A-M6, B6, C12, W5, H6, H7, P-09, P-10.
 - [D1.4][desk] `ThumbnailCopyDebridTest` "aCallCancelledWhileItsRequestIsCountedGivesTheSlotBack" failed once
   in CI on PR #81 (with `ContinueWithoutAccountTest`), and the change did not touch it. Find what makes it
   order- or timing-dependent and fix the test or its setup. Gate: the cause named in the log and the test green
