@@ -90,6 +90,8 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-16 | M3.2 closed: `STHRESH` is logged only on API 31 and up, where the start threshold applies. | M3 | [log](docs/ROADMAP_LOG.md), PR #84 |
+| 2026-11-16 | Q4.2 closed: while HDR video is locked to Fit, the aspect toggle shows "Fit (HDR)" and neither cycles nor saves the mode. | Q4 | [log](docs/ROADMAP_LOG.md), PR #83 |
 | 2026-11-16 | Q1.1 closed: the passthrough sink logs "HBR DIRECT" when the packer is off by design, `MKV_RESYNC` gives the bytes skipped and the landing Cluster's time, and a sink discontinuity gives the time since the last seek. | Q1 | [log](docs/ROADMAP_LOG.md), PR #81 |
 | 2026-11-16 | Q2.3 closed: on Nvidia the track-AFR deadline has a 2 s margin (9.6 s at the 600 ms floor), so it no longer runs out during the settle wait; other boxes keep 1 s. | Q2 | [log](docs/ROADMAP_LOG.md), PR #80 |
 | 2026-11-16 | U1.5: rebased onto upstream 1.2.0-arc.1 (official 1.2.0-beta.1); the Nvidia 300 MB image cache tier was retired because upstream gives 500 MB; both protected features kept every line; the Nvidia exact-first gate now sits beside upstream's new "Allow 25 and 30 Hz" setting. | U1, Q2 | [log](docs/ROADMAP_LOG.md), PR #79 |
@@ -331,12 +333,11 @@ hdr-analyze.
 
 ### Q4: decode-path bugs
 
-- **Status:** Open. Findings A-M2, D7, D8.
+- **Status:** Partial. Q4.2 is done: an aspect toggle on HDR video locked to Fit shows "Fit (HDR)" and
+  saves nothing (PR #83, see the log). Q4.1 and Q4.3–Q4.5 are open. Findings A-M2, D7, D8.
 - [Q4.1][desk] The Dolby Vision 7 flag is set from the setting and the probe without a content check, so an
   HDR10 file logs `dv7dovi=true` and runs the DV extractor factory
   (`PlayerRuntimeControllerInitialization.kt:746-747`). Require a DV7 track. Gate: unit test.
-- [Q4.2][desk][batch] HDR Fit lock: while HDR video is locked to Fit, show "Fit (HDR)" and do not cycle or save the
-  aspect mode (`PlayerAspectScaleUtils.kt:34`). Gate: unit test.
 - [Q4.3][device] `async_codec` 0 against 1 on a 4K60 title: dropped frames with thumbnails on. Gate: numbers
   in the log; default kept or reverted.
 - [Q4.4][device] A high-bitrate DV remux with Atmos over Wi-Fi and over Ethernet (D7). Gate: rebuffers and
@@ -598,11 +599,10 @@ hdr-analyze.
 
 ### M3: diagnostics
 
-- **Status:** Open. M3.3 is done (log); open: M3.1 playback-head stalls, M3.2 `STHRESH` on API 31+.
+- **Status:** Partial. M3.3 and M3.2 are done (log; `STHRESH` logs only on API 31+, PR #84); open: M3.1
+  playback-head stalls.
 - [M3.1][desk] Count playback-head stalls (the client's `disabled due to previous underrun` restarts) on the
   HUD, cumulative across track rebuilds (A4). Gate: unit test.
-- [M3.2][desk][batch] Log `STHRESH` only on API 31+ (A5). Files: `PlayerRuntimeControllerInitialization.kt`
-  (the `STHRESH:` line). Gate: unit test.
 
 ## Engine
 
@@ -721,7 +721,7 @@ hdr-analyze.
   order- or timing-dependent and fix the test or its setup. Gate: the cause named in the log and the test green
   in repeated runs.
 - [D1.5][desk] `ContinueWithoutAccountTest` "with no sign-in on the box nothing is cleared" failed again on
-  2026-11-16, in CI on PR #81 and in a local full run (`ContinueWithoutAccountTest.kt:52`); it passes alone.
+  2026-11-16, in CI on PRs #81 and #84 and in a local full run (`ContinueWithoutAccountTest.kt:52`); it passes alone.
   The log of 2026-11-14 calls a second flake a reason for a base-layer test fix. Find the timing dependency
   and fix the test or its setup. Gate: the cause named in the log and the test green in repeated full runs.
 - Closed by the sync of 2026-10-26: D1.2, the settings label for libass. Upstream's atlas pipeline (4f2fd58e2)
@@ -1066,7 +1066,7 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   `DolbyVisionMatroskaTransformer.kt:453`, MP4 `dovi_bridge.cpp:757`, TS `dovi_bridge.cpp:878`), with
   `docs/shield-todo.md:49` kept accurate. Gate: unit tests per path that a mode-2 failure is retried in
   mode 1; the HUD's mode count shows the mode used.
-- [DV7.5][desk][batch] One log line per Dolby Vision load: conversion taken or not, with the first reason in a
+- [DV7.5][desk] One log line per Dolby Vision load: conversion taken or not, with the first reason in a
   fixed order (setting, `DeviceProfile`, revert switch, profile, mode, abandon). Files: a new fork-owned
   helper beside `PlayerRuntimeControllerInitialization.kt`, with one wiring line there (the `DV7_` log
   block). Gate: unit tests for each reason.
