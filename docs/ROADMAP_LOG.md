@@ -10,6 +10,89 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-16: U1.5 sync of 2026-11-16 onto upstream 1.2.0-arc.1 (PR #79)
+
+- [U1.5][desk] Rebased `perf/shield-pass` from `1116a6401` onto `343b27591` (tag 1.2.0-arc.1, which merges
+  official NuvioTV 1.2.0-beta.1): 111 upstream commits behind (12 first-parent, one official merge), 372 fork
+  commits. 371 were replayed, one dropped (`7eb555891`) and none added. The new tip is `bc99c564d`. Tags:
+  `sync/2026-11-16/old-{perf,main,base}`. Published on 2026-11-16 with one atomic leased push: `main`
+  `5575b0be0` → `343b27591`, `perf/shield-pass` `1116a6401` → `bc99c564d`. Upstream had not moved, and drift
+  issue #72 closed. The `due` check said `wait` (22 h quiet of 24 h); the sync ran on the owner's call.
+
+**Classify (tier `fanout`, 8 analysts and a critic):** 17 files conflicted in the trial merge: the `strings.xml`
+of 8 locales, `ImageDiskCacheSize.kt`, `DolbyVisionExtractorsFactory.kt`, `FrameRateUtils.kt`,
+`MatroskaExtractor.java`, `ProfileSettingsSyncService.kt`, `ModernHomeRows.kt`, `NuvioMpvSurfaceView.kt`,
+`PlaybackVideoSettings.kt` and the initialization part of the player controller. 99 fork commits touched files
+upstream changed. Verdicts: 1 drop, 0 protected asks, 13 keep-resolve, 3 keep-adapt, 82 keep-clean; 273 commits
+touched nothing upstream changed. The analysts' claims behind the drop and the three adapts were checked by hand
+against `upstream/main`.
+
+**Dry-run (U1.12):** 29 predicted stops, 15 real; the other 14 applied clean. No stop came unpredicted. 8 of the
+real stops were on HLG-to-Dolby-Vision commits, most in `MatroskaExtractor.java`. Three of them
+(`948409e98`, `4e61a58b0`, `8d31e57b6`) conflicted on indentation only, after `1ca8d302f`'s block moved inside
+upstream's new `if (track.requiresDolbyVisionTransform)`. Two adapts applied without a conflict but would have
+broken the build or a test, so the rebase stopped on them by plan (`edit` in the todo): `24e0687f3` and
+`4e6339136`.
+
+**Drops:** `7eb555891` (Nvidia keeps the 300 MB image disk cache). Upstream's 59f6cb471 gives every box 500 MB
+with 4 GB or more free, the same condition as the fork's tier, so the fork line could never run and its test
+would fail. The owner approved the retire; `debug.nuvio.image_cache_tier` is gone.
+
+**Owner's decisions:**
+
+1. Drop `7eb555891`, as above.
+2. Keep the Nvidia exact-first gate (Q2.8) next to upstream's new "Allow 25 and 30 Hz" setting
+   (`afr_allow_25_30_hz`, off, 91ed74d65). The line reads `!allowLowRates && prefersDoubleRate(frameRate) &&
+   !AfrExactFirst.enabled()`. On Nvidia the setting reads off while 25p plays at 25 Hz; `afr_exact_first=0`
+   hands the order to the setting.
+3. `06a728e34` (protected) keeps both its Native FEL lines and upstream's `dv7ModeChoices`/`dv7ModeShown`
+   filter in the Dolby Vision 7 dialog, so every protected line survives and the dialog behaves like upstream's.
+4. No guard against upstream's new unlabelled-P5 relabel probe on converted tracks. Upstream's probe is taken
+   as written; it matters only for an HLG or HDR10+ source that also carries a P5 RPU.
+
+Settled by repo rules, with no owner question:
+- `24e0687f3` no longer removes `buildStableAudioCapabilities`, because upstream's force-optical sink branch
+  (85849706f) calls it again. Its message was amended.
+- `06a728e34` replaces upstream's `profile5Decoder` lazy with `decoderProfileSupport().dvheStn`. The lazy no
+  longer compiled against the fork's nullable query, and the fork's cache holds a failure for 30 s only.
+- `4e6339136` gives upstream's new 503 Trakt test `credentialsConfigured = { true }`, as for the 400 test.
+- Upstream's force-optical branch stays as written; it does not use the fork's HDMI-under-Bluetooth device.
+- `DolbyVisionConversionConfig` takes upstream's `relabelUnlabelledP5` before the fork's `convertNonDolbyVision`.
+- The local-only profile keys list upstream's `subtitle_font_id` before the fork's manifest keys.
+
+**Setting decisions:** the two values this pass sets that upstream touched are the image disk cache (retired)
+and the 25/30 fps order (kept, row `afr_exact_first` updated). The other upstream defaults apply on the Shield
+with no switch and are listed in `docs/shield-todo.md` under "Upstream defaults taken with the sync of
+2026-11-16". Among them: a playback download pool of 24 threads on a 64-bit process, a source fallback setting
+(off), and a seamless-switch setting (off).
+
+**Evidence**
+
+- `verify` (`1116a6401` → `bc99c564d`): range-diff 341 identical, 30 changed, 1 dropped, 0 new. Protected lines:
+  aac-to-dts 48 commits, 6145 lines, 0 lost; hlg-to-dv 111 commits, 17738 lines, 0 lost. Result: all checks pass.
+- Waiver: `--allow-changed` on `docs/shield-todo.md`, which lost the row of the dropped `7eb555891`.
+- `judgement`: 22 paths differ from the mechanical merge, all 22 declared.
+- Compile before the push: `:app:compileFullDebugKotlin :app:compileFullDebugUnitTestKotlin` on the new tip,
+  BUILD SUCCESSFUL. The rebaser also checked every old commit's added lines against the new tree; the only
+  miss is the `FrameRateUtils.kt` line that decision 2 replaces.
+- APK: a local build passed `protected-apk` for `libffmpegJNI.so` (with the DTS-HD MA writer) and
+  `libnuvio_rpu.so` (the stamped build of `native/rpu_builder`). It was not installed.
+- Independent review (Opus): no defect. In 75 of the 82 files both sides changed, the new tip's delta equals
+  fork plus upstream exactly; the other 7 are the decided changes. One cosmetic note: the comment at
+  `PlaybackVideoSettings.kt:484` ("A saved Native FEL stays listed") no longer holds under upstream's filter.
+- CI: `Checks` run 43840949949 on `bc99c564d`, green on the first attempt: unit tests, the upstream baseline
+  and the compare job. No device run is on record for this sync.
+
+**Open, for the owner**
+
+- Two stale comments for a later code PR: `PlaybackVideoSettings.kt:484` (above) and the KDoc of
+  `DolbyVisionBaseLayerPolicy.decodesProfile5()`, which still says "Looked up once".
+- A device check of the new tip: 25p HLG as Dolby Vision at 25 Hz, an HDR10+ and an HLG conversion, and a
+  TrueHD or DTS-HD MA passthrough title.
+- Whether "Allow 25 and 30 Hz" should default to on for Nvidia, so the settings row shows what the Shield does.
+
+**Resolution:** published; drift issue #72 closed.
+
 ## 2026-11-15: R2.2 Any new player cancels a pending switch-back (PR #75)
 
 - [R2.2][desk][batch] A pending restore is cancelled when any new player attaches, not only one that plans a mode

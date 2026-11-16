@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-16 | U1.5: rebased onto upstream 1.2.0-arc.1 (official 1.2.0-beta.1); the Nvidia 300 MB image cache tier was retired because upstream gives 500 MB; both protected features kept every line; the Nvidia exact-first gate now sits beside upstream's new "Allow 25 and 30 Hz" setting. | U1, Q2 | [log](docs/ROADMAP_LOG.md), PR #79 |
 | 2026-11-15 | R2.2 closed: any new player cancels a pending switch-back after Stop, not only one that plans a display mode; R2.5 follows up on the review finding in `PlayerScreen`. | R2 | [log](docs/ROADMAP_LOG.md), PR #75 |
 | 2026-11-15 | DV3.5 closed: with Tracks behind the Clusters, the Tracks read again at the file's end keep frame 0's Cluster, so a seek back gets its scene refresh. | DV3 | [log](docs/ROADMAP_LOG.md), PR #74 |
 | 2026-11-15 | R3.2 and R3.3 dropped by the owner: they save and check progress on the mpv pause, and the owner uses only ExoPlayer. | R3 | [log](docs/ROADMAP_LOG.md) |
@@ -640,8 +641,8 @@ hdr-analyze.
 ### U1: upstream pull requests
 
 - **Status:** Open. Upstream pull requests are deferred (owner, 2026-11-14); the sync and its cost steps stay.
-  The U1.5 sync of 2026-11-14 put the branch onto 1.1.0-arc.4 (`5575b0be0`). At its publish on
-  2026-11-15 the branch was level with `upstream/main`. The "Upstream drift" issue (label `upstream-drift`)
+  The U1.5 sync of 2026-11-16 put the branch onto 1.2.0-arc.1 (`343b27591`). At its publish on
+  2026-11-16 the branch was level with `upstream/main`. The "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
 - Deferred (owner, 2026-11-14): upstream pull requests, U1.2 to U1.4. Upstream has merged one outside pull
