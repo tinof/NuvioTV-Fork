@@ -93,7 +93,7 @@ Changes for every device in this round:
 - When the decoder list cannot be read, a DV5 MKV takes the HEVC remap.
 - The HUD queue row says `default (async)` on Fire TV API 28+.
 - The episode-options dialog no longer draws the page's pre-blurred glass.
-- New strings are translated in every locale; the changed `audio_tunneled_sub` is still missing in pt, sr and zh.
+- New strings are translated in every locale, `audio_tunneled_sub` included.
 - Audio for every device (not Nvidia-gated): on leanback boxes below API 33 the HDMI route holds under an idle
   Bluetooth pin, the lossless track default follows the passthrough policy, and the stall ledger is keyed by
   decoder (c36153c3a, d02a4efb5, 2e98bb12c, caaf081ae). Since the sync of 2026-11-11, upstream's transcode
