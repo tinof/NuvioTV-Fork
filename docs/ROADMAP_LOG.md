@@ -10,6 +10,20 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-16: D1.1 Tunneled playback summary in pt, sr and zh (PR #86)
+
+- [D1.1][desk][batch] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Files: `strings.xml` in
+  `app/src/main/res/values-pt`, `values-sr` and `values-zh`. Gate: string present in every locale.
+
+- **Evidence:** every `values*` locale that has `audio_tunneled_sub_prefer_app` now has `audio_tunneled_sub`
+  (41 files, `rg -c`); `:app:mergeFullDebugResources` and `:app:testFullDebugUnitTest` passed locally, and
+  CI on PR #86 passed.
+- **Review:** routed batch run; Tier 1, Gemini (gemini-4-hydrogen-high): LGTM. P2 note: `docs/shield-todo.md`
+  still said the string was missing; the batch's docs PR fixed that line.
+- **Resolution:** `values-pt` takes the `values-pt-rPT` text, `values-sr` the `values-b+sr+Latn` text in
+  Cyrillic with the words `values-sr` already uses, and `values-zh` the `values-zh-rCN` text. These three
+  base folders have no `player_aspect_*` keys, so their Fit/Fill words follow the sibling locales.
+
 ## 2026-11-16: M3.2 `STHRESH` logged only on API 31+ (PR #84)
 
 - [M3.2][desk][batch] Log `STHRESH` only on API 31+ (A5). Files: `PlayerRuntimeControllerInitialization.kt`
