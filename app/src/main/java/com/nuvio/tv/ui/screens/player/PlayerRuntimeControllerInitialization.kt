@@ -3941,10 +3941,8 @@ private class SubtitleOffsetRenderersFactory(
         val reducedStartThresholdFrames = runCatching {
             android.provider.Settings.Global.getString(context.contentResolver, "nuvio_reduced_start_threshold")
         }.getOrNull()?.trim()?.toIntOrNull() ?: defaultStartThresholdFrames
-        if (reducedStartThresholdFrames > 0) {
-            // AudioTrack.setStartThresholdInFrames is API 31+; below that the sink monitor skips it.
-            val note = if (Build.VERSION.SDK_INT < 31) " (not applied below API 31)" else ""
-            Log.w(PlayerRuntimeController.TAG, "STHRESH: DIRECT start threshold -> $reducedStartThresholdFrames frames$note")
+        startThresholdLogLine(Build.VERSION.SDK_INT, reducedStartThresholdFrames)?.let {
+            Log.w(PlayerRuntimeController.TAG, it)
         }
         var speedAwareSink: PlaybackSpeedAwareAudioSink? = null
         val smallBox = BufferSizing.isSmallBox(NuvioExoPlayerPerformanceHelper.getDevicePhysicalRamBytes(context))
