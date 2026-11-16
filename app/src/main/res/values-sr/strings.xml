@@ -104,6 +104,7 @@
     <string name="playback_section_audio_desc">Контроле звука и компатибилност видеа.</string>
     <string name="playback_afr_open">Отворено</string>
     <string name="playback_afr_closed">Затворено</string>
+    <string name="audio_tunneled_sub">Синхронизација звука/видеа на нивоу хардвера. Може побољшати репродукцију на неким Android TV уређајима. TrueHD и DTS-HD звук без губитака се увек репродукује без ње. Док је укључена, брзина репродукције се не може мењати, а однос страница може бити само Прилагоди или Попуни</string>
     <string name="audio_tunneled_sub_prefer_app">Није доступно док је Приоритет декодера подешен на Дај предност декодерима апликације</string>
     <string name="audio_use_system_passthrough">Системски passthrough</string>
     <string name="audio_use_system_passthrough_sub">Шаље TrueHD и DTS-HD пријемнику преко Android-а (системска путања) уместо преко Nuvio Arc (IEC путања). У зависности од уређаја и аудио подешавања, ово може да ограничи DTS-HD и DTS:X на стандардни DTS или да их остави без звука. Користите само ако формати без губитака дају шум, губе синхронизацију или немају звук.</string>

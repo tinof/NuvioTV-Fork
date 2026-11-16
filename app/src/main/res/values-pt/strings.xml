@@ -103,6 +103,7 @@
     <string name="playback_section_audio_desc">Controlos de áudio e compatibilidade de vídeo.</string>
     <string name="playback_afr_open">Aberto</string>
     <string name="playback_afr_closed">Fechado</string>
+    <string name="audio_tunneled_sub">Sincronização de áudio/vídeo ao nível do hardware. Pode melhorar a reprodução em alguns dispositivos Android TV. O áudio sem perdas TrueHD e DTS-HD é sempre reproduzido sem ela. Enquanto estiver ligada, a velocidade de reprodução não pode ser alterada e o formato é apenas Ajustar ou Preencher</string>
     <string name="audio_tunneled_sub_prefer_app">Indisponível enquanto Prioridade do descodificador estiver em Preferir descodificadores da app</string>
     <string name="audio_use_system_passthrough">Passthrough do sistema</string>
     <string name="audio_use_system_passthrough_sub">Envia TrueHD e DTS-HD para o recetor através do Android (via do sistema) em vez do Nuvio Arc (via IEC). Dependendo do dispositivo e da configuração de áudio, isto pode limitar DTS-HD e DTS:X a DTS padrão ou deixá-los sem som. Utiliza apenas se os formatos sem perdas produzirem ruído, desvio ou nenhum áudio.</string>
