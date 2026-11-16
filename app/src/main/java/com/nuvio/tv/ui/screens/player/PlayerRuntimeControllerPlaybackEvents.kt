@@ -2677,6 +2677,25 @@ fun PlayerRuntimeController.onEvent(
                 }
                 return
             }
+            // Only the Exo surface locks HDR to Fit; mpv applies every mode.
+            val hdrToggle = aspectModeToggle(
+                current = state.aspectMode,
+                hdrVideo = state.isHdrVideo && state.internalPlayerEngine != InternalPlayerEngine.MVP_PLAYER,
+                hdrScaleAllowed = hdrViewScaleAllowed(com.nuvio.tv.core.util.DebugSwitches.flag("debug.nuvio.hdr_zoom"))
+            )
+            if (!hdrToggle.cycles) {
+                val label = context.getString(hdrToggle.labelResId)
+                Log.d(PlayerRuntimeController.TAG, "Aspect toggle ignored: HDR video is locked to Fit ($label)")
+                _uiState.update {
+                    it.copy(showAspectRatioIndicator = true, aspectRatioIndicatorText = label)
+                }
+                hideAspectRatioIndicatorJob?.cancel()
+                hideAspectRatioIndicatorJob = scope.launch {
+                    delay(1500)
+                    _uiState.update { it.copy(showAspectRatioIndicator = false) }
+                }
+                return
+            }
             val newMode = nextAspectMode(state.aspectMode)
             val label = aspectModeLabel(newMode, context::getString)
             Log.d(PlayerRuntimeController.TAG, "Aspect mode toggled by user: ${state.aspectMode} -> $newMode ($label)")

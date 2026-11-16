@@ -2395,6 +2395,7 @@
     <string name="episodes_panel_streams_title">Streams</string>
     <string name="player_speed_normal">Normal</string>
     <string name="player_aspect_fit">Fit (Original)</string>
+    <string name="player_aspect_fit_hdr">Fit (HDR)</string>
     <string name="player_aspect_stretch">Stretch</string>
     <string name="player_aspect_fit_width">Fit width</string>
     <string name="player_aspect_fit_height">Fit height</string>
