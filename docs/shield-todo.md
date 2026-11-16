@@ -49,7 +49,7 @@ lists). Restart playback, or the app for the rows marked *app*.
 | The surround decision uses the stereo / 5.1 / 7.1 probe union and the HDMI channel count | `audio_probe_union` (`0`) | Settings > Advanced > Source & hardware |
 | A track-AFR mode switch under tunneling with TrueHD/DTS-HD takes audio and video down and up together. Inert on mdarcy SE 9.2.4 (no decoder tunnels); `1` now forces it without tunneling too | `afr_quiesce_av` (`0`) | First play of a 24p TrueHD title: `Track AFR settle complete: … quiesced=AUDIO_AND_VIDEO`, and no stuck loading screen |
 | AFR settle hold of 0.6 s instead of 2 s (Q2.5, PR #43), on the track-AFR path and (since round 3) the pre-start path. Since the sync of 2026-11-14 it is the floor of upstream's settle wait (d14c13cbc): 0.6 s from the stabilized switch, then until the HDMI audio link is back, at most 3 s more. A longer saved "Delay after refresh rate change" wins | `afr_settle_ms` (`2000` = upstream's wait, counted from the switch request) | Logcat `Switching display mode` → `Display mode switch stabilized at … after N ms` → `Track AFR settle complete:` / `Preflight AFR settle complete: holdMs=` |
-| 25 and 29.97/30 fps titles take the exact refresh rate before the doubled one (Q2.8). Upstream prefers 50 and 59.94/60 Hz again since the sync of 2026-11-14, and 4K50 Dolby Vision dropped the HDMI link on this chain (2026-10-28). A display without the exact rate still gets the doubled one. Interlaced 25 and 29.97 sources lose the field rate this way | `afr_exact_first` (`0` = upstream's doubled rate first) | Logcat `Switching display mode` on a 25 fps title names 25 Hz; no HDMI hotplug storm on HLG 25p as Dolby Vision |
+| 25 and 29.97/30 fps titles take the exact refresh rate before the doubled one (Q2.8). Upstream prefers 50 and 59.94/60 Hz again since the sync of 2026-11-14, and 4K50 Dolby Vision dropped the HDMI link on this chain (2026-10-28). A display without the exact rate still gets the doubled one. Interlaced 25 and 29.97 sources lose the field rate this way. Since the sync of 2026-11-16 upstream has an "Allow 25 and 30 Hz" setting (`afr_allow_25_30_hz`, off by default, 91ed74d65) for the same order; on Nvidia the exact rate comes first with that setting off too, so it reads off while 25p plays at 25 Hz | `afr_exact_first` (`0` = upstream's order, which then follows "Allow 25 and 30 Hz") | Logcat `Switching display mode` on a 25 fps title names 25 Hz; no HDMI hotplug storm on HLG 25p as Dolby Vision |
 | A tunneled start waits for the real first frame (only for decoders seen reporting frames) | `tunnel_real_first_frame` (`0`) | The loading screen ends with the picture |
 | Dolby Vision plays untunneled | `dv_no_tunnel` (`0`) | DV signalling on the TV, sync |
 | With "Convert HLG and HDR10+ to Dolby Vision" on, an HDR10+ MKV plays as Dolby Vision 8.1 with L1 from each AU's HDR10+ SEI (ROADMAP DV3.1) | `dv_hdr10plus` (`0` keeps PQ native) | The TV's Dolby Vision badge; logcat `DV_INJECT track N: HDR10+ 8.1`; the DV2.8 dump compared with `dovi_tool` (`scripts/rpu_dump_to_bin.py --order pts`) |
@@ -133,7 +133,8 @@ has no setting, upstream's new default applies on the Shield too, with no fork s
 - Buffer sizing keeps a 28 MB margin instead of 100 + 40 MB (47d1c5834), so about 112 MB more buffer can be sized
   at start. Chunk sizes gain a 12 MB step (5ff59fca0). Seek thumbnails fetch with up to 4 lanes while playing
   instead of 3 (5ea64a68c).
-- The image disk cache follows upstream's rule (126b4b389), except the Nvidia `image_cache_tier` row above.
+- The image disk cache follows upstream's rule (126b4b389). The Nvidia `image_cache_tier` row was retired with
+  the sync of 2026-11-16, when upstream's rule gave every box 500 MB with 4 GB or more free.
   Pictures are decoded at most at screen size.
 - Addons get 60 s to answer, with an "Addon response timeout" setting (9f27af2b0, 0f6a84041).
 - Night mode, dialogue boost and a limiter are new audio settings, off by default and PCM only (a1359b2e6).
@@ -297,6 +298,30 @@ as the floor of upstream's new settle wait. These apply on the Shield too, with 
   lane for big background jobs is 16 wide.
 
 Measurements taken before 2026-11-14 predate these defaults.
+
+### Upstream defaults taken with the sync of 2026-11-16
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.2.0-arc.1 (`343b27591`), which merges official NuvioTV
+1.2.0-beta.1. Two values of this pass were touched by upstream: the image disk cache, whose Nvidia row was
+retired, and the 25/30 fps order, where the `afr_exact_first` row above keeps the exact rate first on Nvidia.
+These apply on the Shield too, with no fork switch unless a row says so:
+- The image disk cache gives 500 MB on every box with 4 GB or more free (59f6cb471). This covers the Nvidia
+  `image_cache_tier` row (300 MB), which was dropped with `debug.nuvio.image_cache_tier`.
+- A frame-rate switch is a real mode change. A seamless (QMS) pick is a new opt-in setting,
+  `afr_allow_seamless_switch`, off by default, shown only when the display offers seamless rates (91ed74d65).
+- An MPEG-TS video on demand without a declared frame rate now waits up to 6 s to learn it, first from the
+  stream's own sample times (2.5 s), then from the probe. A live TS is skipped (91ed74d65).
+- The seek-thumbnail "before play" choice is gone; every box gets the old Faster behaviour, and a migration
+  deletes the saved `seek_thumbnails_before_play` key (91ed74d65).
+- Falling back to the next matching source when playback fails is a new setting, off by default: at most 3
+  sources, and a 15 s timeout from load to the first rendered frame (c3a27b5e2).
+- Playback downloads run on a pool of 24 threads on a 64-bit process (16 on 32-bit) with a 15 s keep-alive,
+  instead of 32 core and 64 max threads. Under critical memory pressure a stream keeps at most 2 downloads
+  and drops the pieces past the reader's next one (91ed74d65). The Shield runs the 64-bit APK, so it gets 24.
+- Dialogs draw a near-solid surface when the box draws no blur (59f6cb471). With the fork's no-live-blur
+  visual tier, that is every dialog on the Shield.
+
+Measurements taken before 2026-11-16 predate these defaults.
 
 ## History
 
