@@ -711,6 +711,10 @@ hdr-analyze.
 
 - **Status:** Partial. The `docs/shield-todo.md` corrections of 2026-10-15 and D1.1's translations (PR #86) are
   done (log); D1.3 to D1.5 are open. Findings A-M1, A-M5, A-M6, B6, C12, W5, H6, H7, P-09, P-10.
+- [D1.3][desk] `PlayerLoadingSourcePreferencesTest` "image subtitle size stays independent of text and other
+  profiles" failed once in CI on PR #74 (1 of 10051 tests) and passed on the rerun; the change did not touch
+  it. Find what makes it order- or timing-dependent and fix the test or its setup. Gate: the cause named in
+  the log and the test green in repeated runs.
 - [D1.4][desk] `ThumbnailCopyDebridTest` "aCallCancelledWhileItsRequestIsCountedGivesTheSlotBack" failed once
   in CI on PR #81 (with `ContinueWithoutAccountTest`), and the change did not touch it. Find what makes it
   order- or timing-dependent and fix the test or its setup. Gate: the cause named in the log and the test green
