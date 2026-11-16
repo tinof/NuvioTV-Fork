@@ -276,14 +276,11 @@ internal class IecPassthroughAudioSink(
         }
         mode = Mode.FORWARD
         if (isHbrPassthrough(inputFormat)) {
-            android.util.Log.i(
-                "IecPassthrough",
-                "HBR RAW mime=${inputFormat.sampleMimeType} (compressed, not PCM)"
+            val forward = IecForwardLines.of(
+                inputFormat.sampleMimeType, hbrAllowed, iecCarries(inputFormat), iecFailedThisSession, tunnelReady
             )
-            onDiagnosticEvent?.invoke(
-                "iec_hbr_raw_fallback mime=${inputFormat.sampleMimeType} " +
-                    "iecFailedThisSession=$iecFailedThisSession tunnelReady=$tunnelReady"
-            )
+            android.util.Log.i("IecPassthrough", forward.log)
+            onDiagnosticEvent?.invoke(forward.event)
         }
         super.configure(passthroughLayout(inputFormat), specifiedBufferSize, outputChannels)
         refreshPassthroughLive()
