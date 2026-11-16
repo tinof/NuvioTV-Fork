@@ -99,6 +99,7 @@
     <string name="playback_section_audio_desc">音频控制和视频兼容性。</string>
     <string name="playback_afr_open">展开</string>
     <string name="playback_afr_closed">收起</string>
+    <string name="audio_tunneled_sub">硬件级别的音频/视频同步。可能在部分 Android TV 设备上改善播放。无损 TrueHD 和 DTS-HD 音频始终不使用它播放。开启时无法更改播放速度，画面比例只能为适应或填充。</string>
     <string name="audio_tunneled_sub_prefer_app">「解码器优先级」设为「偏好应用解码器」时不可用</string>
     <string name="audio_use_system_passthrough">系统穿透</string>
     <string name="audio_use_system_passthrough_sub">通过 Android (系统路径) 而非 Nuvio Arc (IEC 路径) 将 TrueHD 和 DTS-HD 发送至接收器。根据设备和音频设置，这可能会将 DTS-HD 和 DTS:X 限制为标准 DTS，或导致其无声。仅在无损格式出现噪音、漂移或无声时使用此选项。</string>
