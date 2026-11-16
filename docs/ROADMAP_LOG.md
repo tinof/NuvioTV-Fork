@@ -10,6 +10,43 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-16: M3.2 `STHRESH` logged only on API 31+ (PR #84)
+
+- [M3.2][desk][batch] Log `STHRESH` only on API 31+ (A5). Files: `PlayerRuntimeControllerInitialization.kt`
+  (the `STHRESH:` line). Gate: unit test.
+
+- **Evidence:** `StartThresholdLogTest` (API 30 gives no line, API 31 and 34 give the line with the frame
+  count, 0 and -1 frames give none); `:app:testFullDebugUnitTest` passed locally before and after the rebase
+  onto PR #83, and CI on PR #84 passed on the rebased head. The first CI run failed only on
+  `ContinueWithoutAccountTest` (D1.5).
+- **Review:** routed batch run; Tier 1, Gemini (gemini-4-hydrogen-high): LGTM, no findings.
+- **Resolution:** the new fork-owned `StartThresholdLog.kt` (`startThresholdLogLine(sdkInt, frames)`) returns
+  the line only for API 31+ and a positive frame count; the call site logs it when it is not null. What is
+  applied is unchanged.
+
+## 2026-11-16: Q4.2 HDR Fit lock on the aspect toggle (PR #83)
+
+- [Q4.2][desk][batch] HDR Fit lock: while HDR video is locked to Fit, show "Fit (HDR)" and do not cycle or save the
+  aspect mode (`PlayerAspectScaleUtils.kt:34`). Gate: unit test.
+
+- **Evidence:** `AspectModeToggleTest` (5 cases: locked on Nvidia, the zoom switch on, a non-Nvidia box, SDR,
+  and the lock matching the surface fallback); `:app:testFullDebugUnitTest` passed locally, and CI on PR #83
+  passed.
+- **Review:** routed batch run; Tier 1, Gemini (gemini-4-hydrogen-high): LGTM. P2 note: the cycling branch
+  recomputes `nextAspectMode` and the label instead of reusing the `aspectModeToggle` result.
+- **Resolution:** `PlayerAspectScaleUtils.kt` gains `hdrFitLocked` (shared with `aspectModeAppliedToExoSurface`)
+  and `aspectModeToggle`; the toggle handler in `PlayerRuntimeControllerPlaybackEvents.kt` shows "Fit (HDR)"
+  (`player_aspect_fit_hdr`, default locale only) and returns without changing or saving the mode. The
+  tunneled branch still comes first, and the mpv engine keeps its behaviour.
+
+## 2026-11-16: DV7.5 leaves the batch lane
+
+- The batch run of 2026-11-16 skipped DV7.5 as a hard step and removed its `[batch]` tag. Its reason order
+  (setting, `DeviceProfile`, revert switch, profile, mode, abandon) has no match in the DV7 block of
+  `PlayerRuntimeControllerInitialization.kt`. No DV7 revert switch exists, and the track's profile is not
+  known at player setup. The abandon path runs later, in `DolbyVisionMatroskaTransformer`. The step needs a
+  plan through `/ship:roadmap-next DV7.5`.
+
 ## 2026-11-16: Q1.1 Passthrough and MKV resync log lines name their cause (PR #81)
 
 - [Q1.1][desk][batch] Log changes: "HBR DIRECT" instead of "HBR RAW … fallback" when IEC is off by design (A1); bytes
