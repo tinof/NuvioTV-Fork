@@ -38,6 +38,22 @@ class PlaybackOutputLinesTest {
         assertEquals("sink_error kind=IllegalStateException", other)
     }
 
+    @Test fun `a discontinuity names its delta and the time since the last seek`() {
+        val jump = AudioSink.UnexpectedDiscontinuityException(10_313_000L, 10_000_000L)
+        assertEquals(
+            "sink_error kind=discontinuity offMs=313 sinceSeekMs=1200",
+            PlaybackOutputLines.sinkError(jump, lastSeekWallMs = 50_000L, nowMs = 51_200L)
+        )
+    }
+
+    @Test fun `a discontinuity before any seek says so instead of a huge number`() {
+        val jump = AudioSink.UnexpectedDiscontinuityException(9_749_000L, 10_000_000L)
+        assertEquals(
+            "sink_error kind=discontinuity offMs=-251 sinceSeekMs=none",
+            PlaybackOutputLines.sinkError(jump, lastSeekWallMs = 0L, nowMs = 51_200L)
+        )
+    }
+
     @Test fun `repeated sound output errors make one line per interval with a count`() {
         val limiter = SinkErrorLimiter(intervalMs = 2_000L)
         assertEquals("e", limiter.line(1_000L, "e"))

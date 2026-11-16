@@ -8,6 +8,7 @@ import android.hardware.display.DisplayManager
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Display
 import androidx.core.content.ContextCompat
 import androidx.media3.exoplayer.audio.AudioSink
@@ -120,15 +121,27 @@ internal object PlaybackOutputLines {
             if (maxChannels > 0) " maxChannels=$maxChannels" else ""
     }
 
-    /** What failed in the sound output, by kind and code only; the platform text can carry a link. */
-    fun sinkError(error: Exception): String = when (error) {
+    /**
+     * What failed in the sound output, by kind and code only; the platform text can carry a link. A discontinuity also
+     * names the time since the last seek: [lastSeekWallMs] and [nowMs] are `SystemClock.elapsedRealtime()` readings,
+     * and a [lastSeekWallMs] of 0 means no seek yet in this playback.
+     */
+    fun sinkError(
+        error: Exception,
+        lastSeekWallMs: Long = 0L,
+        nowMs: Long = SystemClock.elapsedRealtime()
+    ): String = when (error) {
         is AudioSink.InitializationException ->
             "sink_error kind=init state=${error.audioTrackState} recoverable=${error.isRecoverable}"
         is AudioSink.WriteException -> "sink_error kind=write code=${error.errorCode} recoverable=${error.isRecoverable}"
         is AudioSink.UnexpectedDiscontinuityException ->
-            "sink_error kind=discontinuity offMs=${(error.actualPresentationTimeUs - error.expectedPresentationTimeUs) / 1_000L}"
+            "sink_error kind=discontinuity offMs=${(error.actualPresentationTimeUs - error.expectedPresentationTimeUs) / 1_000L}" +
+                " sinceSeekMs=${sinceSeek(lastSeekWallMs, nowMs)}"
         else -> "sink_error kind=${error.javaClass.simpleName.ifEmpty { "other" }}"
     }
+
+    private fun sinceSeek(lastSeekWallMs: Long, nowMs: Long): String =
+        if (lastSeekWallMs <= 0L) "none" else (nowMs - lastSeekWallMs).coerceAtLeast(0L).toString()
 }
 
 /** A failing sound output can raise errors many times a second; one line per [intervalMs] keeps the rest of the events. */
