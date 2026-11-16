@@ -16,6 +16,9 @@ mkdir -p "$out"
 
 results=app/build/test-results/testFullDebugUnitTest
 rm -rf "$results"
+# A local kotlin-lsp re-imports during the build and competes with it; no-op on CI.
+guard="$(dirname "$0")/stop_kotlin_lsp.sh"
+[ -x "$guard" ] && "$guard"
 ./gradlew :app:testFullDebugUnitTest --continue --stacktrace 2>&1 | tee "$out/gradle.log"
 code=${PIPESTATUS[0]}
 
