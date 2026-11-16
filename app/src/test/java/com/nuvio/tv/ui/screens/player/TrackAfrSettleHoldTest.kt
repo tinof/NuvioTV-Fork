@@ -44,6 +44,19 @@ class TrackAfrSettleHoldTest {
     }
 
     @Test
+    fun `the track deadline keeps a one second margin off nvidia`() {
+        assertEquals(10_000L, trackAfrDeadlineMs(0L, nvidia = false))
+        assertEquals(8_600L, trackAfrDeadlineMs(0L, 600L, nvidia = false))
+    }
+
+    @Test
+    fun `the track deadline keeps a two second margin on nvidia`() {
+        assertEquals(9_600L, trackAfrDeadlineMs(0L, 600L, nvidia = true))
+        assertEquals(11_000L, trackAfrDeadlineMs(0L, nvidia = true))
+        assertEquals(19_000L, trackAfrDeadlineMs(10_000L, 600L, nvidia = true))
+    }
+
+    @Test
     fun `switch value wins over the nvidia hold`() {
         assertEquals(2_000L, trackAfrSettleHoldMs(2_000, manufacturer = "NVIDIA"))
         assertEquals(800L, trackAfrSettleHoldMs(800, manufacturer = "NVIDIA"))

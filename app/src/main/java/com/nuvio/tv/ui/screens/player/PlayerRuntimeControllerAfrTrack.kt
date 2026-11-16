@@ -26,14 +26,19 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 // Absolute ceiling on the whole track-AFR step: the mode switch wait (up to 4 s), the settle wait
 // (AfrSettle cap, from the settle floor) and a margin. Timer-released, so it cannot deadlock startup.
+// On Nvidia the settle wait counts from the stabilized switch, not the request, so it can start
+// late in the switch wait; the larger margin keeps the deadline from cutting it short (B5).
 private const val TRACK_AFR_SWITCH_WAIT_MS = 4_000L
 private const val TRACK_AFR_MARGIN_MS = 1_000L
+private const val TRACK_AFR_MARGIN_NVIDIA_MS = 2_000L
 
 internal fun trackAfrDeadlineMs(
     userDelayMs: Long,
-    floorMs: Long = com.nuvio.tv.core.player.AfrSettle.MIN_SETTLE_MS
+    floorMs: Long = com.nuvio.tv.core.player.AfrSettle.MIN_SETTLE_MS,
+    nvidia: Boolean = DeviceProfile.isNvidia()
 ): Long =
-    TRACK_AFR_SWITCH_WAIT_MS + com.nuvio.tv.core.player.AfrSettle.capMs(userDelayMs, floorMs) + TRACK_AFR_MARGIN_MS
+    TRACK_AFR_SWITCH_WAIT_MS + com.nuvio.tv.core.player.AfrSettle.capMs(userDelayMs, floorMs) +
+        if (nvidia) TRACK_AFR_MARGIN_NVIDIA_MS else TRACK_AFR_MARGIN_MS
 
 // Shorter hold on Nvidia boxes, so the Shield starts sooner after a switch. 600 and
 // 1200 ms both started a 25 fps DTS-HD title cleanly three times; 600 starts sooner (Q2.5).
@@ -369,6 +374,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
     } ?: true
     val userDelayMs = (settingsNow?.afrSettleDelaySeconds ?: 0) * 1000L
     val settleFloorMs = trackAfrSettleHoldMs(DebugSwitches.int("debug.nuvio.afr_settle_ms"))
+    val deadlineMs = trackAfrDeadlineMs(userDelayMs, settleFloorMs)
 
     trackAfrAttemptedForCurrentStream = true
     afrTrackSwitchInFlight = needsSwitch
@@ -390,7 +396,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
 
     scope.launch {
         try {
-            withTimeoutOrNull(trackAfrDeadlineMs(userDelayMs, settleFloorMs)) {
+            withTimeoutOrNull(deadlineMs) {
                 val playerSettings = playerSettingsDataStore.playerSettings.first()
                 val snapped = FrameRateUtils.snapToStandardRate(rawFps)
                 val prefer23976TrackBias = FrameRateUtils.prefers23976(rawFps)
@@ -524,7 +530,7 @@ internal fun PlayerRuntimeController.maybeRunTrackFormatAfr(rawFps: Float, forma
                 }
             } ?: Log.w(
                 PlayerRuntimeController.TAG,
-                "Track AFR exceeded absolute deadline (${trackAfrDeadlineMs(userDelayMs, settleFloorMs)}ms); releasing start gate"
+                "Track AFR exceeded absolute deadline (${deadlineMs}ms); releasing start gate"
             )
         } finally {
             // Act only if this coroutine still belongs to the current
