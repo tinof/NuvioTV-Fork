@@ -99,7 +99,23 @@ gradle_args=(":app:assembleFull${variant}" "-PnuvioAppIdSuffix=${suffix}"
   "-ParcVersionCode=${version_code}" "-ParcVersionName=${version_name}")
 $debuggable && gradle_args+=("-Pdebuggable=true")
 echo "== building ${gradle_args[*]} at ${head_sha:0:9}${dirty}, key: ${key_desc}"
-./gradlew "${gradle_args[@]}"
+scripts/stop_kotlin_lsp.sh "$root"
+# Backstop: a KSP incremental cache corrupted by an earlier crash or a concurrent build fails every
+# later build the same way. Delete it and retry once without the daemon, which still holds the
+# broken cache files open ("Storage for [...kspCaches...] is already registered").
+gradle_log="$(mktemp -t shield-gradle)"
+if ! ./gradlew "${gradle_args[@]}" 2>&1 | tee "$gradle_log"; then
+  if grep -Eq 'ksp\.com\.intellij\.util\.io\.|kspCaches/.*is already registered' "$gradle_log"; then
+    rm -f "$gradle_log"
+    echo "== the KSP incremental cache is corrupt; deleting app/build/kspCaches and retrying once with --no-daemon" >&2
+    rm -rf app/build/kspCaches
+    ./gradlew --no-daemon "${gradle_args[@]}"
+  else
+    rm -f "$gradle_log"
+    exit 1
+  fi
+fi
+rm -f "$gradle_log"
 
 lower="$(echo "$variant" | tr '[:upper:]' '[:lower:]')"
 apk="app/build/outputs/apk/full/${lower}/app-full-arm64-v8a-${lower}.apk"
