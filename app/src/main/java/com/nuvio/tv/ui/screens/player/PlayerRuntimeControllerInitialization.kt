@@ -3289,7 +3289,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         if (_exoPlayer !== this@apply) return
                         sinkErrorLimiter.line(
                             SystemClock.elapsedRealtime(),
-                            com.nuvio.tv.core.report.PlaybackOutputLines.sinkError(audioSinkError)
+                            com.nuvio.tv.core.report.PlaybackOutputLines.sinkError(lastSeekWallMs = lastSeekWallMs, error = audioSinkError)
                         )?.let { com.nuvio.tv.core.report.PlaybackRecorder.event(com.nuvio.tv.core.report.RecorderEvent.AUDIO_OUTPUT, it) }
                         playbackRecoveryGate.noteAudioSinkError(SystemClock.elapsedRealtime())
                     }

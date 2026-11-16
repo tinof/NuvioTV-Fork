@@ -727,6 +727,8 @@ public class MatroskaExtractor implements Extractor {
   private final byte[] resyncBlock = new byte[RESYNC_BLOCK_BYTES];
   private int resyncBudget = MAX_RESYNC_ATTEMPTS;
   private long ebmlFailurePosition = C.POSITION_UNSET;
+  // Fork (Q1.1): the bytes a resync skipped and the time of the Cluster it landed on.
+  private final MatroskaResyncLog resyncLog = new MatroskaResyncLog(TAG);
   private final ParsableByteArray vorbisNumPageSamples;
   private final ParsableByteArray seekEntryIdBytes;
   private final ParsableByteArray sampleStrippedBytes;
@@ -986,6 +988,8 @@ public class MatroskaExtractor implements Extractor {
     if (position == 0) {
       pendingFinishTracks = false;
     }
+    // Fork (Q1.1): a seek drops a resync's pending Cluster time.
+    resyncLog.onSeek();
     resetParsingState();
   }
 
@@ -1178,6 +1182,8 @@ public class MatroskaExtractor implements Extractor {
                 + " to next cluster (budget left "
                 + resyncBudget
                 + ")");
+        // Fork (Q1.1): the bytes skipped; the landing Cluster's time follows at its Timestamp.
+        resyncLog.onSkipped(failPosition, input.getPosition());
         continueReading = true;
         continue;
       }
@@ -1989,6 +1995,8 @@ public class MatroskaExtractor implements Extractor {
       case ID_TIME_CODE:
         clusterTimecodeUs = scaleTimecodeToUs(value);
         clusterTimecode = value;
+        // Fork (Q1.1): the first Cluster time after a resync, logged once.
+        resyncLog.onClusterTime(clusterTimecodeUs);
         break;
       case ID_BLOCK_DURATION:
         blockDurationUs = scaleTimecodeToUs(value);
