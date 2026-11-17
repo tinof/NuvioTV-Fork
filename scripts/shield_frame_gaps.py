@@ -520,7 +520,11 @@ def dump(device, out, meta, layer, package, n, dump_every, max_dump_every):
     meta["dumps"].append(entry)
     write_meta(out, meta)
     if len(rows) >= 2:
-        span = (max(r[0] for r in rows) - min(r[0] for r in rows)) / 1e9
+        # The history holds a fixed number of frames: its span at the playing rate is count x step. A pause
+        # inside the history would stretch max - min and let the next dump miss frames after the resume.
+        ds = sorted(r[0] for r in rows)
+        step = statistics.median(b - a for a, b in zip(ds, ds[1:]))
+        span = (len(ds) - 1) * step / 1e9
         dump_every = max(1.0, min(max_dump_every, 0.4 * span))
     return layer, dump_every
 
