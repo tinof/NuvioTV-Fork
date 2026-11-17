@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-17 | R2.5 closed: a new player restores the UI mode only once its settings load, so its default OFF no longer switches the TV back before the real setting is read; a player closed before that still switches back. | R2 | [log](docs/ROADMAP_LOG.md), PR #91 |
 | 2026-11-17 | Q6.6 closed: the playback issue report gets no `transcodeAacToDts` field (owner). | Q6 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-16 | D1.1 closed: `audio_tunneled_sub` is translated in pt, sr and zh, so every locale has it. | D1 | [log](docs/ROADMAP_LOG.md), PR #86 |
 | 2026-11-16 | M3.2 closed: `STHRESH` is logged only on API 31 and up, where the start threshold applies. | M3 | [log](docs/ROADMAP_LOG.md), PR #84 |
@@ -274,21 +275,12 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
 
 ### R2: switch-back after Stop (incident 01)
 
-- **Status:** Partial. The 750 ms delay ships but is unproven; on Nvidia a gone activity skips the
-  switch-back (R2.1, [log](docs/ROADMAP_LOG.md)); any new player cancels a pending switch-back (R2.2, PR #75).
-  Open: R2.3–R2.5. Findings H1–H5, H7, B2, B3.
+- **Status:** Partial. The 750 ms delay ships but is unproven; a gone activity skips the switch-back on
+  Nvidia, a new player cancels a pending one and restores the UI mode only once its settings load (R2.1,
+  R2.2, R2.5, [log](docs/ROADMAP_LOG.md)). Open: R2.3, R2.4. Findings H1–H5, H7, B2, B3.
 - In the incident the video layer was already gone when the switch-back hung; HDCP read failures had
   started right after the switch-in. Of the strategies weighed, only skipping the switch-back removes the
   mode set at Stop (H4). A clean run of 30 Stops cannot tell the delay from no delay (H5).
-- [R2.5][desk] Hold `PlayerScreen`'s OFF restore (`PlayerScreen.kt:715`, `LaunchedEffect(uiState.frameRateMatchingMode)`)
-  until the player settings have loaded: the `PlayerUiState` default OFF (`PlayerUiState.kt:247`) restores the
-  UI mode at once on every new player, before `PlayerRuntimeControllerInitialization.kt:623` sets the real
-  mode. Found by the review of R2.2 (PR #75, F1). Files: `PlayerScreen.kt`, `PlayerUiState.kt`,
-  `PlayerRuntimeControllerInitialization.kt`. Gate: unit test of the extracted decision.
-- **Decided 2026-11-17 (agent, recommended; owner may override):** a player that closes before its settings
-  load schedules the switch-back (`AfrUiModeRestore.onClose`), so a mode the last player left still goes back
-  to the UI mode as it did before the hold; not taken: clearing the original mode, which would leave the TV at
-  the last title's rate.
 - [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
   default off. Gate: setting persists; switch still overrides.
 - [R2.4][device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
