@@ -285,6 +285,10 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
   UI mode at once on every new player, before `PlayerRuntimeControllerInitialization.kt:623` sets the real
   mode. Found by the review of R2.2 (PR #75, F1). Files: `PlayerScreen.kt`, `PlayerUiState.kt`,
   `PlayerRuntimeControllerInitialization.kt`. Gate: unit test of the extracted decision.
+- **Decided 2026-11-17 (agent, recommended; owner may override):** a player that closes before its settings
+  load schedules the switch-back (`AfrUiModeRestore.onClose`), so a mode the last player left still goes back
+  to the UI mode as it did before the hold; not taken: clearing the original mode, which would leave the TV at
+  the last title's rate.
 - [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
   default off. Gate: setting persists; switch still overrides.
 - [R2.4][device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
