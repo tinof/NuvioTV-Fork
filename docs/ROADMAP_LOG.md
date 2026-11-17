@@ -10,6 +10,31 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-17: Q5.1 dry runs and a Java heap fill (PR #89)
+
+- **Step:** [Q5.1][desk][device] Commit `scripts/shield_frame_gaps.py` with a `.gitignore` exception, as in
+  M2.1. It takes `--serial`, wraps every adb call in a timeout and is read-only. It resolves the PID and the
+  SurfaceView layer from the package, and drops SurfaceFlinger frames from before the capture started. It
+  reports coverage gaps. It reports app-side skips against late presents, next to vmstat, GC and SIGKILL
+  exits. A kill is named lmkd only when an lmkd line confirms it. Gate: a dry run on the Shield shows both
+  event classes with no coverage gap.
+- **State:** landed in PR #89; gate pending. It closes with the first Q5.2 run that shows both classes.
+- **Clocks:** `/proc/uptime`, `/proc/timer_list` (`now at`) and `logcat -v monotonic` agreed within 0.1 s on
+  a box up 3.8 days. The script still applies the measured offset.
+- **Run 2:** HDR10 UHD remux, DTS-HD MA 5.1, 24p at 24 Hz, 600 s. 14388 frames, 0 events, 0 coverage gaps,
+  no direct reclaim, MemAvailable 677–812 MB. Heap 186–200 MB throughout.
+- **Run 1:** Dolby Vision UHD remux, DTS-HD MA 5.1, local build of `perf/shield-pass` from 2026-11-16.
+  - The Java heap held 205–214 MB for the first 50 s, then rose about 10 MB a second to 512/512 MB at 97 s.
+  - GC then freed nothing, audio underran, input timed out (ANR at about 30 s later), and
+    `arc-main-watchdog` threw `OutOfMemoryError`. ActivityManager killed the app.
+  - Replayed from its dumps: 11 app-side skips, 1 late present and 2 stalls in the 10 s before the freeze,
+    each with 4–11 GC lines from the app. The capture was cut short, so it is not the gate.
+  - The capture sends only shell reads; run 2 with the same capture kept a flat heap. The DV title was not
+    replayed without a capture: Q5.8.
+- **Script tests:** `scripts/tests` (`cd scripts && python3 -m unittest discover -s tests`) has the same 15
+  failures on the base commit as on the branch, all in `ShieldBuildScriptTest`, `test_release_*` and
+  neighbours, none in the new file.
+
 ## 2026-11-16: D1.1 Tunneled playback summary in pt, sr and zh (PR #86)
 
 - [D1.1][desk][batch] Translate `audio_tunneled_sub` in pt, sr and zh (A-M4). Files: `strings.xml` in
