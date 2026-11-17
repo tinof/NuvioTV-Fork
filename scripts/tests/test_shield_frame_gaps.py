@@ -88,6 +88,14 @@ class ClassifyTest(unittest.TestCase):
         events, _, _ = fg.classify(merged, gaps, VSYNC)
         self.assertEqual([("app_skip", 1), ("late_present", 1)], [(e["kind"], e["frames"]) for e in events])
 
+    def test_a_dump_with_no_frame_after_the_start_is_not_a_gap(self):
+        rows = frames(10**12, 100)
+        start = rows[59][0]
+        first = [r for r in rows if r[0] <= start]
+        later = [r for r in rows if r[0] > rows[20][0]]
+        _, gaps = fg.merge_dumps([{"rows": first}, {"rows": later}], start)
+        self.assertEqual([], gaps)
+
     def test_frames_from_before_the_start_are_dropped(self):
         rows = frames(10**12, 100)
         start = rows[59][0]
