@@ -622,6 +622,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 it.copy(
                     internalPlayerEngine = effectiveInternalPlayerEngine,
                     frameRateMatchingMode = playerSettings.frameRateMatchingMode,
+                    frameRateMatchingModeLoaded = true,
                     resizeMode = playerSettings.resizeMode,
                     aspectMode = deviceAspectMode,
                     tunneledSurfaceFill = tunneledSurfaceFill,
