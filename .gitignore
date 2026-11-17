@@ -42,6 +42,7 @@ backups/
 .supabase_db.env
 scripts/*
 !scripts/shield_measure.py
+!scripts/shield_frame_gaps.py
 !scripts/shield_snapshot.sh
 !scripts/shield_restore.sh
 !scripts/shield_build_install.sh
