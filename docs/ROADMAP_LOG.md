@@ -10,6 +10,15 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-17: Q6.6 No `transcodeAacToDts` field in the issue report (owner)
+
+- [Q6.6][owner] Decide whether the structured playback issue report gets a `transcodeAacToDts` field (the
+  report server's schema is unknown; today only the raw events line carries `aacToDts=`). Gate: decision
+  in the log.
+- **Decided 2026-11-17 (owner):** no field. The raw events line already says whether the transcode ran,
+  and the report goes to upstream's relay server, whose schema the fork does not control.
+- **Resolution:** closed by the owner's decision in the steering session of 2026-11-17. No code changes.
+
 ## 2026-11-17: Q5.1 dry runs and a Java heap fill (PR #89)
 
 - **Step:** [Q5.1][desk][device] Commit `scripts/shield_frame_gaps.py` with a `.gitignore` exception, as in
