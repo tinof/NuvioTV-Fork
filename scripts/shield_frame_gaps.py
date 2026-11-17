@@ -149,11 +149,13 @@ def merge_dumps(dumps, start_ns):
     # With no start mark (start_ns 0) the first dump cannot be checked for overlap.
     last_max, pending_empty = (start_ns if start_ns > 0 else None), None
     for dump in dumps:
-        kept = [row for row in dump["rows"] if row[0] > start_ns]
-        if not kept:
+        if not dump["rows"]:
             if pending_empty is None:
                 pending_empty = dump.get("why") or "empty dump"
             continue
+        kept = [row for row in dump["rows"] if row[0] > start_ns]
+        if not kept:
+            continue  # nothing new since the start mark, and the dump overlaps it
         low = min(row[0] for row in kept)
         if pending_empty is not None:
             gaps.append((last_max if last_max is not None else low, low, pending_empty))
