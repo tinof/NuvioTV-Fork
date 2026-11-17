@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-17 | Q6.6 closed: the playback issue report gets no `transcodeAacToDts` field (owner). | Q6 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-16 | D1.1 closed: `audio_tunneled_sub` is translated in pt, sr and zh, so every locale has it. | D1 | [log](docs/ROADMAP_LOG.md), PR #86 |
 | 2026-11-16 | M3.2 closed: `STHRESH` is logged only on API 31 and up, where the start threshold applies. | M3 | [log](docs/ROADMAP_LOG.md), PR #84 |
 | 2026-11-16 | Q4.2 closed: while HDR video is locked to Fit, the aspect toggle shows "Fit (HDR)" and neither cycles nor saves the mode. | Q4 | [log](docs/ROADMAP_LOG.md), PR #83 |
@@ -199,34 +200,60 @@ today that is analysis on the Shield during playback (T3: DV1.3, DV1.7, DV2.6, D
 DV5.7, DV5.9, DV5.10, DV5.12), which waits for Q5, and the FEL provider DV7.8, which waits for
 hdr-analyze.
 
+**Focus (set 2026-11-17):** Q5.8, Q5.2, D1.5, R2.5, DV4.10; the Dolby Vision remux that fills the app's
+memory until it is killed comes first, then the stutter baseline on the fixed build, with the flaky test,
+the mode restore on every new player and HDR10 as Dolby Vision from a manifest as the desk work beside them.
+
 1. **Playback stutter under memory pressure** (Q5). The owner sees it in every 4K title, and the same
-   limit blocks DV5. Gate: Q5.7 beats the Q5.2 baseline.
-2. **Device safety and baselines** (M2, M1). Gate: baseline tables for this app and the upstream app in
-   the log.
-3. **Switch-back safety and AFR plan** (R2, Q2). Gate: the mitigation ships; the re-entry test passes.
-4. **Passthrough and transcode correctness** (Q1, Q6). Gate: AVR readings recorded for TrueHD, DTS-HD MA
-   and E-AC3; the `hbr_iec` default decided; the open Q6 checks closed.
+   limit blocks DV5. Outcome: a 4K title plays without the frame skips that memory pressure causes today,
+   and no title fills the app's memory until it is closed. Gate: Q5.7 beats the Q5.2 baseline.
+2. **Device safety and baselines** (M2, M1). Outcome: every speed or smoothness claim can be checked
+   against a measured table for this app and the upstream app, and a test session leaves the Shield as it
+   was. Gate: baseline tables for this app and the upstream app in the log.
+3. **Switch-back safety and AFR plan** (R2, Q2). Outcome: stopping a title never hangs the Shield, and
+   every title starts and stays at its own frame rate, also right after another title. Gate: the
+   mitigation ships; the re-entry test passes.
+4. **Passthrough and transcode correctness** (Q1, Q6). Outcome: TrueHD, DTS-HD MA and Atmos reach the
+   HT-A9 unchanged through seeks, pauses and input switches, and stereo AAC arrives as DTS-HD MA in sync.
+   Gate: AVR readings recorded for TrueHD, DTS-HD MA and E-AC3; the `hbr_iec` default decided; the open Q6
+   checks closed.
 5. **Dolby Vision for HDR10 from a manifest** (DV4.10, DV4.11). HDR10 is the most common 4K
-   HDR format. Gate:
+   HDR format. Outcome: an HDR10 title with a prepared manifest plays as Dolby Vision with per-shot
+   metadata, on by default only if it looks better on the C9 than native HDR10. Gate:
    the owner's G-E A/B on the C9 against native HDR10 decides the default.
-6. **Start and Stop latency** (S1, S3). Gate: click → playing and the Stop stall beat the M1 baseline.
-7. **Seek and thumbnails** (S2). Gate: CPU, native heap and drops with thumbnails on within the S2
-   tolerance of thumbnails off. The measured 43 % CPU load comes before UI tuning.
-8. **Small correctness fixes** (R3). Gate: unit tests.
+6. **Start and Stop latency** (S1, S3). Outcome: a title starts sooner after the click, and Stop returns
+   to the UI without a freeze. Gate: click → playing and the Stop stall beat the M1 baseline.
+7. **Seek and thumbnails** (S2). Outcome: seek thumbnails cost no dropped frames and no noticeable CPU or
+   memory while a 4K remux plays, and they never hold up a seek. Gate: CPU, native heap and drops with
+   thumbnails on within the S2 tolerance of thumbnails off. The measured 43 % CPU load comes before UI
+   tuning.
+8. **Small correctness fixes** (R3). Outcome: if the saved settings are ever lost or corrupt, the Shield
+   still gets its Nvidia player defaults. Gate: unit tests.
 9. **Conversion correctness** (DV3.2, DV3.3, DV2.9, DV7.1, DV7.2, DV7.3, DV7.4, DV7.5, DV7.6,
-   DV7.7). Gate: the HLG static session finished and no libdovi abort path reachable from a Profile 7 title.
-10. **UI frames and navigation** (S4). Gate: the M1 journeys beat the baseline and the upstream app at the
-    chosen refresh rate.
-11. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4).
-12. **Media3 backports** (E1), only on a symptom; the ready grace is startable.
+   DV7.7). Outcome: converted Dolby Vision is right from the first frame and after every seek, and a
+   damaged Profile 7 title falls back instead of crashing the app. Gate: the HLG static session finished
+   and no libdovi abort path reachable from a Profile 7 title.
+10. **UI frames and navigation** (S4). Outcome: Home and navigation answer every key press without
+    dropped frames, at least as smoothly as the upstream app, at the refresh rate the owner chose. Gate:
+    the M1 journeys beat the baseline and the upstream app at the chosen refresh rate.
+11. **Frame pacing, listener leak, decode-path bugs** (Q3, Q4). Outcome: video frames arrive evenly,
+    playing many titles in a row leaks nothing, and the TV shows the right Dolby Vision mode for each
+    profile.
+12. **Media3 backports** (E1), only on a symptom; the ready grace is startable. Outcome: starts and seeks
+    show no brief false buffering, and other engine fixes come in only when the Shield's logs show the
+    problem they fix.
 13. **Manifest reach** (DV4.12, DV4.2, DV4.3, DV1.1, DV5.1). The per-shot curve in the manifest (DV4.12) and the live
-    server for a title no manifest was made for (DV4.2, DV4.3, with the renderer replacement). Gate: each
-    step's own.
-14. **Analysis on the Shield while idle, T2** (DV1.2, DV1.5, DV1.6, DV2.5, DV5.11, DV5.3, DV5.8, DV5.6). It buys independence from the PC, nothing else, so it comes after the manifest path. Gate:
-    DV5.6.
-15. **Diagnostics and docs** (M3, D1).
+    server for a title no manifest was made for (DV4.2, DV4.3, with the renderer replacement). Outcome: a
+    title nobody prepared a manifest for still gets per-shot Dolby Vision from a PC on the LAN, and
+    prepared manifests carry each shot's tone curve. Gate: each step's own.
+14. **Analysis on the Shield while idle, T2** (DV1.2, DV1.5, DV1.6, DV2.5, DV5.11, DV5.3, DV5.8, DV5.6). It buys independence from the PC, nothing else, so it comes after the manifest path. Outcome: the
+    Shield prepares the next episode's Dolby Vision metadata by itself while idle, so per-shot Dolby
+    Vision works without the PC. Gate: DV5.6.
+15. **Diagnostics and docs** (M3, D1). Outcome: the HUD shows audio stalls, and a test fails only for a
+    real reason, never by chance.
 16. **Upstream** (U1). The sync (U1.5) runs whenever the drift issue says a batch is due; its cost steps
-    follow. Upstream pull requests are deferred.
+    follow. Upstream pull requests are deferred. Outcome: the fork is never more than a week behind
+    upstream, and each sync costs less of the owner's time.
 
 ## Reliability
 
@@ -360,6 +387,9 @@ hdr-analyze.
 - Pressure handling reacts only to the system `lowMemory` flag (`BufferMemoryKeeper.kt:126`), sampled only
   in the 10 s `BUFFER:` log block (`PlayerRuntimeControllerPlaybackEvents.kt:397-408`).
 - The restore steps let the buffer grow back into reclaim (`BufferMemoryKeeper.kt:138-141`).
+- **Decided 2026-11-17 (owner):** Q5.8 comes first, and the Q5.2 baseline runs on the build that has its
+  fix. Q5.3 to Q5.5 wait for that baseline (`Needs: Q5.2`) and are re-read against the current
+  `BufferMemoryKeeper` before they are built: it already has margin checks, capped growth and a 60 s hold.
 - [Q5.1][desk][device] Commit `scripts/shield_frame_gaps.py` with a `.gitignore` exception, as in M2.1.
   - It takes `--serial`, wraps every adb call in a timeout and is read-only.
   - It resolves the PID and the SurfaceView layer from the package, and drops SurfaceFlinger frames from
@@ -385,6 +415,7 @@ hdr-analyze.
     `lowMemory`.
   - Add a `debug.nuvio.*` switch for the margin.
   - Gate: unit tests, including a pressure burst shorter than 10 s.
+  - Needs: Q5.2.
 - [Q5.4][desk] Nvidia default: an automatic budget of about 300 MB on 3 GB `mdarcy` (`BufferSizing.kt:17`).
   - Since the sync of 2026-10-31 a sized-down budget grows back towards 500 MB on `mdarcy` (c5b872833,
     `BufferMemoryKeeper.tendGrowth`), and `spareMb` lost the 32 MB arena reserve. This step and Q5.5 must cover
@@ -393,12 +424,14 @@ hdr-analyze.
     `spareMb` keeps a 28 MB margin (47d1c5834) instead of 100 + 40 MB, so measure the baseline again first.
   - Gate it by `DeviceProfile`, with a revert switch and a row in `docs/shield-todo.md`.
   - Gate: unit test.
+  - Needs: Q5.2.
 - [Q5.5][desk] Hysteresis.
   - Ease a level only when the room covers the added amount plus a margin, and hold 3–5 min after a
     critical event (`BufferMemoryKeeper.kt:138-141`, `:248`).
   - Keep trimming idle memory while pressure lasts, at most every 30 s, and log only trims that free
     memory (`:133`).
   - Gate: unit tests, including allocations that go idle after a level change.
+  - Needs: Q5.2.
 - [Q5.6][device][new-build] Find the large-object churn (17–27 MB of large objects freed per GC, every 3–6 s
   during playback).
   - Use a `.shielddbg` debuggable build, heap dumps or allocation tracking only (M2).
@@ -452,9 +485,6 @@ hdr-analyze.
   Gate: AC-3 output, sync and HUD as before. Needs: Q6.1.
 - [Q6.5][device][new-build] CPU of the decoder thread for 44.1 kHz AAC with the tuned resampler
   (`top -H`). Gate: number in the log. Needs: Q6.1.
-- [Q6.6][owner] Decide whether the structured playback issue report gets a `transcodeAacToDts` field (the
-  report server's schema is unknown; today only the raw events line carries `aacToDts=`). Gate: decision
-  in the log.
 - [Q6.7][desk] The denied-codec AC-3 decision asks `getSinkFormatSupport`, as the DTS one does, so speed,
   the passthrough policy and the PCM latch apply to it (today `sinkSupportsFormat` bypasses them, DESIGN
   §3). Gate: unit test with a sink whose policy denies AC-3.
