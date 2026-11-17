@@ -246,6 +246,8 @@ data class PlayerUiState(
     val afrProbeRunning: Boolean = false,
     val internalPlayerEngine: InternalPlayerEngine = InternalPlayerEngine.EXOPLAYER,
     val frameRateMatchingMode: FrameRateMatchingMode = FrameRateMatchingMode.OFF,
+    /** False until initializePlayer copies the settings' mode in; the OFF above is only a default. */
+    val frameRateMatchingModeLoaded: Boolean = false,
     val useLibass: Boolean = false,
     val libassRenderType: LibassRenderType = LibassRenderType.OVERLAY_OPEN_GL,
     val libassRenderMode: LibassRenderMode = LibassRenderMode.DEFAULT,

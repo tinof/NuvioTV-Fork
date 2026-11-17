@@ -712,19 +712,22 @@ fun PlayerScreen(
             viewModel.attachHostActivity(null)
         }
     }
-    LaunchedEffect(uiState.frameRateMatchingMode) {
+    LaunchedEffect(uiState.frameRateMatchingMode, uiState.frameRateMatchingModeLoaded) {
         if (activity != null &&
-            uiState.frameRateMatchingMode == com.nuvio.tv.data.local.FrameRateMatchingMode.OFF
+            AfrUiModeRestore.restoreWhileOpen(uiState.frameRateMatchingMode, uiState.frameRateMatchingModeLoaded)
         ) {
             com.nuvio.tv.core.player.FrameRateUtils.restoreOriginalDisplayMode(activity)
         }
     }
     // Restore original display mode when leaving the player
     val currentFrameRateMatchingMode by rememberUpdatedState(uiState.frameRateMatchingMode)
+    val currentFrameRateMatchingModeLoaded by rememberUpdatedState(uiState.frameRateMatchingModeLoaded)
     DisposableEffect(activity) {
         onDispose {
             if (activity != null) {
-                if (currentFrameRateMatchingMode == com.nuvio.tv.data.local.FrameRateMatchingMode.START_STOP) {
+                if (AfrUiModeRestore.onClose(currentFrameRateMatchingMode, currentFrameRateMatchingModeLoaded) ==
+                    AfrUiModeRestore.OnClose.SCHEDULE_RESTORE
+                ) {
                     // Delayed on Nvidia until the player surface is gone (see the KDoc).
                     com.nuvio.tv.core.player.FrameRateUtils.scheduleRestoreOriginalDisplayMode(activity)
                 } else {
