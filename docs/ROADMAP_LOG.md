@@ -10,6 +10,28 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-17: R2.5 OFF restore waits for the player settings (PR #91)
+
+- [R2.5][desk] Hold `PlayerScreen`'s OFF restore (`PlayerScreen.kt:715`, `LaunchedEffect(uiState.frameRateMatchingMode)`)
+  until the player settings have loaded: the `PlayerUiState` default OFF (`PlayerUiState.kt:247`) restores the
+  UI mode at once on every new player, before `PlayerRuntimeControllerInitialization.kt:623` sets the real
+  mode. Found by the review of R2.2 (PR #75, F1). Files: `PlayerScreen.kt`, `PlayerUiState.kt`,
+  `PlayerRuntimeControllerInitialization.kt`. Gate: unit test of the extracted decision.
+- **Decided 2026-11-17 (agent, recommended; owner may override):** a player that closes before its settings
+  load schedules the switch-back (`AfrUiModeRestore.onClose`), so a mode the last player left still goes back
+  to the UI mode as it did before the hold; not taken: clearing the original mode, which would leave the TV at
+  the last title's rate.
+
+- **Evidence:** `AfrUiModeRestoreTest` (6 cases: unloaded OFF does not restore, loaded OFF restores, START and
+  START_STOP keep the mode while open, START_STOP and an unloaded close schedule the switch-back, OFF and START
+  clear on close); `:app:testFullDebugUnitTest` passed locally; CI on PR #91.
+- **Review:** Tier 1, Gemini (gemini-4-hydrogen-high), LGTM.
+- **Resolution:** `PlayerUiState.frameRateMatchingModeLoaded` turns true in the `initializePlayer` update that
+  copies the setting in; `PlayerScreen`'s OFF effect and its close path ask the fork-owned `AfrUiModeRestore`.
+  The wiring has no unit test; a quick Stop then Play on the Shield would show it.
+- Seen in the full gate run of the same day: `HomeContinueWatchingOwnershipTest` "a restored in-progress card
+  keeps its content language" failed once with a `CompletionHandlerException` and passed 3 of 3 runs alone.
+
 ## 2026-11-17: Q6.6 No `transcodeAacToDts` field in the issue report (owner)
 
 - [Q6.6][owner] Decide whether the structured playback issue report gets a `transcodeAacToDts` field (the
