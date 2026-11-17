@@ -122,6 +122,17 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(["empty dump"], [g[2] for g in gaps])
 
 
+class DumpIntervalTest(unittest.TestCase):
+    def test_a_stall_in_the_history_does_not_stretch_the_interval(self):
+        step = VSYNC  # 60 fps content: 511 frames hold 8.5 s
+        before = frames(10**12, 255, step=step)
+        after = frames(10**12 + 255 * step + 30 * 10**9, 256, step=step)
+        device = FakeDevice([dump_text(before + after)])
+        meta = {"dumps": [], "layers": [LAYER]}
+        _, every = fg.dump(device, Path(tempfile.mkdtemp()), meta, LAYER, PKG, 0, 2.0, 8.0)
+        self.assertLessEqual(every, 0.4 * 510 * step / 1e9 + 0.01)
+
+
 class KillTest(unittest.TestCase):
     def test_lmkd_only_when_an_lmkd_line_names_the_pid(self):
         lines = [
