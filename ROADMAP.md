@@ -349,7 +349,8 @@ hdr-analyze.
 
 ### Q5: memory pressure and frame skips
 
-- **Status:** Open. From the live capture of 2026-10-21 (see the log).
+- **Status:** Open. Q5.1 landed (PR #89), its gate waits for a Q5.2 run; the 2026-10-21 capture and the
+  2026-11-17 heap fill are in the log. Q5.2–Q5.8 are open.
 - In 5 minutes of a 4K HDR title with DTS-HD passthrough over Wi-Fi, SurfaceFlinger showed 12 stutter
   events: 10 app-side skips of 1–7 frames and 2 late presents.
   - 11 of the 12 fell in windows of heavy page-cache refaulting, and the worst coincided with the only
@@ -366,14 +367,17 @@ hdr-analyze.
   - It reports coverage gaps.
   - It reports app-side skips against late presents, next to vmstat, GC and SIGKILL exits. A kill is named
     lmkd only when an lmkd line confirms it.
-  - Gate: a dry run on the Shield shows both event classes with no coverage gap.
-- [Q5.2][device][new-build] Baseline on a CI build of unchanged HEAD with the same build type, package and
+  - Gate: a dry run on the Shield shows both event classes with no coverage gap. Landed: PR #89; gate pending.
+- [Q5.2][device][new-build] Baseline on a local build (`scripts/shield_build_install.sh`) of unchanged HEAD with the same build type, package and
   settings that Q5.7 will use.
   - Take it once the device state has settled (at least 1 day of uptime).
   - Use one fixed 4K HDR, DTS-HD, Wi-Fi title from the same start position, and three 30-minute runs.
   - Keep the title, segment, settings and device state frozen until Q5.7.
-  - Gate: skips, direct-reclaim windows and SIGKILL exits per run in the log.
-  - Needs: Q5.1.
+  - Not a Dolby Vision remux until Q5.8 is fixed: that title filled the Java heap within 2 minutes.
+  - Gate: skips, direct-reclaim windows and SIGKILL exits per run in the log, from
+    `scripts/shield_frame_gaps.py`. The first run that shows both event classes with no coverage gap also
+    closes the Q5.1 gate.
+  - Needs: Q5.1 (code).
 - [Q5.3][desk] Proactive pressure.
   - Sample MemAvailable at a bounded cadence of its own (for example every 2 s while playing), not only in
     the 10 s `BUFFER:` block.
@@ -405,6 +409,13 @@ hdr-analyze.
   - Gate: skips and direct-reclaim windows below the Q5.2 baseline in all three runs, no rebuffers, and
     buffer ahead never under 8 s.
   - Needs: Q5.2, Q5.3, Q5.4, Q5.5.
+- [Q5.8][device][new-build] Find what fills the Java heap on a Dolby Vision UHD remux with DTS-HD MA 5.1.
+  - On 2026-11-17 (local build of 2026-11-16) the heap went from 214 to 512 MB in 50 s of playback, then an ANR
+    and an OOM kill. An HDR10 remux with DTS-HD MA held 186–200 MB for 10 minutes (log).
+  - First check whether the same title fills the heap with no capture running.
+  - Use a `.shielddbg` debuggable build and a heap dump near the top (M2).
+  - Gate: the retaining path named in the log, and the title plays 10 minutes on a fix build with the heap
+    flat.
 
 ### Q6: Transcode AAC to DTS
 
