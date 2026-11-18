@@ -2,13 +2,20 @@ package com.nuvio.tv.core.player
 
 import com.nuvio.tv.core.player.DoviRpuBuilder.AuVerdict
 import com.nuvio.tv.core.player.DoviRpuBuilder.Code
+import com.nuvio.tv.core.player.DoviRpuBuilder.Handle
 import com.nuvio.tv.core.player.DoviRpuBuilder.HlgComposer
 import com.nuvio.tv.core.player.DoviRpuBuilder.L1
 import com.nuvio.tv.core.player.DoviRpuBuilder.Outcome
 import com.nuvio.tv.core.player.DoviRpuBuilder.QualityClass
 import com.nuvio.tv.core.player.DoviRpuBuilder.RejectReason
 import com.nuvio.tv.core.player.DoviRpuBuilder.ShotRpu
+import com.nuvio.tv.core.util.DebugSwitches
+import io.mockk.every
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -257,5 +264,187 @@ class ShotListDvRpuSourceTest {
         assertTrue(native.live.isEmpty())
         assertEquals(3, native.released.size)
         assertEquals(1, fallbackRpus.released)
+    }
+
+    // DV4.10: the 8.1 branch, for PQ tracks.
+
+    private val noHdr10Plus = DvRpuSource.Prepared.Unavailable("no HDR10+ SEI in the hvcC or the first AU (static HDR10 is DV3.3)")
+    private val hdr10PlusFallback = DvRpuSource { _, _ -> noHdr10Plus }
+    private val staticNative = FakeHdr10PlusNative()
+
+    private fun source81(
+        native: FakePlaybackManifestNative,
+        fetch: ShotListManifests.Pending = pending(),
+        hdr10Plus: DvRpuSource = hdr10PlusFallback,
+        static81: DvRpuSource = Static81DvRpuSource(staticNative),
+    ) = ShotListDvRpuSource(hdr10Plus, HlgComposer.BT2100, fetch, native, static81)
+
+    /** A fetch whose manifest the source must not wait for. */
+    private fun unasked() = ShotListManifests.Pending(
+        object : Future<FetchedManifest?> by CompletableFuture() {
+            override fun get(timeout: Long, unit: TimeUnit): FetchedManifest? = error("the manifest was awaited")
+        },
+        waitMs = 0,
+    )
+
+    @Test
+    fun `an 8_1 manifest that passes every check converts a PQ track, the static 8_1 RPU its fallback`() {
+        val native = FakePlaybackManifestNative()
+        val prepared = source81(native).prepare(p81, facts) as DvRpuSource.Prepared.Ready
+        assertTrue(prepared.rpus is ShotListTrackRpus)
+        assertEquals(
+            listOf("parse", "createMatcher 1", "checkSource 1 5", "checkTrack 1 3840x2160 1/1000", "checkProfile81 1", "createBuilder 1"),
+            native.calls,
+        )
+        val key = fileIdentity.lookupKeyHex.take(12)
+        assertTrue(prepared.label, prepared.label.startsWith("shot list $key, fallback static 8.1, L1 0/1229/3079 from MaxCLL not stated"))
+        assertEquals(1229, fakeAvgOf(prepared.rpus.first))
+        assertEquals("the static builder is released at once", listOf(Handle(1)), staticNative.released)
+        prepared.rpus.release()
+        assertTrue(native.live.isEmpty())
+    }
+
+    @Test
+    fun `without a usable manifest a PQ track gets the HDR10+ answer and no static RPU is made`() {
+        val timeout = ShotListManifests.Pending(CompletableFuture<FetchedManifest?>(), waitMs = 0)
+        val cases = listOf(
+            "no manifest" to (FakePlaybackManifestNative() to pending(null)),
+            "a timeout" to (FakePlaybackManifestNative() to timeout),
+            "a parser refusal" to (FakePlaybackManifestNative().apply { parseResult = Code.MANIFEST } to pending()),
+            "another file or track" to (FakePlaybackManifestNative().apply { checkResult = Code.MANIFEST } to pending()),
+            "an 8.4 manifest" to (FakePlaybackManifestNative().apply { profile81Result = Code.MANIFEST } to pending()),
+            "a refused builder" to (FakePlaybackManifestNative().apply { createBuilderResult = Code.MANIFEST } to pending()),
+        )
+        for ((case, setup) in cases) {
+            val (native, fetch) = setup
+            assertSame(case, noHdr10Plus, source81(native, fetch).prepare(p81, facts))
+            assertTrue(case, native.live.isEmpty())
+            assertFalse(case, native.calls.any { it.startsWith("checkComposer") })
+        }
+        val native = FakePlaybackManifestNative()
+        assertSame(noHdr10Plus, source81(native, unasked()).prepare(p81, DvTrackFacts()))
+        assertTrue("no manifest call without an identity", native.calls.isEmpty())
+        assertTrue("a no-manifest path never makes the static RPU", staticNative.created.isEmpty())
+    }
+
+    @Test
+    fun `an HDR10+ track keeps its own RPUs and is not looked up`() {
+        val hdr10PlusRpus = DvRpuSource.Prepared.Ready(StaticTrackRpus(staticRpu), "HDR10+ 8.1")
+        val native = FakePlaybackManifestNative()
+        val source = source81(native, unasked(), hdr10Plus = { _, _ -> hdr10PlusRpus })
+        assertSame(hdr10PlusRpus, source.prepare(p81, facts))
+        assertTrue(native.calls.isEmpty())
+        assertTrue(staticNative.created.isEmpty())
+    }
+
+    @Test
+    fun `a static RPU that fails under an accepted manifest keeps the track native and frees the session`() {
+        val native = FakePlaybackManifestNative()
+        val failing = Static81DvRpuSource(FakeHdr10PlusNative().apply { failRender = true })
+        assertEquals(
+            DvRpuSource.Prepared.Unavailable("static 8.1: renderShot failed: RPU"),
+            source81(native, static81 = failing).prepare(p81, facts),
+        )
+        assertTrue("every handle released", native.live.isEmpty())
+    }
+
+    @Test
+    fun `a rejection hands over to the static RPU, and the track prepared again after it is static`() {
+        val native = FakePlaybackManifestNative()
+        val fetch = pending()
+        val source = source81(native, fetch)
+        val first = (source.prepare(p81, facts) as DvRpuSource.Prepared.Ready).rpus
+        native.verdicts += listOf(inject(10, refresh = true), Outcome.Ok(AuVerdict.Rejected(RejectReason.SIZE, 1)))
+        assertArrayEquals(rpuOf(L1(10, 11, 12)).bytes(true), next(first, au(0)).shot.bytes(true))
+        val rejected = next(first, au(40))
+        assertEquals(1229, fakeAvgOf(rejected.shot))
+        assertTrue(rejected.providerSwitch)
+        assertTrue(fetch.dropped)
+        first.release()
+        // A Tracks element read again prepares the track again: it is Dolby Vision already, so static.
+        val again = source.prepare(p81, facts) as DvRpuSource.Prepared.Ready
+        assertTrue(again.rpus is StaticTrackRpus)
+        assertTrue(again.label, again.label.startsWith("static 8.1, L1 0/1229/3079"))
+        assertEquals("the manifest is not opened again", 1, native.calls.count { it == "parse" })
+        assertTrue(native.live.isEmpty())
+    }
+
+    @Test
+    fun `after a drop a new extractor or a track that never took the manifest stays native`() {
+        val native = FakePlaybackManifestNative()
+        val fetch = pending()
+        val source = source81(native, fetch)
+        val first = (source.prepare(p81, facts) as DvRpuSource.Prepared.Ready).rpus
+        native.verdicts += Outcome.Ok(AuVerdict.Rejected(RejectReason.CRC, 0))
+        next(first, au(0))
+        first.release()
+        val made = staticNative.created.size
+        // A second PQ track of the same extractor, with its own CodecPrivate.
+        val other = DvTrackFacts(identity = DvTrackIdentity(byteArrayOf(4, 5, 6), 3840, 2160, 1_000_000))
+        assertSame(noHdr10Plus, source.prepare(p81, other))
+        // A replay on the same player: a new extractor, so a new source, over the same dropped fetch.
+        assertSame(noHdr10Plus, source81(native, fetch).prepare(p81, facts))
+        assertEquals("no static RPU for either", made, staticNative.created.size)
+        assertEquals(1, native.calls.count { it == "parse" })
+        // The track that took the manifest is still static.
+        assertTrue(source.prepare(p81, facts) is DvRpuSource.Prepared.Ready)
+    }
+
+    @Test
+    fun `a second track that took the manifest too keeps the static RPU after another track's drop`() {
+        val native = FakePlaybackManifestNative()
+        val source = source81(native)
+        val other = DvTrackFacts(identity = DvTrackIdentity(byteArrayOf(4, 5, 6), 3840, 2160, 1_000_000))
+        val first = (source.prepare(p81, facts) as DvRpuSource.Prepared.Ready).rpus
+        assertTrue((source.prepare(p81, other) as DvRpuSource.Prepared.Ready).rpus is ShotListTrackRpus)
+        native.verdicts += Outcome.Ok(AuVerdict.Rejected(RejectReason.CRC, 0))
+        next(first, au(0))
+        assertTrue((source.prepare(p81, other) as DvRpuSource.Prepared.Ready).rpus is StaticTrackRpus)
+    }
+
+    @Test
+    fun `the 8_4 path does not take an 8_1 manifest's static source`() {
+        val native = FakePlaybackManifestNative()
+        val prepared = source81(native, hdr10Plus = fallback).prepare(p84, facts) as DvRpuSource.Prepared.Ready
+        assertTrue(native.calls.contains("checkComposer 1 BT2100"))
+        assertFalse(native.calls.any { it.startsWith("checkProfile81") })
+        assertEquals("shot list ${fileIdentity.lookupKeyHex.take(12)}, fallback static 8.4", prepared.label)
+        assertTrue(staticNative.created.isEmpty())
+    }
+
+    @Test
+    fun `with the switch unset or no fetch the 8_1 source is the HDR10+ source itself`() {
+        mockkObject(DebugSwitches)
+        try {
+            every { DebugSwitches.flag(any()) } returns null
+            assertSame(hdr10PlusFallback, p81Source(hdr10PlusFallback, pending(), staticNative, seiStatic = true))
+            every { DebugSwitches.flag(ShotListDvRpuSource.HDR10_SWITCH) } returns false
+            assertSame(hdr10PlusFallback, p81Source(hdr10PlusFallback, pending(), staticNative, seiStatic = true))
+            every { DebugSwitches.flag(ShotListDvRpuSource.HDR10_SWITCH) } returns true
+            assertSame(hdr10PlusFallback, p81Source(hdr10PlusFallback, null, staticNative, seiStatic = true))
+            assertTrue(p81Source(hdr10PlusFallback, pending(), staticNative, seiStatic = true) is ShotListDvRpuSource)
+        } finally {
+            unmockkObject(DebugSwitches)
+        }
+        assertEquals("debug.nuvio.dv_manifest_hdr10", ShotListDvRpuSource.HDR10_SWITCH)
+    }
+
+    @Test
+    fun `with HDR10+ off the switch still gives a PQ track its manifest, the static L1 from the container`() {
+        val native = FakePlaybackManifestNative()
+        mockkObject(DebugSwitches)
+        val source = try {
+            every { DebugSwitches.flag(any()) } returns null
+            every { DebugSwitches.flag(ShotListDvRpuSource.HDR10_SWITCH) } returns true
+            p81Source(Hdr10PlusDvRpuSource(enabled = false, native = staticNative), pending(), staticNative, seiStatic = true, manifestNative = native)
+        } finally {
+            unmockkObject(DebugSwitches)
+        }
+        val container = DvTrackFacts(maxContentLightLevel = 500, identity = identity)
+        val prepared = source.prepare(p81, container) as DvRpuSource.Prepared.Ready
+        assertTrue(prepared.label, "fallback static 8.1, L1 0/1229/2771 from MaxCLL 500 (container), MaxFALL not stated" in prepared.label)
+        // A known limit: with HDR10+ off the extractor does not read the first AU's static SEI.
+        val config = DolbyVisionConversionConfig(active = false, convertNonDolbyVision = true, stats = DolbyVisionStatsSession())
+        assertFalse(DolbyVisionMatroskaTransformer(config, hdr10PlusEnabled = false, seiStaticEnabled = true).readsSeiStatic())
     }
 }

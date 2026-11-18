@@ -82,7 +82,12 @@ internal class Hdr10PlusDvRpuSource(
     private fun unavailable(reason: String) = DvRpuSource.Prepared.Unavailable(reason)
 
     companion object {
-        /** `adb shell setprop debug.nuvio.dv_hdr10plus 0`: every PQ track plays native. Read once per extractor. */
+        /**
+         * `adb shell setprop debug.nuvio.dv_hdr10plus 0`: no PQ track converts from HDR10+, and the first AU is
+         * not read for HDR10+ or static SEI. Read once per extractor. A PQ track with an accepted playback
+         * manifest (DV4.10, `debug.nuvio.dv_manifest_hdr10` 1) still converts; its static fallback RPU then has
+         * the container's and the hvcC's facts only.
+         */
         const val SWITCH = "debug.nuvio.dv_hdr10plus"
 
         /**

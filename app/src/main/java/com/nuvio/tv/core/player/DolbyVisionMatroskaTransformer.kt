@@ -24,7 +24,7 @@ internal fun defaultRpuSource(
     val static84 = StaticDvRpuSource(composer)
     return DvRpuSources(
         if (shotList == null) static84 else ShotListDvRpuSource(static84, composer, shotList),
-        Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled, native = native, seiStatic = seiStaticEnabled),
+        p81Source(Hdr10PlusDvRpuSource(enabled = hdr10PlusEnabled, native = native, seiStatic = seiStaticEnabled), shotList, native, seiStaticEnabled),
     )
 }
 
