@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-18 | D1.5 closed: `ContinueWithoutAccountTest` waits until `AuthManager`'s session collector has handled `Initializing`, so its `Loading` write can no longer land after the test's `SignedOut`. | D1 | [log](docs/ROADMAP_LOG.md), PR #94 |
 | 2026-11-18 | DV4.10 closed: with `debug.nuvio.dv_manifest_hdr10` on, an HDR10 track with a matching 8.1 manifest plays as Dolby Vision with per-shot L1 and a static 8.1 RPU from MaxCLL and MaxFALL as its fallback; without a manifest it stays native. | DV4 | [log](docs/ROADMAP_LOG.md), PR #93 |
 | 2026-11-17 | R2.5 closed: a new player restores the UI mode only once its settings load, so its default OFF no longer switches the TV back before the real setting is read; a player closed before that still switches back. | R2 | [log](docs/ROADMAP_LOG.md), PR #91 |
 | 2026-11-17 | Q6.6 closed: the playback issue report gets no `transcodeAacToDts` field (owner). | Q6 | [log](docs/ROADMAP_LOG.md) |
@@ -747,8 +748,8 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
 
 ### D1: docs and hygiene
 
-- **Status:** Partial. The `docs/shield-todo.md` corrections of 2026-10-15 and D1.1's translations (PR #86) are
-  done (log); D1.3 to D1.5 are open. Findings A-M1, A-M5, A-M6, B6, C12, W5, H6, H7, P-09, P-10.
+- **Status:** Partial. The `docs/shield-todo.md` corrections, D1.1's translations (PR #86) and D1.5's
+  `ContinueWithoutAccountTest` race (PR #94) are done (log); D1.3 and D1.4 are open. Findings A-M1, A-M5, A-M6, B6, C12, W5, H6, H7, P-09, P-10.
 - [D1.3][desk] `PlayerLoadingSourcePreferencesTest` "image subtitle size stays independent of text and other
   profiles" failed once in CI on PR #74 (1 of 10051 tests) and passed on the rerun; the change did not touch
   it. Find what makes it order- or timing-dependent and fix the test or its setup. Gate: the cause named in
@@ -757,10 +758,6 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
   in CI on PR #81 (with `ContinueWithoutAccountTest`), and the change did not touch it. Find what makes it
   order- or timing-dependent and fix the test or its setup. Gate: the cause named in the log and the test green
   in repeated runs.
-- [D1.5][desk] `ContinueWithoutAccountTest` "with no sign-in on the box nothing is cleared" failed again on
-  2026-11-16, in CI on PRs #81 and #84 and in a local full run (`ContinueWithoutAccountTest.kt:52`); it passes alone.
-  The log of 2026-11-14 calls a second flake a reason for a base-layer test fix. Find the timing dependency
-  and fix the test or its setup. Gate: the cause named in the log and the test green in repeated full runs.
 - Closed by the sync of 2026-10-26: D1.2, the settings label for libass. Upstream's atlas pipeline (4f2fd58e2)
   always renders the same way and the settings no longer offer a render type, so there is no label to fix.
 - Closed: the Shield thermal threshold is not readable without root on SE 9.2.4; it stays unset.

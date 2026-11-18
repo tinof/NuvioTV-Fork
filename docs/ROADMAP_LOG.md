@@ -10,6 +10,25 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-18: D1.5 `ContinueWithoutAccountTest` race with the session collector (PR #94)
+
+- [D1.5][desk] `ContinueWithoutAccountTest` "with no sign-in on the box nothing is cleared" failed again on
+  2026-11-16, in CI on PRs #81 and #84 and in a local full run (`ContinueWithoutAccountTest.kt:52`); it passes alone.
+  The log of 2026-11-14 calls a second flake a reason for a base-layer test fix. Find the timing dependency
+  and fix the test or its setup. Gate: the cause named in the log and the test green in repeated full runs.
+
+- **Cause:** `AuthManager` collects `Auth.sessionStatus` on `Dispatchers.IO` from its constructor
+  (`AuthManager.kt:112`), and the `Initializing` branch sets `AuthState.Loading` (`AuthManager.kt:207`). When
+  that collector ran after `continueWithoutAccount()` had set `SignedOut`, the assertion read `Loading`:
+  `expected:<SignedOut> but was:<Loading>`, in both tests of the class.
+- **Evidence:** a forced interleaving (the test flow's collect delayed 200 ms, a 300 ms pause before the
+  assert, scratch edits only) failed both tests with that message without the fix and passed both with it.
+  On the fixed head, 10 focused runs with `--rerun` (2 tests each) and 3 full `:app:testFullDebugUnitTest
+  --continue --rerun` runs (10436 tests each) had 0 failures; CI on PR #94. Cold review: gemini LGTM.
+- **Resolution:** the fork-owned test helper `HandledSessionStatus` reports when the collector's `emit` of
+  the first value has returned, and the test's `manager()` waits for it. `AuthManager` is unchanged; the
+  upstream test file changes by four lines.
+
 ## 2026-11-18: DV4.10 HDR10 tracks take an 8.1 playback manifest (PR #93)
 
 - [DV4.10][desk] The shot-list provider takes an 8.1 manifest for a PQ (HDR10) track. hdr-analyze's manifest
