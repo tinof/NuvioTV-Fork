@@ -1004,6 +1004,16 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   the subtitles add-on (owner, 2026-11-07): a dashboard button queues a played HLG release, a worker on the PC
   runs `mkvdovi manifest`, and the add-on serves `https://subs.m4ntic.tech/dv/<lookup_key>.dvmanifest.json`
   behind its existing Caddy IP gate (`tinof/stremio-subtitles-add-on` ROADMAP H1).
+- **Decided 2026-11-18 (agent, recommended; owner may override):** DV4.10's static 8.1 heuristic lives in
+  the fork-owned `Static81DvRpuSource.kt`, not in hdr-analyze's `dovi_rpu_builder` (another repository).
+- **Decided 2026-11-18 (agent, recommended; owner may override):** a PQ (HDR10) track without a manifest
+  stays native HDR10, not DV3.3's static conversion.
+- **Decided 2026-11-18 (agent, recommended; owner may override):** HDR10 manifests are opt-in by
+  `debug.nuvio.dv_manifest_hdr10` 1, off by default, not "a manifest in the folder is the opt-in"; DV4.11
+  decides the default.
+- **Decided 2026-11-18 (agent, recommended; owner may override):** the static 8.1 L1 takes its maximum from
+  MaxCLL (else the mastering peak, never below MaxFALL), its average from MaxFALL (else 1229), minimum 0,
+  with `dovi_tool`'s clamp; not the average always at the floor.
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
   time, with a warm-up for scene context and crop, and stream finished shots; the first shot after a
   start inside a long shot is marked incomplete. Gate: its shots equal an offline run with the same
