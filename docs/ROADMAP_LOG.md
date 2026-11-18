@@ -10,6 +10,43 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-18: DV4.10 HDR10 tracks take an 8.1 playback manifest (PR #93)
+
+- [DV4.10][desk] The shot-list provider takes an 8.1 manifest for a PQ (HDR10) track. hdr-analyze's manifest
+  already covers HDR10 → 8.1 (`docs/PLAYBACK_MANIFEST.md`, scope of version 1); the provider keeps such a
+  track on its fallback today, because 8.1 needs a fallback RPU before the first validated IRAP and after
+  a rejection (`ShotListDvRpuSource.kt:17-18`). That fallback is a static 8.1 RPU from the MaxCLL/MaxFALL
+  heuristic DV3.3 describes; this step decides where the heuristic lives, and DV3.3 then only adds its
+  opt-in. The step also settles what a PQ track without a manifest does: stay native HDR10, which needs
+  the lookup answered before the formats are published, or follow DV3.3's opt-in. Gate: extractor unit
+  tests with an 8.1 manifest fixture: every AU carries the manifest's RPU, equal to `mkvdovi`'s 8.1 output
+  for the same source; a rejection hands over to the static RPU; a PQ track without a manifest keeps the
+  Format the step decided. Needs: DV4.1.
+- **Decided 2026-11-18 (agent, recommended; owner may override):** DV4.10's static 8.1 heuristic lives in
+  the fork-owned `Static81DvRpuSource.kt`, not in hdr-analyze's `dovi_rpu_builder` (another repository).
+- **Decided 2026-11-18 (agent, recommended; owner may override):** a PQ (HDR10) track without a manifest
+  stays native HDR10, not DV3.3's static conversion.
+- **Decided 2026-11-18 (agent, recommended; owner may override):** HDR10 manifests are opt-in by
+  `debug.nuvio.dv_manifest_hdr10` 1, off by default, not "a manifest in the folder is the opt-in"; DV4.11
+  decides the default.
+- **Decided 2026-11-18 (agent, recommended; owner may override):** the static 8.1 L1 takes its maximum from
+  MaxCLL (else the mastering peak, never below MaxFALL), its average from MaxFALL (else 1229), minimum 0,
+  with `dovi_tool`'s clamp; not the average always at the floor.
+- **Evidence:** `MatroskaRpuInjectionTest` (30) reads the committed mkvmerge fixture
+  `app/src/test/resources/dv_manifest/hdr10_81/` (48 AUs, two shots, IRAPs at AUs 0 and 24, made by its
+  `gen.sh`): every AU carries mkvdovi 0.8.0's 8.1 RPU; a rejection at AU 24 hands over to the static
+  8.1 RPU; with no manifest the track keeps its native `video/hevc` Format. `cargo test` in
+  `native/rpu_builder` runs every fixture AU through the pinned matcher and builder and finds each RPU
+  byte-equal to mkvdovi's. Also `ShotListDvRpuSourceTest` (25), `Static81DvRpuSourceTest` (8),
+  `PlaybackManifestSessionTest` (9); full unit gate green (10436 tests); `cargo test --features
+  jvm-tests` 48 passed. Cold review on PR #93: gemini LGTM.
+- **Resolution:** `Static81DvRpuSource` makes one static 8.1 RPU from MaxCLL, MaxFALL and the mastering
+  peak; `ShotListDvRpuSource` takes an 8.1 manifest that passes the new `nativeManifestCheckProfile81`,
+  opt-in by `debug.nuvio.dv_manifest_hdr10` 1. After a drop only the track that took the manifest keeps
+  the static RPU. Known limits: with `debug.nuvio.dv_hdr10plus` 0 the static RPU uses container facts
+  only; an HDR10+ track with its payload only in the first AU falls back to static 8.1; a PQ track
+  whose SPS is only in its first AU stays native. An APK needs `scripts/build_rpu_builder.sh` first.
+
 ## 2026-11-17: R2.5 OFF restore waits for the player settings (PR #91)
 
 - [R2.5][desk] Hold `PlayerScreen`'s OFF restore (`PlayerScreen.kt:715`, `LaunchedEffect(uiState.frameRateMatchingMode)`)
