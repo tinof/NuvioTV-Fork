@@ -64,7 +64,7 @@ are in the log; they predate every sync since, so a claim needs a fresh M1 measu
   (Q1.3), and mono and stereo AAC can go out as DTS-HD MA (Q6, default off).
 - **Picture.** With the setting on, HLG plays as Dolby Vision 8.4 with per-shot L1 from an hdr-analyze
   manifest where one exists and static L1 elsewhere (DV4.9), and HDR10+ plays as 8.1 with L1 from its own
-  SEI (DV3.1, DV3.4). Plain HDR10 still plays native: its manifest path is DV4.10.
+  SEI (DV3.1, DV3.4). Plain HDR10 plays native unless `debug.nuvio.dv_manifest_hdr10` is on (DV4.10).
 - **Stutter.** The 4K stutter under memory pressure (Q5) has no closed step yet. The same memory limit
   rules out analysis on the Shield during playback (DV5).
 - **Incidents.** 02 (letterbox bars): the `opaque_window` default is reverted and the incident did not
@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-18 | DV4.10 closed: with `debug.nuvio.dv_manifest_hdr10` on, an HDR10 track with a matching 8.1 manifest plays as Dolby Vision with per-shot L1 and a static 8.1 RPU from MaxCLL and MaxFALL as its fallback; without a manifest it stays native. | DV4 | [log](docs/ROADMAP_LOG.md), PR #93 |
 | 2026-11-17 | R2.5 closed: a new player restores the UI mode only once its settings load, so its default OFF no longer switches the TV back before the real setting is read; a player closed before that still switches back. | R2 | [log](docs/ROADMAP_LOG.md), PR #91 |
 | 2026-11-17 | Q6.6 closed: the playback issue report gets no `transcodeAacToDts` field (owner). | Q6 | [log](docs/ROADMAP_LOG.md) |
 | 2026-11-16 | D1.1 closed: `audio_tunneled_sub` is translated in pt, sr and zh, so every locale has it. | D1 | [log](docs/ROADMAP_LOG.md), PR #86 |
@@ -218,7 +219,7 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
    HT-A9 unchanged through seeks, pauses and input switches, and stereo AAC arrives as DTS-HD MA in sync.
    Gate: AVR readings recorded for TrueHD, DTS-HD MA and E-AC3; the `hbr_iec` default decided; the open Q6
    checks closed.
-5. **Dolby Vision for HDR10 from a manifest** (DV4.10, DV4.11). HDR10 is the most common 4K
+5. **Dolby Vision for HDR10 from a manifest** (DV4.11). HDR10 is the most common 4K
    HDR format. Outcome: an HDR10 title with a prepared manifest plays as Dolby Vision with per-shot
    metadata, on by default only if it looks better on the C9 than native HDR10. Gate:
    the owner's G-E A/B on the C9 against native HDR10 decides the default.
@@ -990,30 +991,15 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   `dovi_tool generate`; still to run: the canary, a start from frame 0, seeks with both refresh
   settings and the `mkvdovi` comparison. The owner saw highlights slightly too bright (static L1; G-E).
 - [DV3.3][device][owner][new-build] HDR10 → 8.1 static provider, opt-in. The MaxCLL/MaxFALL heuristic is
-  not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); DV4.10 decides where it lives and builds the
-  static RPU as its fallback, and this step adds the opt-in. Gate: G-E A/B recorded; the default stays off
+  not in `dovi_rpu_builder` (hdr-analyze E16.1 left it out); DV4.10 put it in `Static81DvRpuSource.kt` as
+  the manifest path's fallback (log), and this step adds the opt-in for a track without a manifest. Gate: G-E A/B recorded; the default stays off
   unless the owner prefers it. Needs: DV2.7, DV4.10 (code).
 
 #### DV4: T1, shot lists made on a PC
 
-- **Status:** Open. DV4.1 (the HLG shot-list provider, opt-in by `debug.nuvio.dv_manifest_url`), DV4.4,
-  DV4.5 (the device run, owner preferred it to static L1), DV4.6, DV4.7 and DV4.8 (a saved setting for the
-  manifest folder, default `https://subs.m4ntic.tech/dv/`) and DV4.9 (a full-length title through the PC → Oracle →
-  Shield path) are done (log). Open: HDR10 from a manifest (DV4.10, DV4.11), the per-shot curve (DV4.12), the DV4.2 server mode and DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05). The Shield
-  reaches the Oracle host only through its public reverse proxy (DV4.5 log). Manifests are made and served by
-  the subtitles add-on (owner, 2026-11-07): a dashboard button queues a played HLG release, a worker on the PC
-  runs `mkvdovi manifest`, and the add-on serves `https://subs.m4ntic.tech/dv/<lookup_key>.dvmanifest.json`
-  behind its existing Caddy IP gate (`tinof/stremio-subtitles-add-on` ROADMAP H1).
-- **Decided 2026-11-18 (agent, recommended; owner may override):** DV4.10's static 8.1 heuristic lives in
-  the fork-owned `Static81DvRpuSource.kt`, not in hdr-analyze's `dovi_rpu_builder` (another repository).
-- **Decided 2026-11-18 (agent, recommended; owner may override):** a PQ (HDR10) track without a manifest
-  stays native HDR10, not DV3.3's static conversion.
-- **Decided 2026-11-18 (agent, recommended; owner may override):** HDR10 manifests are opt-in by
-  `debug.nuvio.dv_manifest_hdr10` 1, off by default, not "a manifest in the folder is the opt-in"; DV4.11
-  decides the default.
-- **Decided 2026-11-18 (agent, recommended; owner may override):** the static 8.1 L1 takes its maximum from
-  MaxCLL (else the mastering peak, never below MaxFALL), its average from MaxFALL (else 1229), minimum 0,
-  with `dovi_tool`'s clamp; not the average always at the floor.
+- **Status:** Open. DV4.1, DV4.4 to DV4.10 are done (log): HLG and, opt-in, HDR10 tracks take per-shot L1
+  from the subtitles add-on's manifests. Open: DV4.11 (HDR10 on the TV), DV4.12, the DV4.2 server mode and
+  DV4.3; P15.4 (`RPU.bin` import) is deferred (owner, 2026-11-05).
 - [DV4.2][desk] In hdr-analyze, a server mode: analyse a URL from a random-access point before a given
   time, with a warm-up for scene context and crop, and stream finished shots; the first shot after a
   start inside a long shot is marked incomplete. Gate: its shots equal an offline run with the same
@@ -1023,16 +1009,6 @@ stays off. Every device session follows [M2](#m2-device-safety-protocol).
   reaches the injector before that shot's commitment deadline; other fixtures, including a seek inside
   a long uncut shot, keep the fallback until an eligible shot is ready, and the time to the first usable
   finished shot is recorded; no added dropped frames. Needs: DV4.1, DV4.2, DV4.5, DV5.1.
-- [DV4.10][desk] The shot-list provider takes an 8.1 manifest for a PQ (HDR10) track. hdr-analyze's manifest
-  already covers HDR10 → 8.1 (`docs/PLAYBACK_MANIFEST.md`, scope of version 1); the provider keeps such a
-  track on its fallback today, because 8.1 needs a fallback RPU before the first validated IRAP and after
-  a rejection (`ShotListDvRpuSource.kt:17-18`). That fallback is a static 8.1 RPU from the MaxCLL/MaxFALL
-  heuristic DV3.3 describes; this step decides where the heuristic lives, and DV3.3 then only adds its
-  opt-in. The step also settles what a PQ track without a manifest does: stay native HDR10, which needs
-  the lookup answered before the formats are published, or follow DV3.3's opt-in. Gate: extractor unit
-  tests with an 8.1 manifest fixture: every AU carries the manifest's RPU, equal to `mkvdovi`'s 8.1 output
-  for the same source; a rejection hands over to the static RPU; a PQ track without a manifest keeps the
-  Format the step decided. Needs: DV4.1.
 - [DV4.11][device][owner][new-build] A full-length HDR10 title through the PC → add-on → Shield path, once
   the add-on's job accepts an HDR10 release. Gate: the release line shows every AU from the manifest and
   0 from the fallback; the dumped RPUs equal `mkvdovi`'s for the same source; no added dropped frames;
