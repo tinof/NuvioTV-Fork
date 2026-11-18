@@ -32,6 +32,7 @@ internal interface PlaybackManifestNative {
         timeBaseDen: Int
     ): Code
     fun checkComposer(manifest: ManifestHandle, composer: HlgComposer): Code
+    fun checkProfile81(manifest: ManifestHandle): Code
     fun createBuilder(manifest: ManifestHandle): Outcome<Handle>
     fun renderShot(builder: Handle, l1: L1): Outcome<ShotRpu>
     fun createMatcher(manifest: ManifestHandle): Outcome<MatcherHandle>
@@ -63,6 +64,8 @@ internal interface PlaybackManifestNative {
 
         override fun checkComposer(manifest: ManifestHandle, composer: HlgComposer) =
             DoviRpuBuilder.checkManifestComposer(manifest, composer)
+
+        override fun checkProfile81(manifest: ManifestHandle) = DoviRpuBuilder.checkManifestProfile81(manifest)
 
         override fun createBuilder(manifest: ManifestHandle) = DoviRpuBuilder.createManifestBuilder(manifest)
 
@@ -146,6 +149,13 @@ internal class PlaybackManifestSession private constructor(
     fun checkComposer(composer: HlgComposer): Code {
         val manifest = manifest ?: return Code.UNKNOWN_HANDLE
         return native.checkComposer(manifest, composer)
+    }
+
+    /** See [DoviRpuBuilder.checkManifestProfile81]. */
+    @Synchronized
+    fun checkProfile81(): Code {
+        val manifest = manifest ?: return Code.UNKNOWN_HANDLE
+        return native.checkProfile81(manifest)
     }
 
     /** The manifest's RPU builder, created on the first call and owned by the session. */
