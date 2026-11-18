@@ -67,6 +67,19 @@ class PlaybackManifestSessionTest {
     }
 
     @Test
+    fun `the profile check reaches the native, and is an unknown handle after close`() {
+        val native = FakePlaybackManifestNative()
+        val session = open(native)
+        assertEquals(Code.OK, session.checkProfile81())
+        native.profile81Result = Code.MANIFEST
+        assertEquals(Code.MANIFEST, session.checkProfile81())
+        assertEquals(listOf("checkProfile81 1", "checkProfile81 1"), native.calls.drop(2))
+        session.close()
+        assertEquals(Code.UNKNOWN_HANDLE, session.checkProfile81())
+        assertEquals("no native call after close", 2, native.calls.count { it.startsWith("checkProfile81") })
+    }
+
+    @Test
     fun `the builder is created once and released with the session`() {
         val native = FakePlaybackManifestNative()
         val session = open(native)

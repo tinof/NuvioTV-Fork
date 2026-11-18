@@ -396,6 +396,18 @@ pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManife
     })
 }
 
+/// DV4.10: 0 for an 8.1 manifest, 8 for an 8.4 one.
+#[no_mangle]
+pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckProfile81<
+    'local,
+>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jint {
+    guard(PANIC, || code(manifest::check_profile_81(&HANDLES, handle)))
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCreateBuilder<
     'local,

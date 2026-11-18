@@ -16,6 +16,7 @@ use crate::ffi::{
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeHdr10PlusFrame as native_hdr10plus_frame,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeHdr10PlusL1 as native_hdr10plus_l1,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckComposer as native_manifest_check_composer,
+    Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckProfile81 as native_manifest_check_profile_81,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckSource as native_manifest_check_source,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCheckTrack as native_manifest_check_track,
     Java_com_nuvio_tv_core_player_DoviRpuBuilder_nativeManifestCreateBuilder as native_manifest_create_builder,
@@ -560,6 +561,29 @@ fn a_manifest_parses_and_checks_through_jni() {
         assert_eq!(manifest_parse(env, Some(b"{")), -8);
         assert_eq!(manifest_parse(env, Some(&[0xFF, 0xFE])), -8);
         assert_eq!(manifest_parse(env, None), -jlong::from(BAD_ARGUMENT));
+    });
+}
+
+#[test]
+fn the_profile_check_tells_an_8_1_manifest_from_an_8_4_one_through_jni() {
+    with_env(|env| {
+        let p81 = manifest_parse(env, Some(&manifest_fixture::json_81()));
+        let p84 = manifest_parse(env, Some(&manifest_fixture::json()));
+        assert!(p81 > 0 && p84 > 0, "{p81} {p84}");
+        for (handle, expected) in [(p81, OK), (p84, 8)] {
+            let (call_env, class) = args(env);
+            let code = native_manifest_check_profile_81(call_env, class, handle);
+            assert_no_exception(env, "nativeManifestCheckProfile81");
+            assert_eq!(code, expected, "handle {handle}");
+        }
+        assert_eq!(release(env, p81), OK);
+        let (call_env, class) = args(env);
+        assert_eq!(
+            native_manifest_check_profile_81(call_env, class, p81),
+            UNKNOWN_HANDLE
+        );
+        assert_no_exception(env, "nativeManifestCheckProfile81");
+        assert_eq!(release(env, p84), OK);
     });
 }
 
