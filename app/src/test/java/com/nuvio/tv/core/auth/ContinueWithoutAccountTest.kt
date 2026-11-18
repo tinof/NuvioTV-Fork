@@ -14,19 +14,19 @@ import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ContinueWithoutAccountTest {
+    private val sessionStatus = HandledSessionStatus(SessionStatus.Initializing)
     private val auth = mockk<Auth>(relaxed = true).also {
-        every { it.sessionStatus } returns MutableStateFlow<SessionStatus>(SessionStatus.Initializing)
+        every { it.sessionStatus } returns sessionStatus
     }
     private val reset = mockk<AccountLocalDataResetService>(relaxed = true)
 
-    private fun manager(): AuthManager {
+    private suspend fun manager(): AuthManager {
         val config = mockk<ServerConfiguration>(relaxed = true)
         every { config.isCustom } returns false
         val httpClient = OkHttpClient()
@@ -40,7 +40,7 @@ class ContinueWithoutAccountTest {
             mockk<AuthDiagnosticReportRepository>(relaxed = true),
             config,
             dagger.Lazy { SignOutSafetyCopy {} }
-        )
+        ).also { sessionStatus.awaitHandled() }
     }
 
     private suspend fun AuthManager.close() {
