@@ -24,7 +24,7 @@ The vendored `DV7/libdovi/*/lib/libdovi.a` is a Rust staticlib with its own copy
 staticlib in `libdovi_bridge.so` fails to link under fat LTO on the duplicate unmangled
 `rust_eh_personality`, and links without LTO only while both archives come from the same rustc
 (`DESIGN.md` 2.7). As its own `cdylib` the builder needs only `libc`, `libm` and `libdl`, exports only
-the 17 `Java_*` functions, and is loaded by its own `System.loadLibrary("nuvio_rpu")`. Without it
+the 18 `Java_*` functions, and is loaded by its own `System.loadLibrary("nuvio_rpu")`. Without it
 (armeabi-v7a, a build without cargo-ndk) `DoviRpuBuilder.isAvailable()` is false and playback stays
 native.
 
@@ -97,7 +97,7 @@ Every call returns one of these (Kotlin: `DoviRpuBuilder.Code`). A code is never
 | 5 | `HDR10_PLUS_PARSE` | a broken or multi-window HDR10+ payload |
 | 6 | `HDR10_PLUS_NO_PEAK` | the payload has no value for the selected peak source |
 | 7 | `RPU` | the `dolby_vision` crate failed after the checks passed (internal) |
-| 8 | `MANIFEST` | the playback manifest does not parse, or its source, track or composer differs |
+| 8 | `MANIFEST` | the playback manifest does not parse, or its source, track, composer or profile differs |
 | 20 | `BAD_ARGUMENT` | a null or wrong-length array, an unknown enum value, a value that does not fit its field (negative, or above 65535 for a 16-bit field) |
 | 21 | `UNKNOWN_HANDLE` | a handle never created or already released |
 | 22 | `JNI_FAILURE` | a Java array could not be allocated or accessed (the pending exception is cleared) |
@@ -133,6 +133,8 @@ hdr-analyze `docs/PLAYBACK_MANIFEST.md` is the contract; the crate's parser and 
   writes (an 8.1 manifest fails it). The time base is seconds per tick, for Matroska
   `(TimestampScale, 1000000000)`; the wrapper reduces a positive fraction to lowest terms, the form
   FFmpeg's stream time base and so the manifest have.
+- `nativeManifestCheckProfile81(manifest)` (DV4.10): the composer check's counterpart for a PQ track,
+  0 for an 8.1 manifest and 8 for an 8.4 one.
 - `nativeManifestCreateBuilder(manifest)`: a builder handle for the manifest's `rpu`, used with
   `nativeRenderShot`.
 - `nativeMatcherCreate(manifest)`, `nativeMatcherNext(matcher, pts, data, offset, length, laced, long[9])`,

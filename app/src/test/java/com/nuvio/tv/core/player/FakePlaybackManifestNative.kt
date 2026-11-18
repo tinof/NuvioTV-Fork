@@ -25,6 +25,7 @@ internal class FakePlaybackManifestNative : PlaybackManifestNative {
     var renderResult: Code? = null
     val composers = mutableListOf<HlgComposer>()
     var composerResult = Code.OK
+    var profile81Result = Code.OK
     var checkResult = Code.OK
     val verdicts = ArrayDeque<Outcome<AuVerdict>>()
 
@@ -69,6 +70,11 @@ internal class FakePlaybackManifestNative : PlaybackManifestNative {
         calls += "checkComposer ${manifest.value} $composer"
         composers += composer
         return if (checkResult != Code.OK) checkResult else composerResult
+    }
+
+    override fun checkProfile81(manifest: ManifestHandle): Code {
+        calls += "checkProfile81 ${manifest.value}"
+        return if (checkResult != Code.OK) checkResult else profile81Result
     }
 
     override fun createBuilder(manifest: ManifestHandle): Outcome<Handle> {

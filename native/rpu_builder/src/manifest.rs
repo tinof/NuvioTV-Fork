@@ -5,7 +5,8 @@
 //!   cannot use (code 8), so a manifest handle always describes a consistent manifest.
 //! - [`check_source`], [`check_track`] and [`check_composer`] are the spec's candidate and track
 //!   steps. Digests cross the boundary as 32 raw bytes and become the lowercase hex the crate
-//!   compares, so the player never formats hex itself.
+//!   compares, so the player never formats hex itself. [`check_profile_81`] (DV4.10) is the
+//!   composer check's counterpart for a PQ track: only an 8.1 manifest passes it.
 //! - [`create_builder`] makes the manifest's own RPU builder, whose RPUs equal mkvdovi's.
 //! - [`create_matcher`], [`next`] and [`reset`] wrap `AuMatcher`. A matcher keeps its own copy of
 //!   the AU table, so it outlives the release of its manifest.
@@ -17,7 +18,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use dovi_rpu_builder::manifest::{AuMatcher, AuVerdict, PlaybackManifest, QualityClass};
-use dovi_rpu_builder::{Error, RpuBuilder};
+use dovi_rpu_builder::{Error, Profile, RpuBuilder};
 
 use crate::api::{bad, composer, u32_field, Entry, Handles, Result, WrapperError};
 
@@ -150,6 +151,16 @@ fn reduced((num, den): (i32, i32)) -> (i32, i32) {
 pub fn check_composer(handles: &Handles, handle: i64, composer_value: i32) -> Result<()> {
     let expected = composer(composer_value)?;
     Ok(manifest(handles, handle)?.check_composer(expected)?)
+}
+
+/// `nativeManifestCheckProfile81` (DV4.10): refuses a manifest whose `rpu` is not Profile 8.1, so an
+/// 8.4 manifest never drives a PQ track. The parser already refused an 8.1 `rpu` measured through
+/// anything but PQ.
+pub fn check_profile_81(handles: &Handles, handle: i64) -> Result<()> {
+    match manifest(handles, handle)?.rpu.profile {
+        Profile::P81 { .. } => Ok(()),
+        Profile::P84 { .. } => Err(manifest_error("the manifest is profile 8.4, not 8.1")),
+    }
 }
 
 /// `nativeManifestCreateBuilder`: a builder (an `api` builder handle) for the manifest's `rpu`.
@@ -332,6 +343,17 @@ pub(crate) mod fixture {
         serde_json::to_vec(&manifest().to_json().unwrap()).unwrap()
     }
 
+    /// The same manifest as profile 8.1, measured through PQ, as hdr-analyze's `p81_manifest`.
+    pub fn json_81() -> Vec<u8> {
+        let mut manifest = manifest();
+        manifest.rpu.profile = dovi_rpu_builder::Profile::P81 { source_range: None };
+        manifest.analysis.insert(
+            "luminance_mapping".into(),
+            json!(dovi_rpu_builder::manifest::PQ_MAPPING),
+        );
+        serde_json::to_vec(&manifest.to_json().unwrap()).unwrap()
+    }
+
     /// The verdict of every AU of a read from the start, in decode order.
     pub fn expected_verdicts() -> [[i64; super::VERDICT_LEN]; 8] {
         let inject = |shot: usize, refresh: bool| {
@@ -425,6 +447,24 @@ mod tests {
         }
         // Lowercase hex: a digest with letters matches only as the crate stores it.
         assert!(fixture::manifest().source.tail_sha256.starts_with("a0a0"));
+    }
+
+    #[test]
+    fn only_an_8_1_manifest_passes_the_profile_check() {
+        let handles = Handles::new();
+        let p84 = parsed(&handles);
+        assert_eq!(code(check_profile_81(&handles, p84)), MANIFEST);
+        let p81 = parse(&handles, &fixture::json_81()).unwrap();
+        check_profile_81(&handles, p81).unwrap();
+        // The composer check refuses it: an 8.1 manifest never drives an HLG track either.
+        for composer in 0..=2 {
+            assert_eq!(code(check_composer(&handles, p81, composer)), MANIFEST);
+        }
+        let matcher = create_matcher(&handles, p81).unwrap();
+        assert_eq!(code(check_profile_81(&handles, matcher)), UNKNOWN_HANDLE);
+        api::release(&handles, p81).unwrap();
+        assert_eq!(code(check_profile_81(&handles, p81)), UNKNOWN_HANDLE);
+        assert_eq!(code(check_profile_81(&handles, 12_345)), UNKNOWN_HANDLE);
     }
 
     #[test]

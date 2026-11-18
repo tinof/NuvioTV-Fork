@@ -39,7 +39,7 @@ internal object DoviRpuBuilder {
         HDR10_PLUS_NO_PEAK(6),
         /** The crate failed after its own checks passed: an internal failure. */
         RPU(7),
-        /** The playback manifest does not parse, or does not describe this file, track or composer. */
+        /** The playback manifest does not parse, or does not describe this file, track, composer or profile. */
         MANIFEST(8),
         /** A null or wrong-length array, an unknown enum value, a value that does not fit its field. */
         BAD_ARGUMENT(20),
@@ -399,6 +399,13 @@ internal object DoviRpuBuilder {
     fun checkManifestComposer(manifest: ManifestHandle, composer: HlgComposer): Code =
         code(native("nativeManifestCheckComposer") { nativeManifestCheckComposer(manifest.value, composer.value) })
 
+    /**
+     * [Code.MANIFEST] unless the manifest is 8.1 (DV4.10): an 8.4 manifest never drives a PQ track. A
+     * library from before DV4.10 lacks the call, which is [Code.UNAVAILABLE], so such a track stays native.
+     */
+    fun checkManifestProfile81(manifest: ManifestHandle): Code =
+        code(native("nativeManifestCheckProfile81") { nativeManifestCheckProfile81(manifest.value) })
+
     /** A builder for the manifest's `rpu`: its RPUs equal mkvdovi's for the same title. Release it. */
     fun createManifestBuilder(manifest: ManifestHandle): Outcome<Handle> =
         handleOutcome(native("nativeManifestCreateBuilder") { nativeManifestCreateBuilder(manifest.value) })
@@ -616,6 +623,9 @@ internal object DoviRpuBuilder {
 
     @JvmStatic
     private external fun nativeManifestCheckComposer(manifest: Long, composer: Int): Int
+
+    @JvmStatic
+    private external fun nativeManifestCheckProfile81(manifest: Long): Int
 
     // A builder handle > 0, or the negated code.
     @JvmStatic
