@@ -24,14 +24,23 @@ import com.nuvio.tv.core.player.StaticTrackRpus
 import com.nuvio.tv.core.player.TrackRpus
 import com.nuvio.tv.core.player.DvSignallingDecision
 import com.nuvio.tv.core.player.HevcColourFixtures
+import com.nuvio.tv.core.player.FakeHdr10PlusNative
 import com.nuvio.tv.core.player.FakePlaybackManifestNative
 import com.nuvio.tv.core.player.FetchedManifest
+import com.nuvio.tv.core.player.Hdr10PlusDvRpuSource
 import com.nuvio.tv.core.player.ManifestSourceIdentity
 import com.nuvio.tv.core.player.ShotListDvRpuSource
 import com.nuvio.tv.core.player.ShotListManifests
+import com.nuvio.tv.core.player.Static81DvRpuSource
 import com.nuvio.tv.core.player.bytes
+import com.nuvio.tv.core.player.fakeHdr10PlusPayload
+import com.nuvio.tv.core.player.fakeHdr10PlusSei
+import com.nuvio.tv.core.player.fakeShotOf
 import com.nuvio.tv.core.player.rpuOf
+import com.nuvio.tv.core.player.DvRpuSources
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 import io.mockk.every
 import io.mockk.mockk
 import java.io.ByteArrayOutputStream
@@ -540,6 +549,166 @@ class MatroskaRpuInjectionTest {
         }
         val nexts = native.calls.filter { it.startsWith("next") }
         assertEquals(listOf(0L, 40L, 80L), nexts.map { it.split(' ')[2].toLong() })
+    }
+
+    // DV4.10: the HDR10 → 8.1 manifest fixture (Hdr10ManifestFixture) through the real extractor.
+
+    @Test
+    fun `an HDR10 track with a playback manifest carries mkvdovi's 8_1 RPU in every AU`() {
+        val native = nativeHdr10()
+        val read = Hdr10Read()
+        val out = read.collector
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        assertEquals(48, out.samples.size)
+        assertEquals(native.timesUs, out.timesUs)
+        for (i in out.samples.indices) {
+            assertArrayEquals("AU $i", native.samples[i] + annexB(mkvdoviRpu(out.timesUs[i])), out.samples[i])
+        }
+        // The trace passes only the manifest's own values: the player computes mkvdovi's identity.
+        val text = Hdr10ManifestFixture.manifestText
+        assertTrue(read.trace.lookupKeys.isNotEmpty() && read.trace.lookupKeys.all { "\"lookup_key\":\"$it\"" in text })
+        assertTrue(read.trace.codecPrivateDigests.isNotEmpty() && read.trace.codecPrivateDigests.all { "\"codec_private_sha256\":\"$it\"" in text })
+        // The hvcC has no static SEI and the first AU has: prepared at track init, then again from that AU (DV3.4).
+        assertEquals(2, read.trace.calls.count { it == "parse" })
+        assertEquals("the first session's handles are released", setOf(4L, 5L, 6L), read.trace.live)
+        assertEquals(listOf(DoviRpuBuilder.L1(0, 1229, 3079), DoviRpuBuilder.L1(0, 2672, 3079)), read.static.rendered)
+        assertTrue("no HDR10+ builder", read.hdr10Plus.created.isEmpty())
+        read.releaseAll()
+    }
+
+    @Test
+    fun `a rejection hands an HDR10 track over to its static 8_1 RPU`() {
+        val native = nativeHdr10()
+        val read = Hdr10Read(seiStatic = false, rejectAt = 24)
+        val out = read.collector
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, out.format!!.sampleMimeType)
+        assertEquals("without the static SEI scan the track is prepared once", 1, read.trace.calls.count { it == "parse" })
+        val static = DoviRpuBuilder.L1(0, 1229, 3079)
+        assertEquals(listOf(static), read.static.rendered)
+        for (i in 0 until 24) {
+            assertArrayEquals("AU $i", native.samples[i] + annexB(mkvdoviRpu(out.timesUs[i])), out.samples[i])
+        }
+        // AU 24 is a CRA without leading pictures, so only it takes the switch's refresh (DESIGN.md 2.2).
+        assertArrayEquals("AU 24", native.samples[24] + annexB(fakeShotOf(static).bytes(true)), out.samples[24])
+        for (i in 25 until out.samples.size) {
+            assertArrayEquals("AU $i", native.samples[i] + annexB(fakeShotOf(static).bytes(false)), out.samples[i])
+        }
+        assertTrue(read.pending.dropped)
+        assertEquals("the matcher is not asked after the rejection", 25, read.trace.calls.count { it.startsWith("next") })
+        read.releaseAll()
+    }
+
+    @Test
+    fun `an HDR10 track without a manifest keeps its native Format and samples`() {
+        val native = nativeHdr10()
+        val read = Hdr10Read(fetched = null)
+        assertEquals(native.format, read.collector.format)
+        assertEquals(MimeTypes.VIDEO_H265, read.collector.format!!.sampleMimeType)
+        assertEquals(
+            DvSignallingDecision.Native("no RPU: no HDR10+ SEI in the hvcC or the first AU (static HDR10 is DV3.3)"),
+            read.extractor.track!!.dolbyVisionSignalling
+        )
+        assertFalse(read.extractor.track!!.isDolbyVisionConverted)
+        assertSamplesEqual(native.samples, read.collector.samples)
+        assertTrue("no static RPU", read.static.created.isEmpty())
+        assertTrue(read.trace.calls.isEmpty())
+        read.releaseAll()
+    }
+
+    @Test
+    fun `an HDR10 track whose Tracks come before Info stays native without waiting for a manifest`() {
+        val unasked = object : Future<FetchedManifest?> by CompletableFuture() {
+            override fun get(timeout: Long, unit: TimeUnit): FetchedManifest? = error("the manifest was awaited")
+        }
+        val header = element(0x1A45DFA3, element(0x4282, "matroska".toByteArray()), uint(0x4287, 4), uint(0x4285, 2))
+        val tracks = element(0x1654AE6B, trackEntry("pq", pqColour))
+        val info = element(0x1549A966, uint(0x2AD7B1, 1_000_000))
+        val read = Hdr10Read(file = header + element(0x18538067, tracks, info, *clusters.toTypedArray()), future = unasked)
+        assertEquals(MimeTypes.VIDEO_H265, read.collector.format!!.sampleMimeType)
+        assertEquals(6, read.collector.samples.size)
+        assertTrue(read.trace.calls.isEmpty())
+        assertTrue(read.static.created.isEmpty())
+        read.releaseAll()
+    }
+
+    @Test
+    fun `an HDR10+ track with its payload only in the first AU still converts from it`() {
+        val file = mkv(
+            trackEntry("pq", pqColour),
+            cluster(0, block(0, keyframe = true, fakeHdr10PlusSei(fakeHdr10PlusPayload(1)), idr), block(40, keyframe = false, trail)),
+        )
+        val native = readFile(file, transformer = null)
+        val read = Hdr10Read(fetched = null, file = file)
+        assertEquals(MimeTypes.VIDEO_DOLBY_VISION, read.collector.format!!.sampleMimeType)
+        val shot = fakeShotOf(DoviRpuBuilder.L1(0, 1001, 3079))
+        assertArrayEquals(native.samples[0] + annexB(shot.bytes(true)), read.collector.samples[0])
+        assertArrayEquals(native.samples[1] + annexB(shot.bytes(false)), read.collector.samples[1])
+        assertEquals(1, read.hdr10Plus.created.size)
+        assertTrue("no static RPU", read.static.created.isEmpty())
+        assertTrue("no manifest to open", read.trace.calls.isEmpty())
+        read.releaseAll()
+    }
+
+    /** The fixture read without a transformer: the native track. */
+    private fun nativeHdr10(): SampleCollector {
+        val extractor = LiveExtractor(null)
+        val collector = SampleCollector()
+        init(extractor, collector)
+        readFollowingSeeks(extractor, Hdr10ManifestFixture.mkv)
+        return collector
+    }
+
+    /** `mkvdovi`'s RPU NAL for the picture at [timeUs]. */
+    private fun mkvdoviRpu(timeUs: Long) = Hdr10ManifestFixture.rpus[Hdr10ManifestFixture.rank(timeUs / 1000)]
+
+    /**
+     * One read of [file] as Media3 reads it, with the 8.1 shot list of DV4.10 on [TraceManifestNative]: the
+     * HDR10+ source and the static 8.1 source each on their own [FakeHdr10PlusNative], the manifest from
+     * [future].
+     */
+    private inner class Hdr10Read(
+        fetched: FetchedManifest? = Hdr10ManifestFixture.fetched(),
+        seiStatic: Boolean = true,
+        rejectAt: Int = -1,
+        file: ByteArray = Hdr10ManifestFixture.mkv,
+        future: Future<FetchedManifest?> = CompletableFuture.completedFuture(fetched),
+    ) {
+        val trace = TraceManifestNative(rejectAt)
+        val hdr10Plus = FakeHdr10PlusNative()
+        val static = FakeHdr10PlusNative()
+        val pending = ShotListManifests.Pending(future, 0)
+        val extractor = LiveExtractor(
+            DolbyVisionMatroskaTransformer(
+                DolbyVisionConversionConfig(active = false, convertNonDolbyVision = true, stats = DolbyVisionStatsSession()),
+                hdr10PlusEnabled = true,
+                seiStaticEnabled = seiStatic,
+                rpuSource = DvRpuSources(
+                    readySource,
+                    ShotListDvRpuSource(
+                        Hdr10PlusDvRpuSource(native = hdr10Plus, seiStatic = seiStatic),
+                        DoviRpuBuilder.HlgComposer.BT2100,
+                        pending,
+                        trace,
+                        Static81DvRpuSource(static, seiStatic),
+                    ),
+                ),
+                refreshEveryStart = false,
+            )
+        )
+        val collector = SampleCollector()
+
+        init {
+            this@MatroskaRpuInjectionTest.init(extractor, collector)
+            readFollowingSeeks(extractor, file)
+        }
+
+        /** Releases the extractor: no manifest handle and no builder may stay. */
+        fun releaseAll() {
+            extractor.release()
+            assertTrue("manifest handles left: ${trace.live}", trace.live.isEmpty())
+            assertEquals(static.created.size, static.released.size)
+            assertEquals(hdr10Plus.created.size, hdr10Plus.released.size)
+        }
     }
 
     /**

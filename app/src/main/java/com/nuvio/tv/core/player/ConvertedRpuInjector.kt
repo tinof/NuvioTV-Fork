@@ -220,8 +220,8 @@ internal class DvRpuSources(
 /**
  * The static providers of `docs/dv-conversion/DESIGN.md` 2.1 through [DoviRpuBuilder]. 8.4: [composer]
  * with `STATIC_84_L1`; the BT.2100 composer unless [CANARY_SWITCH] picks the canary, which DV3.2's G-C
- * check plays to see that the TV applies the composer. 8.1 comes from [Hdr10PlusDvRpuSource] (DV3.1);
- * static HDR10 is DV3.3.
+ * check plays to see that the TV applies the composer. 8.1 comes from [Hdr10PlusDvRpuSource] (DV3.1), and
+ * under an HDR10 playback manifest from [Static81DvRpuSource] (DV4.10); static HDR10 on its own is DV3.3.
  *
  * The one shot is written at track init and the builder handle released at once: [DoviRpuBuilder.ShotRpu]
  * holds its own bytes, so the track keeps no native resource. A provider that renders per shot keeps its

@@ -208,8 +208,9 @@ internal class ShotListManifests(
     companion object {
         /**
          * `adb shell setprop debug.nuvio.dv_manifest_url http://<host>:<port>/<folder>` (or a `file://`
-         * folder): converted HLG tracks take their L1 from that folder's playback manifests. It wins over
-         * the saved player setting (DV4.8); with neither: no lookup, no request.
+         * folder): converted HLG tracks take their L1 from that folder's playback manifests, and with
+         * `debug.nuvio.dv_manifest_hdr10` 1 PQ tracks too (DV4.10). It wins over the saved player setting
+         * (DV4.8); with neither: no lookup, no request.
          */
         const val URL_SWITCH = "debug.nuvio.dv_manifest_url"
 

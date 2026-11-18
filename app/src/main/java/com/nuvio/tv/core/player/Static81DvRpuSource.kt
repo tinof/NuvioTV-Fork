@@ -3,6 +3,7 @@ package com.nuvio.tv.core.player
 import androidx.media3.common.util.UnstableApi
 import com.nuvio.tv.core.player.DoviRpuBuilder.L1
 import com.nuvio.tv.core.player.DoviRpuBuilder.Outcome
+import com.nuvio.tv.core.util.DebugSwitches
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
@@ -112,4 +113,28 @@ internal class Static81DvRpuSource(
                 "L9 primaries ${params.sourcePrimaryIndex}, source range $range"
         }
     }
+}
+
+/**
+ * The 8.1 source of [defaultRpuSource] (ROADMAP DV4.10): [hdr10Plus] itself, unless [shotList] fetches the
+ * file's playback manifest and [ShotListDvRpuSource.HDR10_SWITCH] is 1. Then a PQ track without HDR10+
+ * also takes an 8.1 manifest, with a [Static81DvRpuSource] of [native] and [seiStatic] as its fallback.
+ */
+@UnstableApi
+internal fun p81Source(
+    hdr10Plus: DvRpuSource,
+    shotList: ShotListManifests.Pending?,
+    native: Hdr10PlusNative,
+    seiStatic: Boolean,
+    manifestNative: PlaybackManifestNative = PlaybackManifestNative.Library,
+): DvRpuSource {
+    if (shotList == null || DebugSwitches.flag(ShotListDvRpuSource.HDR10_SWITCH) != true) return hdr10Plus
+    // The composer is the 8.4 check; this source is asked for 8.1 only.
+    return ShotListDvRpuSource(
+        hdr10Plus,
+        DoviRpuBuilder.HlgComposer.BT2100,
+        shotList,
+        manifestNative,
+        Static81DvRpuSource(native, seiStatic),
+    )
 }
