@@ -253,7 +253,8 @@ injector:
   applies the composer shows the picture green); like the refresh switch it is read once per extractor,
   and the `DV_INJECT` log line names the composer a playback used. It renders
   the one shot at track init and releases the builder handle at once, because `ShotRpu` holds its own
-  bytes. 8.1 comes from the HDR10+ provider of DV3.1 (below); static HDR10 is DV3.3.
+  bytes. 8.1 comes from the HDR10+ provider of DV3.1 (below), and for a PQ track with a playback manifest
+  from the static 8.1 RPU of DV4.10 (2.8); static HDR10 on its own is DV3.3.
 - A converted track always takes the transform path. There `injectDolbyVisionRpu` (one
   `ConvertedTrackInjector` per track) copies every NAL byte for byte, drops any RPU NAL the AU already
   carries and appends the shot's RPU as the last NAL, where `dovi_tool` and the Profile 7 path put it.
@@ -266,9 +267,10 @@ as `mkvdovi` runs it, per AU, in the extractor. The rules of hdr-analyze `docs/R
 L1"), and what the extractor's decode order changes in them:
 
 - **Which tracks.** A PQ track (the PQ row of 2.5) converts only when its first AU, or the hvcC, carries
-  an HDR10+ payload that `Hdr10PlusFrame::parse` accepts. A PQ track without one stays native until
-  DV3.3 adds static HDR10. Matroska has no HDR10+ flag, and BlockAdditions with T.35 are VP9 only in
-  the extractor, so the evidence is the in-band SEI, read by the first-AU scan of DV2.10.
+  an HDR10+ payload that `Hdr10PlusFrame::parse` accepts. A PQ track without one stays native, unless
+  its playback manifest converts it (DV4.10, 2.8), until DV3.3 adds static HDR10. Matroska has no
+  HDR10+ flag, and BlockAdditions with T.35 are VP9 only in the extractor, so the evidence is the
+  in-band SEI, read by the first-AU scan of DV2.10.
 - **Which messages.** Every `user_data_registered_itu_t_t35` message (payloadType 4) of every prefix SEI
   NAL before the first slice. Its RBSP from the country code on is the payload. One that is not HDR10+
   (code 4) is skipped, as `hdr10plus_tool` skips it; the first HDR10+ message of the AU counts. A
@@ -335,8 +337,9 @@ L1"), and what the extractor's decode order changes in them:
   whose NAL lengths do not parse is refused by the extractor's Annex B writer, as before.
 - **HDR10+ SEIs stay in the stream**, as `dovi_tool inject-rpu` leaves them. The HDR10+ strip mode still
   runs after the injection when it is on. The provider reads the payload before that.
-- **Revert.** `debug.nuvio.dv_hdr10plus` = 0 keeps every PQ track native, read once per extractor. The
-  setting, now "Convert HLG and HDR10+ to Dolby Vision", covers both.
+- **Revert.** `debug.nuvio.dv_hdr10plus` = 0 keeps every PQ track native, read once per extractor, apart
+  from one an HDR10 playback manifest converts (DV4.10, opt-in, 2.8). The setting, now "Convert HLG and
+  HDR10+ to Dolby Vision", covers both.
 
 **Implemented in DV3.1 (Matroska).** `DvRpuSources` asks `StaticDvRpuSource` for 8.4 and
 `Hdr10PlusDvRpuSource` for 8.1; `prepare` gets the track's `DvTrackFacts` (the HDR10+ candidates of the
@@ -456,7 +459,7 @@ metadata and the SPS in the initialization data.
 |---|---|
 | Track already carries Dolby Vision (dvcC or `dv*` codecs) | Existing path; no conversion |
 | Protected content, setting off, or no Dolby Vision display or decoder | Native playback |
-| HEVC Main10, PQ from the container or SPS VUI, no contradicting tag | Dolby Vision 8.1 when the hvcC or the first AU carries HDR10+ (DV3.1, 2.4); native otherwise until DV3.3 |
+| HEVC Main10, PQ from the container or SPS VUI, no contradicting tag | Dolby Vision 8.1 when the hvcC or the first AU carries HDR10+ (DV3.1, 2.4), or with `debug.nuvio.dv_manifest_hdr10` 1 when the file's playback manifest passes every check (DV4.10, 2.8); native otherwise until DV3.3 |
 | HEVC Main10, HLG from the container or SPS VUI, limited range, BT.2020 NCL matrix and BT.2020 primaries (untagged fields accepted with a log line) | Dolby Vision 8.4 |
 | HLG with a contradicting range, matrix or primaries tag | Native playback |
 | HLG in an alternative-transfer SEI (preferred transfer 18) of the hvcC or the first AU, over stated transfers that are HLG-compatible (1, 6, 14, 15) or unspecified, the other fields as in the HLG row (BBC broadcast HLG) | Dolby Vision 8.4 (DV2.10) |
@@ -544,7 +547,7 @@ hdr-analyze provides three separate pieces, each in its own pull request:
 1. **RPU builders** (8.1, 8.4, HDR10+, static), which the Android bridge needs first. `mkvdovi` output
    stays byte-identical. Done: `dovi_rpu_builder`, hdr-analyze E16.1 (PR #67, 2026-10-22), byte-identical
    to `dovi_tool generate` 2.3.4; contract in hdr-analyze `docs/RPU_BUILDER.md`. Not included: the HDR10
-   MaxCLL/MaxFALL heuristic of DV3.3.
+   MaxCLL/MaxFALL heuristic of DV3.3, which lives in the fork's Kotlin (`Static81L1`, DV4.10, 2.8).
 2. **Analyzer extraction**: per-frame statistics on plain planes and shot L1, with no behaviour change.
 3. **A causal scene detector**, versioned on its own, with a chosen delay and a rule that commits a
    boundary irreversibly. It is a new policy: its disagreement with the global detector is measured, and
@@ -626,10 +629,56 @@ composer checks and creates the manifest's builder; any failure keeps the static
 also every AU's fallback. Per AU the matcher's `Inject` gives the shot's RPU (rendered once per shot),
 `Fallback` the static RPU; a rejection or a native failure gives the static RPU for the rest of the
 playback. An AU whose provider differs from the previous AU of the generation is a provider switch
-(2.2), so the first injected AU after a seek's leading fallback AUs is refreshed too. Profile 8.1 keeps
-its own sources until DV4.10 gives it a fallback, a static 8.1 RPU; DV3.3 then only adds the static
-opt-in. Not checked: that the file has one video track, since the extractor decides each TrackEntry as
-it ends; the CodecPrivate digest and the AU checks stand in.
+(2.2), so the first injected AU after a seek's leading fallback AUs is refreshed too. Profile 8.1 is
+DV4.10 (below). Not checked: that the file has one video track, since the extractor decides each
+TrackEntry as it ends; the CodecPrivate digest and the AU checks stand in.
+
+**HDR10 manifests (DV4.10).** Opt-in with `debug.nuvio.dv_manifest_hdr10` = 1 on top of a manifest
+folder; off by default, read once per extractor, and unset the 8.1 source is the HDR10+ provider itself.
+With it, `ShotListDvRpuSource` also serves 8.1:
+
+- An HDR10+ track keeps its own RPUs and is not looked up.
+- Any other PQ track runs the source and track checks and `nativeManifestCheckProfile81`, which passes an
+  8.1 manifest only (the composer check refuses every 8.1 manifest, and an 8.4 one must never drive a PQ
+  track). It converts only when all pass, with the static 8.1 RPU below before the first validated IRAP
+  and after a rejection.
+- A PQ track without a usable manifest stays native HDR10, not DV3.3's static conversion (agent's
+  decision of 2026-11-18; the owner may override it). Its Format waits for the lookup: track init asks
+  the provider before the formats are published, so every PQ track without HDR10+ in its hvcC waits up
+  to `debug.nuvio.dv_manifest_wait_ms`. A manifest that exists took 458 to 733 ms (DV4.5, DV4.9 logs);
+  a missing one is not measured.
+- A drop is kept per file (`Pending.dropped`). A track that this extractor's provider gave the manifest
+  is Dolby Vision already, so when it is prepared again it gets the static RPU alone. Any other track,
+  and a new extractor for the same file, stays native.
+
+The static 8.1 RPU (`Static81DvRpuSource`) lives in the fork's Kotlin, where the JVM gate tests it, not
+in hdr-analyze's `dovi_rpu_builder` (agent's decision of 2026-11-18). It has `mkvdovi`'s HDR10 params:
+CM v4.0, L6 and L9 from the container and the stream's static SEI (2.4). Where the track's facts are
+those `mkvdovi` read, it differs from `mkvdovi`'s RPUs only in L1. Its L1 is a heuristic (section 4),
+with a MaxCLL or MaxFALL of 0 or 65535 not stated:
+
+- max = `nits_to_pq_code(max(L6 MaxCLL when MaxCLL is stated, else the L6 mastering peak; the stated
+  MaxFALL))`, clamped to 2081..4095;
+- avg = `nits_to_pq_code(L6 MaxFALL)` when MaxFALL is stated, else the CM v4.0 floor 1229, clamped to
+  1229..max - 1;
+- min = 0. The clamps are `dovi_tool`'s (dolby_vision 3.4.0 `level1.rs`), applied in Kotlin so the logged
+  L1 is the one written. MaxCLL 1000 and MaxFALL 400 give 0/2672/3079; nothing stated gives 0/1229/3079.
+
+`mkvdovi`'s measured HDR10 RPUs use the V29 average floor of 819; the static RPU keeps 1229. The fixture
+`app/src/test/resources/dv_manifest/hdr10_81` holds a PQ clip muxed by mkvmerge with its manifest and
+`mkvdovi`'s own 8.1 RPUs. `cargo test` runs it through the pinned matcher and builder, and every AU's RPU
+equals `mkvdovi`'s. The extractor test replays the library's verdicts on it.
+
+Known limits, each native HDR10 or safe:
+
+- With `debug.nuvio.dv_hdr10plus` 0 the first AU's static SEI is not read (`readsSeiStatic` is HDR10+
+  behaviour), so the static RPU has the container's and the hvcC's facts only.
+- An HDR10+ track whose payload is only in its first AU is looked up before that AU is read. With a
+  manifest it converts through the manifest, and falls back to the static RPU, not to HDR10+.
+- A PQ track whose SPS is only in its first AU stays native: the first-AU scan acts on such a track only
+  when it is HLG or has HDR10+.
+- Tracks before Info give no identity at track init, so no lookup.
+- A wrong-low MaxCLL gives a low L1 maximum, seen only before the first IRAP and after a rejection.
 
 ### 2.9 Measuring on the Shield
 
