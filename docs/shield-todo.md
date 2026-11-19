@@ -329,11 +329,12 @@ Measurements taken before 2026-11-16 predate these defaults.
 was retired. These apply on the Shield too, with no fork switch unless a row says so:
 - mpv asks for direct MediaCodec on every video through the new "Direct decoding" setting (Automatic, baf30a024).
   This covers the Nvidia `mediacodec,mediacodec-copy` default, which was dropped with its row. After two refusals
-  on a box, or with Direct decoding off, mpv falls back to upstream's Auto-safe (`mediacodec-copy`). Device check:
-  the HUD `hwdec` row shows `mediacodec` on a 4K HEVC file through mpv.
+  on a box, or with Direct decoding off, mpv falls back to upstream's Auto-safe (`mediacodec-copy`). Not checked
+  on the device: the owner plays only through ExoPlayer on the Shield.
 - DTS and DTS-HD stay locked through a pause on the own IEC track: silent DTS core bursts fill the pause, and
   unplayed audio is replayed on resume (64f9908df). Every box but a small one gets it, the Shield included. It also
-  runs during the stereo AAC-to-DTS-HD MA transcode; a device check of pause and resume on the HT-A9 is pending.
+  runs during the stereo AAC-to-DTS-HD MA transcode. Pause and resume on the HT-A9 worked as expected (owner,
+  2026-11-19).
 - 5.1 AAC goes to an ARC soundbar as Dolby Digital 5.1 through FFmpeg (64f9908df). The AAC-to-DTS transcode still
   takes only mono and stereo AAC. On Nvidia the `audio_probe_union` row above feeds the AC-3 capability this reads.
 - Playback download threads on a 64-bit process stay alive for 180 s (90 s on 32-bit), up from the 15 s listed for

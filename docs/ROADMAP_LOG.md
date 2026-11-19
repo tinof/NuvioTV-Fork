@@ -67,15 +67,16 @@ Settled by repo rules, with no owner question:
   failures on both sides are upstream's two new `BufferMemoryKeeperTest` cases, which each hold 1000 MB of buffer
   and fail at 1 GB too. Not run on the Shield.
 
-**Open, for the owner**
+**Device checks (owner, 2026-11-19, build 1580 of `perf/shield-pass` on the Shield):**
 
-- Device check: pause and resume during a stereo AAC-to-DTS-HD MA transcode. Upstream's DTS keep-alive now sends
-  silent DTS core bursts on that path; watch the HT-A9's lock and indicator.
-- Device check: frame-0 Dolby Vision conversion on an HLG MKV. Upstream's extractor AAR changes how the peek
+- Pause and resume during a stereo AAC-to-DTS-HD MA transcode on the HT-A9 worked as expected. Upstream's DTS
+  keep-alive sends silent DTS core bursts on that path.
+- An HLG MKV played with Dolby Vision conversion as expected. Upstream's extractor AAR changes how the peek
   buffer grows, and the fork's protected Matroska scan reads through it.
-- Device check: the HUD `hwdec` row shows `mediacodec` on a 4K HEVC file through mpv.
+- mpv was not checked: the owner plays only through ExoPlayer on the Shield.
 
-**Resolution:** published; the fork is level with upstream 1.2.0-arc.3.
+**Resolution:** published; the fork is level with upstream 1.2.0-arc.3, and both protected features passed the
+owner's device check.
 
 ## 2026-11-18: D1.5 `ContinueWithoutAccountTest` race with the session collector (PR #94)
 
