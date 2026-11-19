@@ -10,6 +10,73 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-19: U1.5 sync of 2026-11-18 onto upstream 1.2.0-arc.3 (PR #95)
+
+- [U1.5][desk] Rebased `perf/shield-pass` from `ea6f4c003` onto `90fd0be71` (tag 1.2.0-arc.3, which merges
+  official NuvioTV 1.2.0-beta.2): 94 upstream commits behind (16 first-parent, one official merge), 399 fork
+  commits. 398 were replayed, one dropped (`c01f8e1a0`) and one added (`ce005afb1`). The new tip is `b39c3757e`.
+  Tags: `sync/2026-11-18/old-{perf,main,base}`. Published on 2026-11-19 with one atomic leased push: `main`
+  `343b27591` → `90fd0be71`, `perf/shield-pass` `ea6f4c003` → `b39c3757e`. Upstream had not moved, and drift
+  issue #92 closed. The `due` check said `wait` (10.5 h quiet of 24 h); the sync ran on the owner's call.
+
+**Classify (tier `fanout`, 9 analysts and a critic):** 12 files conflicted in the trial merge, among them
+`PlayerSettingsDataStore.kt`, `FrameRateUtils.kt`, `MemoryGovernor.kt`, `IecPassthroughAudioSink.kt`,
+`AmlDvFelVideoRenderer.kt`, the initialization, error-recovery and surround-resolve parts of the player
+controller, `app/libs/README.md` and the Arabic strings. 98 fork commits touched files upstream changed.
+Verdicts: 1 drop, 0 protected asks, 20 keep-resolve, 1 partial, 76 keep-clean; 301 commits touched nothing
+upstream changed. The critic fixed two mistyped SHAs and flagged five contradictions between analysts, settled before the rebase. The claim
+behind the drop was checked by hand against `upstream/main`.
+
+**Dry-run (U1.12):** 26 predicted stops, 19 real; the other 7 applied clean. No stop came unpredicted. 6 of the
+real stops were on protected commits: `efaacebdb`, `fa4dce357` and `42858b69d` (AAC to DTS), `497d6c736`,
+`f6f811715` and `ce2fdcbc1` (HLG to Dolby Vision).
+
+**Drops:** `c01f8e1a0` (mpv decodes with direct MediaCodec by default on Nvidia), with its test. Upstream's new
+"Direct decoding" setting (baf30a024, Automatic) asks mpv for direct MediaCodec on every box. The owner approved
+the retire; its `shield-todo` row is gone.
+
+**Owner's decisions:**
+
+1. Drop `c01f8e1a0`, as above.
+
+Settled by repo rules, with no owner question:
+- `6c4c7c587` no longer adds the README's "lib-extractor-release.aar (moov fix)" section. Upstream now ships and
+  documents its own extractor AAR (5c1de6687), so the README names one extractor SHA.
+- `17267f035`: upstream's new recovery route check drops the HDMI override on a PCM retry too.
+- `23a769e79`: upstream's new Continue Watching scroll takes the fork's 110/250 ms focus debounce.
+- The protected setting reads (`transcodeAacToDts`, `convertHdrToDolbyVision`) and the manifest folder reads keep
+  their `prefs[...]` form next to upstream's new typed reads.
+- Taken from upstream as written: DTS keep-alive while paused, 5.1 AAC to Dolby Digital over ARC, the 180 s
+  download thread keep-alive, and the rebuilt exoplayer and extractor AARs, which the fork never changed.
+- New commit `ce005afb1`: CI's upstream baseline runs on the candidate's 1 GB test heap. On 512 MB, upstream's
+  suite ran out of heap and crawled into GitHub's 6 h limit. Both test steps now stop after 60 minutes.
+
+**Evidence**
+
+- `verify` (`--creation-factor 60`, `--allow-new ce005afb1`, `--allow-changed .github/workflows/checks.yml`): 368
+  identical, 30 changed, 1 dropped, 1 new. At the default 100, range-diff paired the new CI commit with the
+  dropped mpv commit. Protected lines: aac-to-dts 48 commits, 6142 lines, 0 lost; hlg-to-dv 117 commits,
+  19004 lines, 0 lost.
+- `judgement`: 15 paths differ from the mechanical merge, all declared.
+- APK on `625d298ef`: `protected-apk` passes for `libffmpegJNI.so` and `libnuvio_rpu.so`. The library was rebuilt
+  for tree `d510b0746`, because the stamped one predated DV4.10. The CI commit changes no APK input.
+- Independent review: no findings. It compared each changed file's lines with upstream's own changes, and checked
+  the rulings, the merge order in the player controller and the AARs.
+- CI: `Checks` run 44369450465 on `625d298ef` had no baseline: upstream's run hit the 6 h limit after
+  `OutOfMemoryError`s. Run 44509907502 on `b39c3757e` is green: no new failures, both runs complete. The only
+  failures on both sides are upstream's two new `BufferMemoryKeeperTest` cases, which each hold 1000 MB of buffer
+  and fail at 1 GB too. Not run on the Shield.
+
+**Open, for the owner**
+
+- Device check: pause and resume during a stereo AAC-to-DTS-HD MA transcode. Upstream's DTS keep-alive now sends
+  silent DTS core bursts on that path; watch the HT-A9's lock and indicator.
+- Device check: frame-0 Dolby Vision conversion on an HLG MKV. Upstream's extractor AAR changes how the peek
+  buffer grows, and the fork's protected Matroska scan reads through it.
+- Device check: the HUD `hwdec` row shows `mediacodec` on a 4K HEVC file through mpv.
+
+**Resolution:** published; the fork is level with upstream 1.2.0-arc.3.
+
 ## 2026-11-18: D1.5 `ContinueWithoutAccountTest` race with the session collector (PR #94)
 
 - [D1.5][desk] `ContinueWithoutAccountTest` "with no sign-in on the box nothing is cleared" failed again on

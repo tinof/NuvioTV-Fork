@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-19 | U1.5: rebased onto upstream 1.2.0-arc.3 (official 1.2.0-beta.2); the Nvidia mpv direct-decoding default was retired because upstream asks for direct MediaCodec on every box; both protected features kept every line; a new CI commit runs upstream's baseline on the candidate's 1 GB test heap. | U1 | [log](docs/ROADMAP_LOG.md), PR #95 |
 | 2026-11-18 | D1.5 closed: `ContinueWithoutAccountTest` waits until `AuthManager`'s session collector has handled `Initializing`, so its `Loading` write can no longer land after the test's `SignedOut`. | D1 | [log](docs/ROADMAP_LOG.md), PR #94 |
 | 2026-11-18 | DV4.10 closed: with `debug.nuvio.dv_manifest_hdr10` on, an HDR10 track with a matching 8.1 manifest plays as Dolby Vision with per-shot L1 and a static 8.1 RPU from MaxCLL and MaxFALL as its fallback; without a manifest it stays native. | DV4 | [log](docs/ROADMAP_LOG.md), PR #93 |
 | 2026-11-17 | R2.5 closed: a new player restores the UI mode only once its settings load, so its default OFF no longer switches the TV back before the real setting is read; a player closed before that still switches back. | R2 | [log](docs/ROADMAP_LOG.md), PR #91 |
@@ -672,8 +673,8 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
 ### U1: upstream pull requests
 
 - **Status:** Open. Upstream pull requests are deferred (owner, 2026-11-14); the sync and its cost steps stay.
-  The U1.5 sync of 2026-11-16 put the branch onto 1.2.0-arc.1 (`343b27591`). At its publish on
-  2026-11-16 the branch was level with `upstream/main`. The "Upstream drift" issue (label `upstream-drift`)
+  The U1.5 sync of 2026-11-18 put the branch onto 1.2.0-arc.3 (`90fd0be71`). At its publish on
+  2026-11-19 the branch was level with `upstream/main`. The "Upstream drift" issue (label `upstream-drift`)
   shows how far behind it is; a daily workflow on the default branch keeps it current.
   Since U1.8 a small sync with nothing to judge takes the light path and skips the classify agents.
 - Deferred (owner, 2026-11-14): upstream pull requests, U1.2 to U1.4. Upstream has merged one outside pull
