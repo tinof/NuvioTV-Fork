@@ -73,6 +73,9 @@ jobs:
       - name: Run all unit tests
         if: steps.changes.outputs.skip != 'true'
         continue-on-error: ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/sync/') }}
+        # A full run takes about 20 minutes. A test JVM out of heap crawls until GitHub's 6 h limit;
+        # a step timeout ends it sooner and still uploads what the run wrote.
+        timeout-minutes: 60
         run: scripts/ci_unit_tests.sh gate-results
 
       - name: Upload unit test reports
@@ -133,9 +136,26 @@ jobs:
         if: steps.cached.outputs.cache-hit != 'true'
         run: touch local.properties local.dev.properties
 
+      - name: Give upstream's tests the candidate's heap
+        if: steps.cached.outputs.cache-hit != 'true'
+        # Upstream's tree sets no maxHeapSize, so its test JVM gets Gradle's 512 MB. Its suite outgrew
+        # that on 2026-11-18 (OutOfMemoryError, then a crawl into the 6 h limit). The candidate's tests
+        # run with 1 GB (app/build.gradle.kts), so both sides now run on the same heap.
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/nuvio-test-heap.gradle <<'EOF'
+          allprojects {
+              tasks.withType(Test).configureEach {
+                  maxHeapSize = "1g"
+                  doFirst { logger.lifecycle("test heap: " + maxHeapSize) }
+              }
+          }
+          EOF
+
       - name: Run all unit tests on upstream
         if: steps.cached.outputs.cache-hit != 'true'
         continue-on-error: true
+        timeout-minutes: 60
         run: gate/scripts/ci_unit_tests.sh baseline-results
 
       - name: Upload baseline test reports
