@@ -58,7 +58,6 @@ lists). Restart playback, or the app for the rows marked *app*.
 | DV7 Auto converts with mode 2 (8.1 with no-op mapping; falls back per RPU to mode 1) | `dv7_manual` (`0` = mode 1) | The TV's DV info on one FEL and one MEL title |
 | HDR10 metadata injection on DV strip is on by default (a saved value wins) | Setting "Inject HDR10 metadata on strip" | The TV's HDR info screen: mastering / MaxCLL |
 | HDR video ignores the view-scaling aspect modes and plays at Fit (ExoPlayer) | `hdr_zoom` (`1` = allow) | `dumpsys SurfaceFlinger` keeps the video on an overlay plane |
-| mpv decodes with direct MediaCodec (`mediacodec,mediacodec-copy`; a saved mode wins) | Setting "Hardware decoding (MPV-only)" | HUD `hwdec` row shows `mediacodec` |
 | mpv tone mapping `bt.2446a` with no peak detection | `mpv_tonemap` (`0`) | HDR on an SDR TV through mpv |
 | Full swap refuses a single thumbnail decode even with MemAvailable 200 MB above the decode floor (`mdarcy` only). NuvioTV 1.1.0-nt.7.1 (4f7c16200) allows that on 3 GB boxes; the fork's device data from round 3 says no on this box. The refusal also covers the small-box room of upstream's e8cec44a6 (SwapFree 48 MB or more, floor + 300 MB), and the lift after a 4K hardware decoder closes from upstream's f28fb06c6 (sync of 2026-11-03), which needs a low-RAM box and so never runs on `mdarcy`. Other boxes now log `swapRoom=true`. | `thumb_swap_room` (`1` = allow; `0` turns it off on every box) *app* | Logcat `ThumbMem init … swapRoom=false`, refusals `SwapFree … MB < 64` |
 | AV1 trailers need a hardware decoder, so the Shield takes H.264 or VP9, or the HLS or progressive source when YouTube offers only AV1. NuvioTV 1.1.0-beta.7 accepts any decoder that claims the format, Android's software AV1 one included. | `trailer_av1_hw` (`0`) *app* | Logcat `Trailer adaptive: …/<height>p/<codec>` never shows AV1 |
@@ -322,6 +321,30 @@ These apply on the Shield too, with no fork switch unless a row says so:
   visual tier, that is every dialog on the Shield.
 
 Measurements taken before 2026-11-16 predate these defaults.
+
+### Upstream defaults taken with the sync of 2026-11-18
+
+`perf/shield-pass` was rebased onto ysosrs123's 1.2.0-arc.3 (`90fd0be71`), which merges official NuvioTV
+1.2.0-beta.2. One value of this pass was touched by upstream: mpv's direct MediaCodec decoding, whose Nvidia row
+was retired. These apply on the Shield too, with no fork switch unless a row says so:
+- mpv asks for direct MediaCodec on every video through the new "Direct decoding" setting (Automatic, baf30a024).
+  This covers the Nvidia `mediacodec,mediacodec-copy` default, which was dropped with its row. After two refusals
+  on a box, or with Direct decoding off, mpv falls back to upstream's Auto-safe (`mediacodec-copy`). Device check:
+  the HUD `hwdec` row shows `mediacodec` on a 4K HEVC file through mpv.
+- DTS and DTS-HD stay locked through a pause on the own IEC track: silent DTS core bursts fill the pause, and
+  unplayed audio is replayed on resume (64f9908df). Every box but a small one gets it, the Shield included. It also
+  runs during the stereo AAC-to-DTS-HD MA transcode; a device check of pause and resume on the HT-A9 is pending.
+- 5.1 AAC goes to an ARC soundbar as Dolby Digital 5.1 through FFmpeg (64f9908df). The AAC-to-DTS transcode still
+  takes only mono and stereo AAC. On Nvidia the `audio_probe_union` row above feeds the AC-3 capability this reads.
+- Playback download threads on a 64-bit process stay alive for 180 s (90 s on 32-bit), up from the 15 s listed for
+  2026-11-16 (64f9908df).
+- A new Amlogic FEL setting, "Dolby Vision output" (TV by default; "Box, as HDR10" is `dv_output_box_hdr10`,
+  7a9641c05), has no effect on the Shield.
+- The fork's Home focus debounce (110 ms single press, 250 ms held) now also covers upstream's new Continue
+  Watching row scroll (f02133600). Upstream's own constant stays 250 ms. The debounce has no Nvidia gate or revert
+  switch yet; S4.2 plans one.
+
+Measurements taken before 2026-11-18 predate these defaults.
 
 ## History
 
