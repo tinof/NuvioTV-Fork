@@ -3,6 +3,7 @@ import json
 import os
 import re
 import subprocess
+import struct
 import sys
 import tempfile
 import time
@@ -115,6 +116,24 @@ class ParserTest(unittest.TestCase):
                  log("NuvioDetails", "journey=1 stage=controls_focus elapsedMs=900.0 thread=main"),
                  log("NuvioDetails", "journey=1 frame=3 totalNs=1 layoutNs=1 drawNs=1 syncNs=1 dropped=0")]
         self.assertEqual(sm.parse_details(lines), {"1": {"home_selection": 0.0, "controls_focus": 812.5}})
+
+    def test_frame_change(self):
+        def frame(pixels, w=4, h=4):
+            return struct.pack("<4I", w, h, 1, 0) + b"".join(pixels)
+        black, white, grey = bytes((0, 0, 0, 255)), bytes((255, 255, 255, 255)), bytes((20, 20, 20, 255))
+        home = frame([black] * 16)
+        self.assertEqual(sm.frame_change(home, home, step=1), 0.0)
+        self.assertEqual(sm.frame_change(home, frame([white] * 16), step=1), 1.0)
+        # A small difference (noise, dithering) is not a change; half the screen is.
+        self.assertEqual(sm.frame_change(home, frame([grey] * 16), step=1), 0.0)
+        self.assertEqual(sm.frame_change(home, frame([white] * 8 + [black] * 8), step=1), 0.5)
+        self.assertEqual(sm.frame_change(home, frame([black] * 32, w=8), step=1), 1.0)
+
+    def test_parse_frame_refuses_a_cut_frame(self):
+        with self.assertRaises(ValueError):
+            sm.parse_frame(struct.pack("<4I", 4, 4, 1, 0) + bytes(10))
+        with self.assertRaises(ValueError):
+            sm.parse_frame(b"\x89PNG")
 
     def test_jank_lines(self):
         j = sm.parse_jank([log("JankStats", "JANK: 1030ms | states: []", "W"),
@@ -316,14 +335,52 @@ class CommandTest(unittest.TestCase):
         self.assertIn("details_stages", details["missing"])
         self.assertEqual(len(self.final["keys"]), sum(len(k) for k in sm.JOURNEYS.values()))
         self.assertIn(f"dumpsys gfxinfo {SHIELD} reset", self.shell_calls())
+        self.assertEqual([r["end_change"] for r in result["runs"]], [0.0] * len(sm.JOURNEYS))
+        self.assertIsNone(result["refused"])
         self.assert_clean(proc)
+
+    def test_ui_refuses_a_home_the_journey_does_not_fit(self):
+        # A Home with one card: RIGHT cannot move, LEFT opens the sidebar and nothing brings focus back.
+        proc = self.run_measure("ui", "--session", str(self.session), "--package", SHIELD,
+                                initial=state(screen_on_key={"KEYCODE_DPAD_LEFT": "sidebar"}))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("home-row ended on another screen than it started (100% of the screen changed)", proc.stderr)
+        result = self.results("ui")
+        self.assertEqual([r["journey"] for r in result["runs"]], ["home-row"])
+        self.assertIn("end", result["runs"][0]["missing"])
+        self.assertEqual(result["refused"], result["runs"][0]["missing"]["end"])
+        self.assertEqual(len(self.final["keys"]), len(sm.JOURNEYS["home-row"]))
+        self.assert_clean(proc)
+
+    def test_ui_passes_a_journey_that_comes_back(self):
+        proc = self.run_measure("ui", "--session", str(self.session), "--package", SHIELD, "--journey", "sidebar",
+                                initial=state(screen_on_key={"KEYCODE_DPAD_LEFT": "sidebar",
+                                                             "KEYCODE_DPAD_RIGHT": "home"}))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.results("ui")["runs"][0]["end_change"], 0.0)
+
+    def test_ui_refuses_a_screen_that_moves_on_its_own(self):
+        proc = self.run_measure("ui", "--session", str(self.session), "--package", SHIELD,
+                                initial=state(screen_ticks=True))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("changes on its own", proc.stderr)
+        self.assertNotIn("keys", self.final)
+
+    def test_details_trace_refuses_a_details_journey_that_opened_no_title(self):
+        proc = self.run_measure("ui", "--session", str(self.session), "--package", SHIELD, "--details-trace")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("details: no NuvioDetails stage lines with the trace on", proc.stderr)
+        result = self.results("ui")
+        self.assertEqual([r["journey"] for r in result["runs"]], ["home-row", "rows-down", "sidebar", "details"])
+        self.assertEqual(self.final["props"].get(sm.DETAILS_PROP), "")
 
     def test_ui_shots(self):
         proc = self.run_measure("ui", "--session", str(self.session), "--package", SHIELD, "--journey", "sidebar",
                                 "--shots")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        shot = self.results("ui")["runs"][0]["shot"]
-        self.assertEqual((self.session / "measure" / shot).read_text(), "png")
+        result = self.results("ui")
+        for shot in (result["start_shot"], result["runs"][0]["shot"]):
+            self.assertEqual((self.session / "measure" / shot).read_text(), "png")
         self.assertEqual(self.final["files"], {})
 
     def test_ui_wakes_the_screensaver_once(self):
