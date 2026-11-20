@@ -11,8 +11,12 @@
             test build (com.nuvio.tv.test.<suffix>) first; a daily app is never force-stopped.
 - ui        D-pad journeys (the ones in NuvioNavigationBenchmark.kt) on the app in front: `dumpsys gfxinfo
             <pkg> reset`, the keys, then the gfxinfo summary and framestats, the JankStats JANK lines and the
-            NuvioDetails stages of the details journey. --shots saves where each journey ended: the key
-            sequences fit this app's Home, and a journey that ends elsewhere measures the wrong screen.
+            NuvioDetails stages of the details journey. Open Home with focus on the first Continue watching
+            card first. The key sequences fit that Home, and a journey that ends elsewhere measures the wrong
+            screen, so ui compares a raw screencap after each journey with the one taken before the first
+            and stops (refused) when they differ. It also refuses a screen that changes on its own, and,
+            with --details-trace, a details journey that logged no stage (its CENTER opened no title).
+            --shots also saves a PNG of the start and of each journey's end.
 - playback  click -> PLAYBACK_STARTED (the owner starts a title on the TV), SEEK_READY per seek (seek -> first
             frame only from via=first_frame lines; a seek that reached READY first is counted as ready_only),
             dropped frames, iec_health underruns, AudioTrack restartIfDisabled and NuvioPosFreeze stalls.
@@ -38,6 +42,7 @@ import os
 import re
 import shlex
 import statistics
+import struct
 import subprocess
 import sys
 import time
@@ -67,6 +72,13 @@ JOURNEYS = {
     "settings": [("DPAD_LEFT", 300)] + [("DPAD_DOWN", 180)] * 5 + [("DPAD_CENTER", 1000)]
     + [("DPAD_DOWN", 180)] * 2 + [("DPAD_CENTER", 1000), ("BACK", 500), ("BACK", 1000)],
 }
+# The end check of ui (M1.5). The app hides its screen from uiautomator when only a launcher's
+# accessibility service is on (LauncherOnlySemantics.kt), so where a journey ended comes from the pixels.
+# On the Shield on 2026-11-20 two idle Home frames 5 s apart were identical, one D-pad key changed 32-64 %
+# of the sampled pixels, and the way back to the first card changed 0 %.
+END_CHANGE_MAX = 0.02
+PIXEL_DELTA = 24
+SAMPLE_STEP = 8
 # PLAYBACK_STARTED logs under TTFF_STAGE (PlaybackStartedStage), SEEK_READY under PlayerViewModel.
 PLAYBACK_LOG_TAGS = ("TTFF_STAGE", "PlayerViewModel", "NuvioExoEvent", "IecPassthrough", "AudioTrack", "NuvioPosFreeze")
 
@@ -170,6 +182,35 @@ def parse_am_start(text):
         "total_ms": ms("TotalTime"),
         "wait_ms": ms("WaitTime"),
     }
+
+
+def parse_frame(data):
+    """Raw `screencap` output (no -p) -> (width, height, RGBA bytes). Android 11 writes a 16-byte header:
+    width, height, pixel format (1 = RGBA_8888) and dataspace."""
+    if len(data) < 16:
+        raise ValueError("the screencap is shorter than its header")
+    width, height, fmt, _ = struct.unpack("<4I", data[:16])
+    if fmt != 1 or len(data) != 16 + width * height * 4:
+        raise ValueError(f"unexpected screencap: {width}x{height} format {fmt}, {len(data)} bytes")
+    return width, height, data[16:]
+
+
+def frame_change(before, after, step=SAMPLE_STEP, delta=PIXEL_DELTA):
+    """The share of pixels, sampled every `step` in x and y, whose largest R, G or B difference is over
+    `delta`. Frames of another size count as wholly changed."""
+    w, h, a = parse_frame(before)
+    w2, h2, b = parse_frame(after)
+    if (w, h) != (w2, h2):
+        return 1.0
+    changed = total = 0
+    for y in range(0, h, step):
+        row = y * w * 4
+        ra, rb = a[row:row + w * 4], b[row:row + w * 4]
+        for i in range(0, w * 4, step * 4):
+            total += 1
+            if max(abs(ra[i] - rb[i]), abs(ra[i + 1] - rb[i + 1]), abs(ra[i + 2] - rb[i + 2])) > delta:
+                changed += 1
+    return changed / total if total else 0.0
 
 
 def parse_jank(lines):
@@ -308,6 +349,21 @@ class Device:
             self.out(f"rm -f {remote}")
         if proc.returncode != 0:
             raise Refused("adb pull of the screenshot failed")
+
+    def frame(self):
+        """A raw screencap of the TV (about 33 MB at 4K), for the end check; never saved."""
+        try:
+            proc = subprocess.run([self.adb, "-s", self.serial, "exec-out", "screencap"], capture_output=True,
+                                  timeout=self.timeout * 4)
+        except subprocess.TimeoutExpired:
+            raise DeviceStop("adb exec-out screencap did not finish")
+        if proc.returncode != 0:
+            raise Refused(f"screencap failed: {self.redact(proc.stderr.decode('utf-8', 'replace').strip())}")
+        try:
+            parse_frame(proc.stdout)
+        except ValueError as error:
+            raise Refused(str(error))
+        return proc.stdout
 
     def foreground(self):
         text = self.out("dumpsys activity activities")
@@ -483,7 +539,11 @@ def run_journey(args, device, journey):
     if journey == "details":
         stages = parse_details(mine)
         result["details_stages"] = stages or None
-        if not stages:
+        if not stages and args.details_trace:
+            missing["details_stages"] = ("no NuvioDetails stage lines with the trace on: CENTER opened no "
+                                         "title's details (on this Home the first card below Continue watching "
+                                         "is not a title, for example a collection)")
+        elif not stages:
             missing["details_stages"] = ("no NuvioDetails stage lines: the trace is off "
                                          f"({DETAILS_PROP} is not VERBOSE) or the app has no DetailEntryTrace")
     result["missing"] = missing
@@ -498,12 +558,31 @@ def wake_from_dream(args, device):
         pause(args, 1500)
 
 
+def end_change(args, device, start):
+    """How much the screen differs from the start frame; a difference gets one more look after 1.5 s, so a
+    focus animation that is still running does not count."""
+    change = frame_change(start, device.frame())
+    if change > args.end_change_max:
+        pause(args, 1500)
+        change = frame_change(start, device.frame())
+    return change
+
+
 def cmd_ui(args, device):
     out = require_session(args)
     wake_from_dream(args, device)
     if device.foreground() != args.package:
         raise Refused(f"{args.package} is not in front: open its Home screen on the TV first")
     journeys = list(JOURNEYS) if args.journey == "all" else [args.journey]
+    start = device.frame()
+    pause(args, 1000)
+    if frame_change(start, device.frame()) > args.end_change_max:
+        raise Refused("the screen changes on its own (a trailer or an animation), so the end of a journey "
+                      "cannot be checked: open Home with focus on the first Continue watching card")
+    start_shot = None
+    if args.shots:
+        start_shot = out / f"ui-{datetime.now().strftime('%H%M%S')}-start.png"
+        device.shot(start_shot)
     old_prop = None
     if args.details_trace:
         if not is_test_package(args.package):
@@ -515,7 +594,7 @@ def cmd_ui(args, device):
             saved.write_text(device.out(f"getprop {DETAILS_PROP}").strip() + "\n")
         old_prop = saved.read_text().strip()
         device.out(f"setprop {DETAILS_PROP} VERBOSE")
-    runs, kept = [], []
+    runs, kept, unfit = [], [], None
     try:
         for journey in journeys:
             for repeat in range(args.repeat):
@@ -529,6 +608,17 @@ def cmd_ui(args, device):
                 kept += lines
                 if device.foreground() != args.package:
                     raise Refused(f"{args.package} left the front after {journey}; stopping")
+                result["end_change"] = round(end_change(args, device, start), 4)
+                if result["end_change"] > args.end_change_max:
+                    unfit = (f"{journey} ended on another screen than it started ({result['end_change']:.0%} "
+                             "of the screen changed): this Home does not fit the journey; see the shots")
+                elif journey == "details" and args.details_trace and not result.get("details_stages"):
+                    unfit = "details: " + result["missing"]["details_stages"]
+                if unfit:
+                    result["missing"]["end"] = unfit
+                    break
+            if unfit:
+                break
     except DeviceStop as error:
         # M2: after a stop no further adb call goes out, so the property stays as this run set it.
         if old_prop is not None:
@@ -539,13 +629,16 @@ def cmd_ui(args, device):
     finally:
         if old_prop is not None:
             device.out(f"setprop {DETAILS_PROP} {shq(old_prop)}")
-    result = {"command": "ui", "package": args.package, "details_trace": bool(args.details_trace), "runs": runs}
+    result = {"command": "ui", "package": args.package, "details_trace": bool(args.details_trace), "runs": runs,
+              "start_shot": start_shot.name if start_shot else None, "refused": unfit}
     for run in runs:
         g = run["gfxinfo"] or {}
         print(f"{run['journey']:<10} #{run['repeat']} frames={g.get('frames')} janky={g.get('janky_pct')}% "
               f"p90={g.get('p90_ms')}ms p99={g.get('p99_ms')}ms jank_lines={run['jank_lines']['lines']}"
               + (f" missing={','.join(run['missing'])}" if run["missing"] else ""))
     print(save(out, "ui", result, kept, args.serial))
+    if unfit:
+        raise Refused(f"{unfit}; the journeys measured so far are saved")
     return 0
 
 
@@ -623,7 +716,8 @@ def parser():
     ui.add_argument("--journey", choices=[*JOURNEYS, "all"], default="all")
     ui.add_argument("--repeat", type=int, default=1)
     ui.add_argument("--details-trace", action="store_true")
-    ui.add_argument("--shots", action="store_true", help="save a screenshot where each journey ends")
+    ui.add_argument("--shots", action="store_true", help="save a screenshot of the start and where each journey ends")
+    ui.add_argument("--end-change-max", type=float, default=END_CHANGE_MAX, help=argparse.SUPPRESS)
     pb = sub.choices["playback"]
     pb.add_argument("--already-playing", action="store_true")
     pb.add_argument("--wait-start", type=float, default=120)

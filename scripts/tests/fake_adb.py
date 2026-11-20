@@ -11,6 +11,8 @@ redirection is refused: the scripts filter on the host. Hooks in the state:
 - stderr_serial: every shell call also prints a warning naming the serial on stderr, as adb can.
 For shield_measure.py: `input keyevent` appends to keys and the lines in lines_on_key[<key>] to the log;
 running lists the packages `pidof` finds; gfxinfo and framestats are the dumpsys texts.
+`adb exec-out screencap` prints a raw 16x16 frame whose colour comes from screen (default "home");
+screen_on_key[<key>] switches the screen on that key, and screen_ticks makes every frame differ.
 """
 
 import hashlib
@@ -18,6 +20,7 @@ import json
 import os
 import re
 import shlex
+import struct
 import sys
 import time
 
@@ -58,6 +61,16 @@ def display_dump(state):
         f'    mBaseDisplayInfo=DisplayInfo{{"Built-in", displayId 0, mode {d["active"]}, '
         f"defaultMode {d['default']}, modes [{modes}], rotation 0}}\n"
     )
+
+
+def raw_frame(state):
+    """A raw Android 11 screencap: width, height, format 1 (RGBA_8888), dataspace, then the pixels."""
+    label = state.get("screen", "home")
+    if state.get("screen_ticks"):
+        state["tick"] = state.get("tick", 0) + 1
+        label += str(state["tick"])
+    r, g, b = hashlib.sha256(label.encode()).digest()[:3]
+    return struct.pack("<4I", 16, 16, 1, 0) + bytes((r, g, b, 255)) * 256
 
 
 def shell(state, words):
@@ -130,6 +143,8 @@ def shell(state, words):
             state.setdefault("logcat_lines", []).append("W Watchdog: *** WATCHDOG KILLING SYSTEM PROCESS: Blocked in handler")
     elif cmd == "input" and words[1] == "keyevent":
         state.setdefault("keys", []).append(words[2])
+        if words[2] in state.get("screen_on_key", {}):
+            state["screen"] = state["screen_on_key"][words[2]]
         if words[2] == "KEYCODE_WAKEUP":
             state.pop("dream", None)
         for line in state.get("lines_on_key", {}).get(words[2], []):
@@ -175,6 +190,11 @@ def main(argv):
     if rest[:1] == ["pull"]:
         with open(rest[2], "w") as handle:
             handle.write(state["files"][rest[1]])
+        return 0
+    if rest == ["exec-out", "screencap"]:
+        frame = raw_frame(state)
+        save(state)
+        sys.stdout.buffer.write(frame)
         return 0
     if rest[:1] == ["logcat"]:
         # A live `adb logcat`: prints each new log line until the caller stops it. Like logcat, it
