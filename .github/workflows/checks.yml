@@ -140,13 +140,14 @@ jobs:
         if: steps.cached.outputs.cache-hit != 'true'
         # Upstream's tree sets no maxHeapSize, so its test JVM gets Gradle's 512 MB. Its suite outgrew
         # that on 2026-11-18 (OutOfMemoryError, then a crawl into the 6 h limit). The candidate's tests
-        # run with 1 GB (app/build.gradle.kts), so both sides now run on the same heap.
+        # run with 2 GB (app/build.gradle.kts), so both sides run on the same heap. 1 GB was too little
+        # for the two BufferMemoryKeeperTest cases that hold 1000 MB of buffer.
         run: |
           mkdir -p ~/.gradle/init.d
           cat > ~/.gradle/init.d/nuvio-test-heap.gradle <<'EOF'
           allprojects {
               tasks.withType(Test).configureEach {
-                  maxHeapSize = "1g"
+                  maxHeapSize = "2g"
                   doFirst { logger.lifecycle("test heap: " + maxHeapSize) }
               }
           }
