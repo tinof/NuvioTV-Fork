@@ -579,6 +579,7 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
 - `scripts/perf_baseline.py` compiles the target (`:90`), and the macrobenchmark accepts only the v2 test
   packages (`NuvioNavigationBenchmark.kt:28`) at about 60 Hz (`:39-43`). Neither fits the daily apps or a
   24/25 Hz UI.
+- **Decided 2026-11-20 (agent, recommended; owner may override):** M1.5's script refuses a journey that ends off its start screen instead of steering focus back, and finds the end by comparing raw screencaps, since the app hides its screen from uiautomator under Projectivy; an app-side focus log was not taken, because M1.4 also measures the upstream app.
 - [M1.5][device] Check that each UI journey of `scripts/shield_measure.py` starts and ends on Home with
   focus on the first Continue watching card, also on a Home with one card and no other rows (a review
   finding on PR #44: RIGHT cannot move there, LEFT opens the sidebar, and the next journey measures the
