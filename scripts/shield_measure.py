@@ -358,7 +358,10 @@ class Device:
         except subprocess.TimeoutExpired:
             raise DeviceStop("adb exec-out screencap did not finish")
         if proc.returncode != 0:
-            raise Refused(f"screencap failed: {self.redact(proc.stderr.decode('utf-8', 'replace').strip())}")
+            stderr = proc.stderr.decode("utf-8", "replace").strip()
+            if ("device" in stderr and "not found" in stderr) or "offline" in stderr:
+                raise DeviceStop(f"the Shield is not reachable: {self.redact(stderr)}")
+            raise Refused(f"screencap failed: {self.redact(stderr)}")
         try:
             parse_frame(proc.stdout)
         except ValueError as error:

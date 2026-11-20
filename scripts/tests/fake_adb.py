@@ -13,6 +13,8 @@ For shield_measure.py: `input keyevent` appends to keys and the lines in lines_o
 running lists the packages `pidof` finds; gfxinfo and framestats are the dumpsys texts.
 `adb exec-out screencap` prints a raw 16x16 frame whose colour comes from screen (default "home");
 screen_on_key[<key>] switches the screen on that key, and screen_ticks makes every frame differ.
+offline_after_frames: after that many frames the box drops off adb, and every later call fails as adb
+does for a device that went offline.
 """
 
 import hashlib
@@ -187,12 +189,19 @@ def main(argv):
         sys.stderr.write(f"error: device '{argv[1] if len(argv) > 1 else ''}' not found\n")
         return 1
     rest = argv[2:]
+    if rest == ["exec-out", "screencap"] and state.get("frames", 0) == state.get("offline_after_frames"):
+        state["offline"] = True
+        save(state)
+    if state.get("offline"):
+        sys.stderr.write("error: device offline\n")
+        return 1
     if rest[:1] == ["pull"]:
         with open(rest[2], "w") as handle:
             handle.write(state["files"][rest[1]])
         return 0
     if rest == ["exec-out", "screencap"]:
         frame = raw_frame(state)
+        state["frames"] = state.get("frames", 0) + 1
         save(state)
         sys.stdout.buffer.write(frame)
         return 0

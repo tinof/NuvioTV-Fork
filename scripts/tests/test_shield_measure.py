@@ -425,6 +425,17 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(props, [f"setprop {sm.DETAILS_PROP} VERBOSE"])
         self.assertIn("details-prop-before.txt", proc.stderr)
 
+    def test_a_box_that_drops_off_adb_at_the_end_check_is_a_device_stop(self):
+        # The start takes two frames; the box is gone when the end check asks for the third.
+        proc = self.run_measure("ui", "--session", str(self.session), "--package", SHIELD, "--journey", "sidebar",
+                                "--details-trace", initial=state(offline_after_frames=2))
+        self.assertEqual(proc.returncode, 5, proc.stderr)
+        self.assertIn("not reachable", proc.stderr)
+        props = [c for c in self.shell_calls() if c.startswith(f"setprop {sm.DETAILS_PROP}")]
+        self.assertEqual(props, [f"setprop {sm.DETAILS_PROP} VERBOSE"])
+        self.assertIn("details-prop-before.txt", proc.stderr)
+        self.assert_clean(proc)
+
     def test_details_trace_is_refused_on_a_daily_app(self):
         proc = self.run_measure("ui", "--session", str(self.session), "--package", DAILY, "--details-trace",
                                 initial=state(foreground=DAILY))
