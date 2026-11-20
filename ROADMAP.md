@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-20 | M1.5 closed: `shield_measure.py ui` compares a screencap after each journey with the start and stops when a journey ends elsewhere, so a Home that does not fit a journey is refused instead of measured wrongly. | M1 | [log](docs/ROADMAP_LOG.md), PR #98 |
 | 2026-11-19 | U1.5: rebased onto upstream 1.2.0-arc.3 (official 1.2.0-beta.2); the Nvidia mpv direct-decoding default was retired because upstream asks for direct MediaCodec on every box; both protected features kept every line; a new CI commit runs upstream's baseline on the candidate's 1 GB test heap. | U1 | [log](docs/ROADMAP_LOG.md), PR #95 |
 | 2026-11-18 | D1.5 closed: `ContinueWithoutAccountTest` waits until `AuthManager`'s session collector has handled `Initializing`, so its `Loading` write can no longer land after the test's `SignedOut`. | D1 | [log](docs/ROADMAP_LOG.md), PR #94 |
 | 2026-11-18 | DV4.10 closed: with `debug.nuvio.dv_manifest_hdr10` on, an HDR10 track with a matching 8.1 manifest plays as Dolby Vision with per-shot L1 and a static 8.1 RPU from MaxCLL and MaxFALL as its fallback; without a manifest it stays native. | DV4 | [log](docs/ROADMAP_LOG.md), PR #93 |
@@ -574,19 +575,11 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
 
 ### M1: measurement protocol and baselines
 
-- **Status:** Open. M1.1 and M1.2 are done (`scripts/shield_measure.py`, see the log); the Home-focus
-  check (M1.5), the benchmark build and the baselines are open.
+- **Status:** Open. M1.1, M1.2 and M1.5 are done (`scripts/shield_measure.py` and its end check, see the
+  [log](docs/ROADMAP_LOG.md)); the benchmark build (M1.3) and the baselines (M1.4) are open.
 - `scripts/perf_baseline.py` compiles the target (`:90`), and the macrobenchmark accepts only the v2 test
   packages (`NuvioNavigationBenchmark.kt:28`) at about 60 Hz (`:39-43`). Neither fits the daily apps or a
   24/25 Hz UI.
-- **Decided 2026-11-20 (agent, recommended; owner may override):** M1.5's script refuses a journey that ends off its start screen instead of steering focus back, and finds the end by comparing raw screencaps, since the app hides its screen from uiautomator under Projectivy; an app-side focus log was not taken, because M1.4 also measures the upstream app.
-- [M1.5][device] Check that each UI journey of `scripts/shield_measure.py` starts and ends on Home with
-  focus on the first Continue watching card, also on a Home with one card and no other rows (a review
-  finding on PR #44: RIGHT cannot move there, LEFT opens the sidebar, and the next journey measures the
-  sidebar). The details journey has the same problem: on the owner's Home its DOWN lands on a
-  collection row, CENTER opens `folder_detail`, and no NuvioDetails stage is logged (M1.2 log). Run
-  `ui --shots` on such a Home. Gate: the shots show each journey's end, and the script
-  restores focus or refuses a Home it cannot measure. Needs: M1.2.
 - [M1.3][desk] Build the `benchmark` variant of this branch for the UI journeys (`:app:assembleFullBenchmark`;
   minified, shrunk, with the baseline profile, signed with the debug key). It installs as its own app with the
   `.debug` suffix and needs one login. Gate: the APK installs on the Shield and passes the M1 dry run. Needs:

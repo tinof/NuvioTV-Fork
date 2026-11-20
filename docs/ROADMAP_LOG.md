@@ -10,6 +10,48 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-20: M1.5 UI journeys stop when they end off their start screen (PR #98)
+
+- [M1.5][device] Check that each UI journey of `scripts/shield_measure.py` starts and ends on Home with
+  focus on the first Continue watching card, also on a Home with one card and no other rows (a review
+  finding on PR #44: RIGHT cannot move there, LEFT opens the sidebar, and the next journey measures the
+  sidebar). The details journey has the same problem: on the owner's Home its DOWN lands on a
+  collection row, CENTER opens `folder_detail`, and no NuvioDetails stage is logged (M1.2 log). Run
+  `ui --shots` on such a Home. Gate: the shots show each journey's end, and the script
+  restores focus or refuses a Home it cannot measure. Needs: M1.2.
+- **Decided 2026-11-20 (agent, recommended; owner may override):** M1.5's script refuses a journey that ends off its start screen instead of steering focus back, and finds the end by comparing raw screencaps, since the app hides its screen from uiautomator under Projectivy; an app-side focus log was not taken, because M1.4 also measures the upstream app.
+
+- **What the script does now:** `ui` takes a raw screencap before the first journey and one after each journey,
+  and compares them on a grid of every 8th pixel. More than 2 % changed pixels is another screen: the run stops
+  (refused, exit 1) and saves what it measured. It also refuses a screen that changes on its own, and, with
+  `--details-trace`, a details journey that logged no NuvioDetails stage. `--shots` also saves the start screen.
+- **Why pixels:** `uiautomator dump` shows an empty tree for this app. With only Projectivy's accessibility
+  service on, the app clears its own description of the screen (`core/performance/LauncherOnlySemantics.kt`).
+- **Calibration on the Shield:** two idle Home frames 5 s apart were identical. One RIGHT changed 32 % of the
+  sampled pixels, one LEFT into the sidebar 38 %, one DOWN 64 %; each way back changed 0 %. A title's details
+  page with its moving background changed 38 % between two idle frames, which the start check refuses.
+- **Evidence:** `~/shield-snapshots/20261120-1322-m1-5-home-check/measure/`, on `com.nuvio.tv.test.shield` (the
+  owner's Home: Continue watching, then Coming up). M2 snapshot first; `shield_restore.sh` verdict clean (drift 0,
+  owner 0).
+
+  | Journey | End change | Result |
+  |---|---|---|
+  | home-row | 78 % | refused: the row has fewer than 12 cards, so the 12 LEFTs end in the sidebar |
+  | rows-down | 0.00 % | ends on the first Continue watching card |
+  | sidebar | 0.00 % | ends on the first Continue watching card |
+  | details | 0.01 % | ends on the first card; 9 NuvioDetails stages (the row below is a title row now) |
+  | settings | 0.01 % | ends on the first card |
+
+- **Tests:** `scripts/tests/test_shield_measure.py`, 37 tests, with a fake adb that serves raw frames: a Home
+  whose LEFT opens the sidebar is refused, a journey that comes back passes, a moving screen is refused, and a
+  box that drops off adb at a screencap is a device stop (a review finding, fixed in the PR).
+- **Not tested:** a Home with one card and no other rows on the device; the unit test covers it. The start is
+  not proven to be Home: a still screen of another kind passes the start check. Without the trace (a daily app,
+  the upstream app) a details journey that opens a folder still passes.
+- **For M1.4:** home-row needs a Continue watching row of at least 13 cards, or a journey that fits the row.
+- **Resolution:** the gate is met by refusing: the shots show each journey's end, and a Home that does not fit
+  a journey stops the run.
+
 ## 2026-11-19: U1.5 sync of 2026-11-18 onto upstream 1.2.0-arc.3 (PR #95)
 
 - [U1.5][desk] Rebased `perf/shield-pass` from `ea6f4c003` onto `90fd0be71` (tag 1.2.0-arc.3, which merges
