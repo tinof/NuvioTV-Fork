@@ -45,7 +45,7 @@ takes 1 + the highest number ever used for that item in `ROADMAP.md`, `docs/ROAD
 (one sentence plus the PR) and the full text of the step to
 [`docs/ROADMAP_LOG.md`](docs/ROADMAP_LOG.md). Measurements go to the log, not into the item.
 
-- When a step ships, `/ship` removes its line in a `fork:` commit, updates the item's status, adds a
+- When a step ships, `/ship:land` removes its line in a `fork:` commit, updates the item's status, adds a
   progress-log row that cites the PR number (never a commit SHA: rebase merges rewrite SHAs), and adds
   the full step text with its ID, the gate evidence and the PR to the log.
 - A step whose gate needs device or owner evidence that does not exist yet stays, with `Landed: PR #n;
