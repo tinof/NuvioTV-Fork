@@ -234,7 +234,7 @@ first (the unshipped AAR, the planned Q6.1 step) were fixed in the branch:
    getter.
 10. A double free in the JNI when an allocation after `avcodec_open2` fails. This predates the branch.
 
-The review prompt is in the session's workflow script and is not kept here. Before merging, `/ship` runs the
+The review prompt is in the session's workflow script and is not kept here. Before merging, `/ship:land` runs the
 cross-family (Codex) review. Fable was not used.
 
 ## 7. Device results

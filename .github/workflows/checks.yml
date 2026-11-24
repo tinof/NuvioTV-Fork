@@ -4,7 +4,7 @@ name: Checks
 # (scripts/shield_build_install.sh, ffmpeg-decoder-downmix/README.md). CI checks the code only and
 # uploads nothing but test reports.
 #
-# A docs-only pull request still reports "Unit tests", because /ship's wait-checks.sh fails when a
+# A docs-only pull request still reports "Unit tests", because /ship:land's wait-checks.sh fails when a
 # head has no check at all. That is why this file has no paths-ignore: the job runs and skips its
 # steps. A failed detection leaves the output empty, so the full suite runs.
 #

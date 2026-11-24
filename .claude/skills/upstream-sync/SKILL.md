@@ -245,7 +245,7 @@ of failed jobs repeats the compare job over the old results. A rerun of all jobs
 4. Rebase each carried-over local branch: `git rebase --onto origin/perf/shield-pass <backup> <branch>`.
 5. Dispatch `Upstream drift` (`gh workflow run "Upstream drift"`); the issue closes once the fork is level.
 
-## 9. Follow-ups (a normal PR through /ship)
+## 9. Follow-ups (a normal PR through /ship:land)
 
 The follow-up PR stays on the contract's `gate-skip` paths (`*.md` and `docs/**`), so it needs no gate run. Create a branch `fork/u1-5-sync-<date>-followups` from `origin/perf/shield-pass`. It carries:
 - `docs/shield-todo.md`: new rows, and the "Upstream defaults taken with the sync of <date>" section;

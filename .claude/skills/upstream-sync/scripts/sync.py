@@ -891,7 +891,7 @@ GATE_GUARDED = (".github", ".claude", "scripts")
 def cmd_gate_skip(a, cfg):
     """Print skip=true when every path changed from base to head matches the base's gate-skip.
 
-    The same pathspec test as /ship. Excludes apply before rename detection, so a source file moved into
+    The same pathspec test as /ship:land. Excludes apply before rename detection, so a source file moved into
     docs/ stays in `left` as a deletion; --no-renames only makes that independent of diff.renames.
     No change at all is not docs-only either. The contract comes from the base commit, and a change to
     GATE_GUARDED never skips, so a pull request cannot judge itself.

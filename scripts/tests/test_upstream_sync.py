@@ -833,7 +833,7 @@ class DriftWorkflowTest(unittest.TestCase):
 
 
 class GateSkipTest(unittest.TestCase):
-    """gate-skip decides whether a pull request runs the suite, and must agree with /ship's contract."""
+    """gate-skip decides whether a pull request runs the suite, and must agree with /ship:land's contract."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1012,7 +1012,7 @@ class GateSkipStepTest(unittest.TestCase):
 
 
 class ChecksWorkflowTest(unittest.TestCase):
-    """The parts of checks.yml that /ship depends on and no job can test."""
+    """The parts of checks.yml that /ship:land depends on and no job can test."""
 
     TEXT = (SKILL.parents[2] / ".github/workflows/checks.yml").read_text()
 

@@ -1,6 +1,6 @@
 # Workflow contract
 
-What `/ship`, `/ship:roadmap-next` and `/ship:roadmap-init` need to know about this repository. The schema,
+What `/ship:land`, `/ship:roadmap-next` and `/ship:roadmap-init` need to know about this repository. The schema,
 with every key and section, is `~/.claude/skills/ship/reference/contract.md`. Keep every `##` heading
 exactly as written: the skills look sections up by name. A missing section, or one whose body is `none`,
 turns that part off. A diff that touches this file is always Tier 2. This file is fork-only.
@@ -39,7 +39,7 @@ self-check:     none
   with `gh workflow disable`, and binaries are built locally only (`scripts/shield_build_install.sh`, the
   local FFmpeg module build in `ffmpeg-decoder-downmix/README.md`). CI is the fork-only `Checks` workflow
   (`.github/workflows/checks.yml`): unit tests on every pull request into `main` or `perf/shield-pass`,
-  test reports only. `/ship` waits for the PR's checks (`ci: pr-checks`).
+  test reports only. `/ship:land` waits for the PR's checks (`ci: pr-checks`).
 
 ## Gates
 
@@ -148,7 +148,7 @@ Attaching to upstream code. Conflicts come from nearness to upstream's edits, no
 - Before a new fork feature, check `upstream/main` and official NuvioTV (`sync.py official-preview`).
 - When upstream covers a fork change, prefer dropping the fork's version, except for the protected features.
 
-Upstream syncs (ROADMAP U1.5) run through `/upstream-sync` (`.claude/skills/upstream-sync/`), not `/ship`.
+Upstream syncs (ROADMAP U1.5) run through `/upstream-sync` (`.claude/skills/upstream-sync/`), not `/ship:land`.
 One rebased branch: `perf/shield-pass`, the default branch, = `upstream/main` + the fork's CI, test and fix
 commits and `.github/workflows/upstream-drift.yml` (which only runs from the default branch) + the Shield work.
 `main` mirrors upstream at the base `perf/shield-pass` was last rebased onto and carries no fork commit. A
