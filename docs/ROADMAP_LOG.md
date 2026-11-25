@@ -10,6 +10,36 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-25: Q5.8 Dolby Vision remux heap fill no longer reproduces (PR #100)
+
+- [Q5.8][device][new-build] Find what fills the Java heap on a Dolby Vision UHD remux with DTS-HD MA 5.1.
+  - On 2026-11-17 (local build of 2026-11-16) the heap went from 214 to 512 MB in 50 s of playback, then an ANR
+    and an OOM kill. An HDR10 remux with DTS-HD MA held 186–200 MB for 10 minutes (log).
+  - First check whether the same title fills the heap with no capture running.
+  - Use a `.shielddbg` debuggable build and a heap dump near the top (M2).
+  - Gate: the retaining path named in the log, and the title plays 10 minutes on a fix build with the heap
+    flat.
+
+- **Decided 2026-11-25 (owner):** after a flat replay without the capture, replay once more with the
+  capture as on 2026-11-17; a flat heap there closes Q5.8 as fixed by the newer build, and Q5.2 can start.
+- **Build:** local build of `perf/shield-pass` at `cbc1992c6` (after the 2026-11-18 sync), installed on
+  2026-11-22. The 2026-11-17 fill was on the local build of 2026-11-16.
+- **Title:** the same Dolby Vision UHD hybrid remux with DTS-HD MA 5.1 as on 2026-11-17 (IEC passthrough
+  `mode=DTS_HD`), started from 0:00 both times.
+- **Run 1, no capture** (2026-11-25 00:58, passive `logcat` only): 661 s, Java heap 178–218 MB of 512 MB.
+  No OutOfMemoryError, ANR or kill. Buffer ahead 6–12 s with a budget of 89–105 MB.
+- **Run 2, with `shield_frame_gaps.py capture --seconds 600`** (13:53): heap 171–201 MB over 600 s, also
+  through 50–97 s, where the 2026-11-17 run rose from 205 to 512 MB. 14393 frames, 0 app skips, 0 late
+  presents, 0 stalls, 0 coverage gaps, no direct reclaim (`allocstall` 0), MemAvailable at least 579 MB,
+  0 SIGKILL exits. Capture in `~/shield-snapshots/20261122-1225-q5-8-replay/frame-gaps/135318/`.
+- **Likely fix, not proven:** the 2026-11-18 sync (PR #95) took upstream's rebuilt ExoPlayer and extractor
+  AARs (the extractor changes how the peek buffer grows) and changes to `MemoryGovernor.kt` and
+  `IecPassthroughAudioSink.kt`. No heap dump was taken, so the retaining path of 2026-11-17 is not named.
+- **Not run:** the debuggable `.shielddbg` build and the heap dump. Run 2 shows no frame events, so it does
+  not close the Q5.1 gate.
+- **Resolution:** closed by the owner's rule above. If the fill comes back, a new Q5 step takes the heap
+  dump.
+
 ## 2026-11-20: M1.5 UI journeys stop when they end off their start screen (PR #98)
 
 - [M1.5][device] Check that each UI journey of `scripts/shield_measure.py` starts and ends on Home with
