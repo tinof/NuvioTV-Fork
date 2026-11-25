@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-25 | Q5.8 closed: the Dolby Vision UHD remux that filled the Java heap on 2026-11-17 kept it at 171–218 MB for 10 minutes on HEAD, without and with the frame-gap capture; the cause is not named, and the 2026-11-18 sync is the likely fix. | Q5 | [log](docs/ROADMAP_LOG.md), PR #100 |
 | 2026-11-20 | M1.5 closed: `shield_measure.py ui` compares a screencap after each journey with the start and stops when a journey ends elsewhere, so a Home that does not fit a journey is refused instead of measured wrongly. | M1 | [log](docs/ROADMAP_LOG.md), PR #98 |
 | 2026-11-19 | U1.5: rebased onto upstream 1.2.0-arc.3 (official 1.2.0-beta.2); the Nvidia mpv direct-decoding default was retired because upstream asks for direct MediaCodec on every box; both protected features kept every line; a new CI commit runs upstream's baseline on the candidate's 1 GB test heap. | U1 | [log](docs/ROADMAP_LOG.md), PR #95 |
 | 2026-11-18 | D1.5 closed: `ContinueWithoutAccountTest` waits until `AuthManager`'s session collector has handled `Initializing`, so its `Loading` write can no longer land after the test's `SignedOut`. | D1 | [log](docs/ROADMAP_LOG.md), PR #94 |
@@ -376,8 +377,8 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
 
 ### Q5: memory pressure and frame skips
 
-- **Status:** Open. Q5.1 landed (PR #89), its gate waits for a Q5.2 run; the 2026-10-21 capture and the
-  2026-11-17 heap fill are in the log. Q5.2–Q5.8 are open.
+- **Status:** Open. Q5.1 landed (PR #89), its gate waits for a Q5.2 run; Q5.8 closed on 2026-11-25: the Dolby
+  Vision remux no longer fills the heap on HEAD ([log](docs/ROADMAP_LOG.md)). Q5.2–Q5.7 are open.
 - In 5 minutes of a 4K HDR title with DTS-HD passthrough over Wi-Fi, SurfaceFlinger showed 12 stutter
   events: 10 app-side skips of 1–7 frames and 2 late presents.
   - 11 of the 12 fell in windows of heavy page-cache refaulting, and the worst coincided with the only
@@ -442,13 +443,6 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
   - Gate: skips and direct-reclaim windows below the Q5.2 baseline in all three runs, no rebuffers, and
     buffer ahead never under 8 s.
   - Needs: Q5.2, Q5.3, Q5.4, Q5.5.
-- [Q5.8][device][new-build] Find what fills the Java heap on a Dolby Vision UHD remux with DTS-HD MA 5.1.
-  - On 2026-11-17 (local build of 2026-11-16) the heap went from 214 to 512 MB in 50 s of playback, then an ANR
-    and an OOM kill. An HDR10 remux with DTS-HD MA held 186–200 MB for 10 minutes (log).
-  - First check whether the same title fills the heap with no capture running.
-  - Use a `.shielddbg` debuggable build and a heap dump near the top (M2).
-  - Gate: the retaining path named in the log, and the title plays 10 minutes on a fix build with the heap
-    flat.
 
 ### Q6: Transcode AAC to DTS
 
