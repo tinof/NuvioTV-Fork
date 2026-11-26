@@ -23,6 +23,23 @@ writer compiles from `ffmpeg-decoder-downmix/src/main/jni` of the checked-out co
   hashes). `scripts/shield_cloud_setup.py ffmpeg` writes it; commit it. Without it every build stops
   with a message that names that command.
 
+## Setup
+
+Once, from the Mac, in this order. Each step is idempotent: a second run writes nothing.
+
+```sh
+python3 -I scripts/shield_cloud_setup.py repo      # create it private; read-only token, SHA-pinned GitHub actions, 1-day retention
+python3 -I scripts/shield_cloud_setup.py secrets   # LOCAL_PROPERTIES_BASE64 (filtered) and DEBUG_KEYSTORE_BASE64, on stdin
+python3 -I scripts/shield_cloud_setup.py ffmpeg    # pack, deps check, release ffmpeg-n7.0.2-<n>, write ffmpeg-asset.json
+git add scripts/cloud-build/ffmpeg-asset.json && git commit -m "fork: pin the FFmpeg asset of the cloud build"
+python3 -I scripts/shield_cloud_setup.py workflow  # push HEAD's shield-build.yml
+python3 -I scripts/shield_cloud_setup.py check     # read-only; exit 1 on any drift
+```
+
+gh needs the `repo` and `workflow` scopes (`gh auth refresh -s workflow`). Every gh call names the
+build repo, and every write first checks that it is private. Run `secrets` again after a change to
+`local.properties` or the keystore, `workflow` after a committed change to `shield-build.yml`.
+
 ## A build by hand
 
 The commit must be pushed to `origin`; the runner fetches it anonymously from GitHub.
