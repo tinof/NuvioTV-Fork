@@ -296,7 +296,9 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
     "start only" the setprop `0` cannot force a switch-back, which R2.4 does not need.
 - [R2.4][device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
   play 60–120 s, Stop), rotating arms A/B/C = `afr_restore_delay_ms` 0 / 750 / 3000 (each with
-  `afr_restore_skip 0` set explicitly) and D = `afr_restore_skip 1`. A Stop is "hot" when `NvTsecHdcpReadCaps
+  `afr_restore_skip 0` set explicitly) and D = `afr_restore_skip 1`. Every arm runs with Frame Rate Matching
+  "On - start and stop": under "start only" the player never switches back (`AfrUiModeRestore.onClose`), so
+  arms A–C would test no delay. The M2 snapshot restores the profile's mode afterwards. A Stop is "hot" when `NvTsecHdcpReadCaps
   failed` appears in the 30 s before it. Record hot and cold Stops and hangs per arm. Gate: the per-arm table
   is in the log; "start only" (R2.3) is there either way; a delay arm becomes the default only with at least 5 hot
   Stops and no hang on it, and otherwise the fault is documented with no fix claimed. Needs: M2.1.
