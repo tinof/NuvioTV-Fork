@@ -81,8 +81,8 @@ Steps that need a decision or a reading from the owner. Other steps of the same 
 - **UI refresh rate (S4.1).** 24/25 Hz against 50/60 Hz for the UI, decided from the M1 A/B on the Home
   journeys. It trades UI fluidity against mode switches at every start.
 - **Hot-Stop session (R2.4).** The owner must be able to power-cycle the Shield during the session.
-- **Default after measuring (R2.4).** Whether "keep the content frame rate after playback" becomes the
-  Nvidia default.
+- **Default after measuring (R2.4).** Whether Frame Rate Matching "On - start only" (`START`, which keeps
+  the content frame rate after playback) replaces "On - start and stop" as the Nvidia default.
 
 ## Progress log
 
@@ -288,11 +288,17 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
   mode set at Stop (H4). A clean run of 30 Stops cannot tell the delay from no delay (H5).
 - [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
   default off. Gate: setting persists; switch still overrides.
+  - **Decided 2026-11-26 (owner):** covered by upstream, no fork setting. Frame Rate Matching
+    "On - start only" (`FrameRateMatchingMode.START`) switches at start and clears the original mode on
+    close, so the TV keeps the content rate; it is saved per profile (`storedFrameRateMatchingMode`,
+    `PlayerSettingsDataStore.kt:800`). `AfrUiModeRestoreTest` and `FrameRateMatchingDefaultTest` pin both.
+    `afr_restore_skip=1` still wins over every delay under "start and stop" (`FrameRateUtilsAfrTest`); under
+    "start only" the setprop `0` cannot force a switch-back, which R2.4 does not need.
 - [R2.4][device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
   play 60–120 s, Stop), rotating arms A/B/C = `afr_restore_delay_ms` 0 / 750 / 3000 (each with
   `afr_restore_skip 0` set explicitly) and D = `afr_restore_skip 1`. A Stop is "hot" when `NvTsecHdcpReadCaps
   failed` appears in the 30 s before it. Record hot and cold Stops and hangs per arm. Gate: the per-arm table
-  is in the log; the skip setting ships either way; a delay arm becomes the default only with at least 5 hot
+  is in the log; "start only" (R2.3) is there either way; a delay arm becomes the default only with at least 5 hot
   Stops and no hang on it, and otherwise the fault is documented with no fix claimed. Needs: M2.1.
 - Deferred: reading logcat for the HDCP failure as a leading sign (H3); it needs `READ_LOGS` granted over
   adb and is only worth it if the hot-Stop test shows the condition matters.
