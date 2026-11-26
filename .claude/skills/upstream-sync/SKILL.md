@@ -202,8 +202,8 @@ The result is `NEW_PERF`; `NEW_BASE` is the `upstream/main` SHA it was rebased o
    It says nothing inside a declared file, and it cannot see a fork hunk the rebase gave up to upstream, because the mechanical tree has the same text there. The independent review stays.
 4. CI in step 7 is the one full gate. The local gate is only for diagnosis: to reproduce a failure step 7 reports,
    run it in the worktree and compare `sync.py test-failures` with the baseline of step 2.4.
-5. Build the APK in the worktree beside step 7, not after it: `scripts/shield_build_install.sh`, never with
-   `--install`. CI builds no APK, so this is the only check that runs the native builds. The locale trap has two
+5. Build the APK in the worktree beside step 7, not after it: `scripts/shield_build_install.sh --local`, never
+   with `--install` (the cloud build refuses an unpushed worktree). The fork's CI builds no APK, so this is the only check that runs the native builds. The locale trap has two
    other checks: `verify` finds a duplicate string with `duplicate_names` without running aapt, and the `Unit tests`
    job in step 7 runs aapt in `mergeFullDebugResources` and `processFullDebugResources`.
    The script stops unless `sync.py protected-apk --stamp` passes: the DTS-HD MA writer in `libffmpegJNI.so`, `libnuvio_rpu.so`

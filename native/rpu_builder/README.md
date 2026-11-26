@@ -49,11 +49,11 @@ native.
 ```sh
 cd native/rpu_builder && cargo test        # host tests, fixtures included
 scripts/build_rpu_builder.sh               # arm64-v8a .so into app/src/main/jniLibs (gitignored)
-scripts/shield_build_install.sh            # runs build_rpu_builder.sh first when cargo-ndk is installed
+scripts/shield_build_install.sh --local    # runs build_rpu_builder.sh first when cargo-ndk is installed
 python3 scripts/verify_native_apk.py app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk --abi arm64-v8a
 ```
 
-Without cargo-ndk, `shield_build_install.sh` packages the library already in `jniLibs`, and stops unless
+Without cargo-ndk, `shield_build_install.sh --local` packages the library already in `jniLibs`, and stops unless
 `libnuvio_rpu.so.stamp` beside it names HEAD's `native/rpu_builder` tree. With no library it stops too.
 `NUVIO_ALLOW_NATIVE_MISMATCH=1` keeps a build that fails only on the stamp, so use it only for a library
 you know is current.
@@ -80,8 +80,8 @@ and loads `$JAVA_HOME/lib/server/libjvm.dylib` by its full path, so macOS needs 
 The build needs cargo-ndk (`cargo install cargo-ndk --locked`) and the NDK that `app/build.gradle.kts`
 names (`ndkVersion`). It links with `-z max-page-size=16384` (`.cargo/config.toml`), and the script
 refuses a result whose LOAD segments are not 16 KB aligned. The release profile keeps
-`panic = "unwind"` (needed by `catch_unwind`), fat LTO, one codegen unit and strips symbols. CI builds
-no Rust; the library is built locally only, like the other native binaries since 2026-10-22.
+`panic = "unwind"` (needed by `catch_unwind`), fat LTO, one codegen unit and strips symbols. This repo's CI builds
+no Rust; the library is built on the Mac (`--local`) or in the private build repo (`scripts/cloud-build/`).
 
 ## Codes
 

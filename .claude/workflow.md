@@ -36,8 +36,10 @@ self-check:     none
   minutes. Mutation testing is not used in this repo.
 - Since 2026-10-22 GitHub builds no APK or AAR: the five binary workflows (`PR Full Debug Build` and its
   comment, `Build Android TV Release`, `Build FFmpeg decoder AAR`, `Patch datasource AAR`) are disabled
-  with `gh workflow disable`, and binaries are built locally only (`scripts/shield_build_install.sh`, the
-  local FFmpeg module build in `ffmpeg-decoder-downmix/README.md`). CI is the fork-only `Checks` workflow
+  with `gh workflow disable`, and this public repo builds no binary. Since 2026-11-26 `scripts/shield_build_install.sh` builds a
+  pushed, clean HEAD in the private repo `tinof/NuvioTV-Builds` (`scripts/cloud-build/README.md`) and
+  downloads, checks and installs it; `--local` builds on the Mac. FFmpeg comes from the Mac's local module
+  build (`ffmpeg-decoder-downmix/README.md`), pinned in `scripts/cloud-build/ffmpeg-asset.json`. CI is the fork-only `Checks` workflow
   (`.github/workflows/checks.yml`): unit tests on every pull request into `main` or `perf/shield-pass`,
   test reports only. `/ship:land` waits for the PR's checks (`ci: pr-checks`).
 
@@ -70,6 +72,10 @@ gradle/**
 .github/workflows/**
 .claude/**
 .agents/**
+scripts/cloud-build/**
+scripts/shield_cloud_build.py
+scripts/shield_cloud_setup.py
+scripts/shield_build_install.sh
 ```
 
 Display-mode switching and passthrough decide picture and sound on the Shield; the player lifecycle and
@@ -110,8 +116,8 @@ none
 
 - `docs/nvidia-shield.md`: the Shield's address and adb quick reference (gitignored; never print the
   address in an answer).
-- `.local/shield-builds.tsv`: the local build log that `scripts/shield_build_install.sh` writes (date,
-  commit, package, APK sha256, signing cert).
+- `.local/shield-builds.tsv`: the build log that `scripts/shield_build_install.sh` writes (date,
+  commit, package, APK sha256, signing cert, and `cloud:<run id>` for a cloud build).
 
 ## Branching
 
@@ -127,8 +133,8 @@ none
 
 - Codex's sandbox cannot reach the Shield, the gitignored `docs/nvidia-shield.md` or `.local/`; device
   state and build freshness come from the probes, not from Codex.
-- The full native build (libdovi, FFmpeg decoder) runs only locally since 2026-10-22, never in CI; a
-  missing native artifact in a checkout is not a finding.
+- The full native build (libdovi, FFmpeg decoder) never runs in this repo's CI; it runs on the Mac or in
+  the private build repo. A missing native artifact in a checkout is not a finding.
 
 ## Reminders
 
@@ -164,15 +170,15 @@ contributors) now live in the ship plugin; the routing table there is the same o
 `roadmap-memory` is off: like the earlier repo copy of roadmap-next, every run ranks afresh and writes
 nothing to the roadmap.
 
-The `new-build` probe accepts local builds only, which since 2026-10-22 are the only builds: CI makes no
-APK.
+The `new-build` probe accepts a row of `.local/shield-builds.tsv` for HEAD: a `--local` build from a clean
+tree, or a cloud build of the pushed HEAD. This repo's CI makes no APK.
 
 Readiness rules are `none`: a rule blocks every step it covers whenever its probe fails, so a path rule
 would block `[desk]` steps on the player code while the Shield is off. The `device` and `new-build` tags
 carry the device needs. A step that needs a heap dump or a `run-as` backup needs a debuggable build,
-which never comes from CI: a local
-`scripts/shield_build_install.sh --debuggable --suffix .shielddbg --install` from a clean tree at HEAD,
-which installs beside the CI build. No probe checks that; roadmap-next reads it from the step text.
+which never comes from this repo's CI:
+`scripts/shield_build_install.sh --debuggable --suffix .shielddbg --install` from a clean, pushed HEAD
+(or with `--local`), which installs beside the `.shield` build. No probe checks that; roadmap-next reads it from the step text.
 
-The gate does not pin JDK 17 the way `scripts/shield_build_install.sh` does (`java_home -v 17`); it relies
+The gate does not pin JDK 17 the way `scripts/shield_build_install.sh --local` does (`java_home -v 17`); it relies
 on `java` resolving to 17 in the shell, which it did on 2026-10-17.

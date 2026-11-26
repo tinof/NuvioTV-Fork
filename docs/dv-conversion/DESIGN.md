@@ -572,7 +572,7 @@ equalled hdr-analyze's committed `dovi_tool` fixtures. One combined staticlib (`
 **Shipped in DV2.2 (PR #14).** The crate `native/rpu_builder` (`nuvio_rpu`, pinned to hdr-analyze
 `f55c779`, the merge of its PR #68) builds `libnuvio_rpu.so` (558192 bytes) with
 `scripts/build_rpu_builder.sh` into the gitignored `app/src/main/jniLibs/arm64-v8a/`;
-`scripts/shield_build_install.sh` runs it first when cargo-ndk is installed. `DoviRpuBuilder.kt` loads it
+`scripts/shield_build_install.sh` runs it first (with `--local`, when cargo-ndk is installed). `DoviRpuBuilder.kt` loads it
 and reports unavailable without it (armeabi-v7a APKs, JVM tests). CI builds no Rust: the disabled release
 workflow verifies with `verify_native_apk.py --allow-missing-rpu-builder`. Codes, pin and tests:
 `native/rpu_builder/README.md`.

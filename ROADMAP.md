@@ -56,8 +56,8 @@ takes 1 + the highest number ever used for that item in `ROADMAP.md`, `docs/ROAD
 ## Current status (updated 2026-11-14)
 
 `perf/shield-pass` is the default branch: the last synced upstream release plus the fork's commits,
-rebased at every sync (U1.5), with `main` as a mirror of upstream. GitHub builds no APK, so every `new-build` step needs a
-local build of HEAD (`scripts/shield_build_install.sh`). The device report of 2026-10-14 and its numbers
+rebased at every sync (U1.5), with `main` as a mirror of upstream. This repo's CI builds no APK, so every `new-build` step needs a
+build of HEAD from `scripts/shield_build_install.sh` (in the private build repo by default, `--local` on the Mac). The device report of 2026-10-14 and its numbers
 are in the log; they predate every sync since, so a claim needs a fresh M1 measurement.
 
 - **Sound.** TrueHD and DTS-HD MA take the IEC61937 packer (Q1.2), E-AC3 JOC shows as Atmos on the HT-A9
@@ -400,7 +400,7 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
   - It reports app-side skips against late presents, next to vmstat, GC and SIGKILL exits. A kill is named
     lmkd only when an lmkd line confirms it.
   - Gate: a dry run on the Shield shows both event classes with no coverage gap. Landed: PR #89; gate pending.
-- [Q5.2][device][new-build] Baseline on a local build (`scripts/shield_build_install.sh`) of unchanged HEAD with the same build type, package and
+- [Q5.2][device][new-build] Baseline on a build (`scripts/shield_build_install.sh`) of unchanged HEAD with the same build type, package and
   settings that Q5.7 will use.
   - Take it once the device state has settled (at least 1 day of uptime).
   - Use one fixed 4K HDR, DTS-HD, Wi-Fi title from the same start position, and three 30-minute runs.
@@ -603,8 +603,9 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
   A `-Pdebuggable=true` build allows `run-as … tar`; it is used for heap dumps and backups, never for
   timings. Built locally it has a different signing key, so it installs beside the CI build under its own
   suffix (`.shielddbg`), never over it.
-- **Local builds.** `scripts/shield_build_install.sh [--suffix S] [--benchmark] [--debuggable] [--install]`
-  builds with JDK 17 like CI, logs HEAD, package, certificate and APK hash to `.local/shield-builds.tsv`, and with
+- **Builds.** `scripts/shield_build_install.sh [--local] [--suffix S] [--benchmark] [--debuggable] [--install]`
+  builds a clean, pushed HEAD in the private repo `tinof/NuvioTV-Builds` (since 2026-11-26; about 31 min debug,
+  35 min benchmark) and downloads and checks it; `--local` builds on the Mac with JDK 17. Either way it logs HEAD, package, certificate and APK hash to `.local/shield-builds.tsv`, and with
   `--install` runs `adb install -r` on `$ANDROID_SERIAL` and checks the installed hash. It builds `.shield` only
   with the CI debug keystore (`NUVIO_DEBUG_STORE_FILE`, or `~/.config/nuvio/nuvio-debug.keystore`), and it
   refuses to install when the installed app's certificate differs. Without that keystore, local builds use
@@ -883,8 +884,8 @@ start and seek latency, memory high-water, the analysis lead, and the share of A
 numerical tolerances are frozen. The corpus includes long uncut shots, repeated seeks, network stalls
 and resource reclaim; the report covers recovery and fallback coverage as well as the steady state.
 
-**Device builds.** `scripts/shield_build_install.sh --install` (JDK 17, `ANDROID_SERIAL` set) first builds
-`libnuvio_rpu.so` when cargo-ndk is installed (`scripts/build_rpu_builder.sh`), then the APK, and installs
+**Device builds.** `scripts/shield_build_install.sh --install` (`ANDROID_SERIAL` set) builds
+`libnuvio_rpu.so` (`scripts/build_rpu_builder.sh`; with `--local` only when cargo-ndk is installed), then the APK, and installs
 it with the certificate and hash checks of M2. Without cargo-ndk the APK has no builder and conversion
 stays off. Every device session follows [M2](#m2-device-safety-protocol).
 
