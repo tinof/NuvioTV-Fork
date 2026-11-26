@@ -60,8 +60,8 @@ certificate, the FFmpeg asset, the property key names (never values), the toolch
 
 ## Limits
 
-- Runner: 2 vCPU, 8 GB RAM, about 14 GB free disk. Gradle gets `-Xmx3g` with the Kotlin compiler in
-  process; the workflow frees disk when less than 20 GB is free. Timeout 90 minutes.
+- Runner: 2 vCPU, 8 GB RAM, about 14 GB free disk. Gradle gets `-Xmx5g` with the Kotlin compiler in process, and
+  the runner 6 GB of extra swap; the workflow frees disk when less than 20 GB is free. Timeout 90 minutes.
 - Caches hold downloads only: Gradle dependencies (setup-java), Cargo crates keyed on `Cargo.lock`, and
   cargo-ndk. No build output is cached.
 - The FFmpeg asset goes stale when the FFmpeg tag, the configure flags in
