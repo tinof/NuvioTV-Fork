@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 import time
 import unittest
+import zipfile
 from pathlib import Path
 
 # A `git rebase --exec` or a hook exports these, and the fixture's git would then work on that repository.
@@ -670,6 +671,73 @@ class CloudBuildTest(CloudTree, unittest.TestCase):
                 self.assertEqual(2, result.returncode, result.stdout + result.stderr)
                 self.assertEqual([], self.calls())
         self.assertFalse(self.states.exists())
+
+
+class InstallScriptTest(CloudTree, unittest.TestCase):
+    """shield_build_install.sh in its default mode over the real shield_cloud_build.py. Never --install."""
+
+    RPU = b"..Java_.. built in the cloud"
+    FFMPEG = b"..dcaxll.. linked in the cloud"
+
+    def setUp(self):
+        super().setUp()
+        for path in ("scripts/shield_build_install.sh", ".claude/skills/upstream-sync/sync.json",
+                     ".claude/skills/upstream-sync/scripts/sync.py", ".claude/skills/upstream-sync/scripts/sync_tools.py"):
+            (self.tree / path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / path, self.tree / path)
+        self.write("ffmpeg-decoder-downmix/src/main/jni/ffmpeg_jni.cc", "// jni\n")
+        aar = self.tree / "app/libs/lib-decoder-ffmpeg-release.aar"
+        aar.parent.mkdir(parents=True)
+        with zipfile.ZipFile(aar, "w") as z:
+            z.writestr("jni/arm64-v8a/libffmpegJNI.so", b"..dcaxll.. the prebuilt AAR")
+        self.write("gradlew", "#!/bin/sh\ntouch gradlew-ran\nexit 1\n")
+        (self.tree / "gradlew").chmod(0o755)
+        self.commit_and_push("the install script")
+        tools = self.tmp / "sdk/build-tools/35.0.0"
+        tools.mkdir(parents=True)
+        for name, body in (("aapt2", "echo \"package: name='com.nuvio.tv.test.shield' versionCode='1580'\"\n"),
+                           ("apksigner", f"echo 'Signer #1 certificate SHA-256 digest: {CERT}'\n")):
+            (tools / name).write_text("#!/bin/sh\n" + body)
+            (tools / name).chmod(0o755)
+        # The JDK the cloud mode finds: apksigner needs its java, shield_cloud_build.py its keytool.
+        self.jdk = self.tmp / "jdk/bin"
+        self.jdk.mkdir(parents=True)
+        (self.jdk / "java").write_text("#!/bin/sh\necho 'openjdk version \"17.0.99\"' >&2\n")
+        (self.jdk / "java").chmod(0o755)
+        shutil.copy2(self.bin / "keytool", self.jdk / "keytool")
+        (self.bin / "keytool").unlink()
+        (self.bin / "python3").symlink_to(sys.executable)
+        with zipfile.ZipFile(self.apk, "w") as z:
+            z.writestr("lib/arm64-v8a/libffmpegJNI.so", self.FFMPEG)
+            z.writestr("lib/arm64-v8a/libnuvio_rpu.so", self.RPU)
+        stamp = {"tree": git("rev-parse", "HEAD:native/rpu_builder", cwd=self.tree), "dirty": False, "sha256": "raw",
+                 "packaged_sha256": sha256(self.RPU)}
+        self.edit_fake(lambda s: s["artifact"].update(stamp=stamp))
+        self.env.update(ANDROID_HOME=str(self.tmp / "sdk"), JAVA17_HOME=str(self.jdk.parent))
+
+    def install_script(self, *flags):
+        return subprocess.run([str(self.tree / "scripts/shield_build_install.sh"), *flags], cwd=self.tmp, env=self.env,
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+
+    def test_a_cloud_build_is_checked_and_logged_with_its_run(self):
+        result = self.install_script()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertFalse((self.tree / "gradlew-ran").exists())
+        run_id, = self.fake()["runs"]
+        row = (self.tree / ".local/shield-builds.tsv").read_text().rstrip("\n").split("\t")
+        self.assertEqual([self.head(), "com.nuvio.tv.test.shield", sha256(self.apk.read_bytes()), CERT, f"cloud:{run_id}"],
+                         row[1:])
+        self.assertIn("hlg-to-dv: libnuvio_rpu.so is the stamped build", result.stdout)
+        self.assertIn(f"libavcodec.a sha256 {self.pin['libs']['arm64-v8a/libavcodec.a']}", result.stdout)
+        self.assertNotIn("installing", result.stdout)  # no --install: the script never reaches adb
+
+    def test_a_dirty_tree_is_refused_with_the_local_hint(self):
+        self.write("notes.txt", "x\n")
+        result = self.install_script()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("or build this tree with --local", result.stderr)
+        self.assertFalse(self.log.exists())
+        self.assertFalse((self.tree / ".local/shield-builds.tsv").exists())
 
 
 if __name__ == "__main__":
