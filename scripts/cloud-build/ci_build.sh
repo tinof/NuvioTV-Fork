@@ -27,7 +27,7 @@ set -euo pipefail
 
 die() { local code="$1"; shift; echo "ci_build: $*" >&2; exit "$code"; }
 
-[ "${GITHUB_ACTIONS:-}" = "true" ] || die 2 "runs only on GitHub Actions (it writes ~/.gradle and installs toolchains); build on the Mac with scripts/shield_build_install.sh"
+[ "${GITHUB_ACTIONS:-}" = "true" ] || die 2 "runs only on GitHub Actions (it writes ~/.gradle and installs toolchains); build on the Mac with scripts/shield_build_install.sh --local"
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"

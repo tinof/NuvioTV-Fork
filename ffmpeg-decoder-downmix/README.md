@@ -10,8 +10,9 @@ This is the default. No local FFmpeg source tree is required.
 
 The "Build FFmpeg decoder AAR" workflow (`.github/workflows/build-ffmpeg-decoder.yml`: FFmpeg n7.0.2, NDK
 27.0.12077973, API 24, all four ABIs) built the AAR in `app/libs`. It is disabled in this fork since
-2026-10-22, when the owner moved all APK and AAR builds to local machines; build with the local
-development mode below.
+2026-10-22, when the owner moved all APK and AAR builds off this public repo; build with the local
+development mode below. The private build repo links the static libraries of that mode, uploaded by
+`scripts/shield_cloud_setup.py ffmpeg` (`scripts/cloud-build/README.md`).
 `app/libs/README.md` records how the shipped AAR was built and its SHA-256.
 
 ## Local development mode

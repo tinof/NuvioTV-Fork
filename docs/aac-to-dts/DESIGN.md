@@ -263,8 +263,8 @@ The session raised the log buffer to 4 MB and set it back to 256 KiB.
 fork's binary workflows, `Build FFmpeg decoder AAR` among them, are disabled (PR #11). `app/libs` keeps
 the DTS-core AAR `a1152a6d…` of 2026-10-21 (CI run 39594133508), and no AAR with the DTS-HD MA writer is
 committed: it would put that binary on GitHub. A build with DTS-HD MA uses the local module below. The
-owner's gitignored `local.properties` sets it, so `scripts/shield_build_install.sh` builds with it by
-default. `gh` in this repo needs `-R tinof/NuvioTV-Fork` (plain `gh` resolves to the upstream repo).
+owner's gitignored `local.properties` sets it, so `scripts/shield_build_install.sh --local` builds with
+it by default, and the cloud build links the same libraries from the pinned asset (`scripts/cloud-build/`). `gh` in this repo needs `-R tinof/NuvioTV-Fork` (plain `gh` resolves to the upstream repo).
 
 **Local module build.** Iterate on native code without CI:
 1. A configured n7.0.2 header tree. One is kept in `~/.local/share/nuvio-ffmpeg/ffmpeg-n7.0.2-headers`. To make a new one:
@@ -281,7 +281,7 @@ build stops before compiling anything.
 ```sh
 export USE_LOCAL_FFMPEG_DECODER=true FFMPEG_SOURCE_DIR=<configured tree> FFMPEG_BUILD_DIR=<static libs>
 ./gradlew :ffmpeg-decoder-downmix:assembleRelease      # module only
-scripts/shield_build_install.sh                        # .shield APK with the local module
+scripts/shield_build_install.sh --local                # .shield APK with the local module, on the Mac
 ```
 
 The env variables also switch the app to the local module. Unset them for the gate, which must run against

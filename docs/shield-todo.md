@@ -26,7 +26,7 @@ Since the sync of 2026-11-11, upstream's `app/build.gradle.kts` takes the versio
 `-ParcVersionName`. Without them it falls back to 1568 / "1.1.0-nt.9.2", below the fork builds already installed.
 `scripts/shield_build_install.sh` passes 1580 / "1.1.0-nt.10.shield" (51839059b), so `adb install -r` takes a local
 build as an update. Set `NUVIO_VERSION_CODE` and `NUVIO_VERSION_NAME` to override them; keep the code above the
-installed one. CI and release builds pass neither, so they get upstream's 1568 default.
+installed one. The cloud build passes the same values. This repo's CI and release builds pass neither, so they get upstream's 1568 default.
 
 ## Nvidia defaults set without measuring
 
