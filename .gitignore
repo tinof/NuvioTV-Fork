@@ -46,6 +46,9 @@ scripts/*
 !scripts/shield_snapshot.sh
 !scripts/shield_restore.sh
 !scripts/shield_build_install.sh
+!scripts/shield_cloud_build.py
+!scripts/shield_cloud_setup.py
+!scripts/cloud-build/
 !scripts/stop_kotlin_lsp.sh
 !scripts/build_rpu_builder.sh
 !scripts/ci_unit_tests.sh

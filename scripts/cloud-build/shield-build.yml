@@ -1,0 +1,182 @@
+name: Shield build
+
+# The workflow of the private build repo tinof/NuvioTV-Builds. Its source is
+# scripts/cloud-build/shield-build.yml in the public fork tinof/NuvioTV-Fork, outside .github/workflows
+# there, so it never runs in the public repo. `python3 -I scripts/shield_cloud_setup.py workflow`
+# copies the committed file to .github/workflows/shield-build.yml of the build repo.
+#
+# A thin shim: it fetches the fork at one commit and runs scripts/cloud-build/ci_build.sh of that
+# commit. The APK carries the DTS-HD writer, so it never reaches a public repo, artifact, release or
+# log: the job runs only in the private build repo, and the artifact lives one day.
+
+run-name: Shield ${{ inputs.variant }} ${{ inputs.commit }} ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full SHA of the tinof/NuvioTV-Fork commit to build
+        required: true
+        type: string
+      request_id:
+        description: Nonce that names the run and the artifact, ^[a-z0-9-]{8,40}$
+        required: true
+        type: string
+      variant:
+        description: Debug or Benchmark
+        required: true
+        type: choice
+        options:
+          - Debug
+          - Benchmark
+        default: Debug
+      suffix:
+        description: applicationId suffix
+        required: true
+        type: string
+        default: .shield
+      debuggable:
+        description: Pass -Pdebuggable=true (Debug only)
+        required: true
+        type: boolean
+        default: false
+      version_code:
+        description: versionCode, above the installed build's
+        required: true
+        type: string
+        default: "1580"
+      version_name:
+        description: versionName
+        required: true
+        type: string
+        default: 1.1.0-nt.10.shield
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shield-build-${{ inputs.commit }}-${{ inputs.variant }}-${{ inputs.suffix }}-${{ inputs.debuggable }}
+  cancel-in-progress: false
+
+env:
+  # ci_build.sh installs this version when the cache below has none.
+  CARGO_NDK_VERSION: 4.1.2
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build the Shield APK
+    if: github.repository == 'tinof/NuvioTV-Builds' && github.event.repository.private
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Validate the inputs
+        env:
+          COMMIT: ${{ inputs.commit }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::commit must be a full 40-hex SHA"; exit 1; }
+          [[ "$REQUEST_ID" =~ ^[a-z0-9-]{8,40}$ ]] || { echo "::error::request_id must match ^[a-z0-9-]{8,40}\$"; exit 1; }
+
+      - name: Runner resources before the build
+        run: |
+          echo "cpus: $(nproc)"
+          free -h
+          df -h / "$RUNNER_TEMP"
+
+      - name: Free disk space when it is short
+        # Only toolchains this build never uses. The Android SDK, Java, Rust and Cargo stay.
+        run: |
+          avail_gb=$(( $(df -Pk / | awk 'NR == 2 {print $4}') / 1024 / 1024 ))
+          echo "free on /: ${avail_gb} GB"
+          if [ "$avail_gb" -lt 20 ]; then
+            sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /usr/share/swift "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}/CodeQL"
+            df -h /
+          fi
+
+      - name: Fetch the fork at the commit, without a token
+        # The fork is public: no actions/checkout, no credential helper, so no token reaches it.
+        env:
+          COMMIT: ${{ inputs.commit }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git init -q .
+          git -c credential.helper= fetch -q --depth 1 --no-tags https://github.com/tinof/NuvioTV-Fork.git "$COMMIT"
+          git -c advice.detachedHead=false checkout -q --detach FETCH_HEAD
+          head="$(git rev-parse HEAD)"
+          [ "$head" = "$COMMIT" ] || { echo "::error::fetched $head, not $COMMIT"; exit 1; }
+          echo "tinof/NuvioTV-Fork at $head: $(git log -1 --format=%s)"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Cache the Cargo downloads
+        # Downloaded crates only, keyed on the lock file; nothing built is cached.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-deps-v1-${{ runner.os }}-${{ hashFiles('native/rpu_builder/Cargo.lock', 'native/rpu_builder/rust-toolchain.toml', 'native/rpu_builder/.cargo/config.toml') }}
+
+      - name: Cache cargo-ndk
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/cargo-ndk
+          key: cargo-ndk-v1-${{ runner.os }}-${{ env.CARGO_NDK_VERSION }}
+
+      - name: Write the build secrets to files
+        # The only step that sees a secret.
+        env:
+          LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          # No throwaway key: a build signed with another key cannot update the installed app.
+          [ -n "$DEBUG_KEYSTORE_BASE64" ] || { echo "::error::secret DEBUG_KEYSTORE_BASE64 is empty; run scripts/shield_cloud_setup.py secrets"; exit 1; }
+          [ -n "$LOCAL_PROPERTIES_BASE64" ] || { echo "::error::secret LOCAL_PROPERTIES_BASE64 is empty; run scripts/shield_cloud_setup.py secrets"; exit 1; }
+          printf '%s' "$LOCAL_PROPERTIES_BASE64" | base64 --decode > "$RUNNER_TEMP/cloud-local.properties"
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nuvio-debug.keystore"
+
+      - name: Build and check the APK
+        env:
+          CLOUD_COMMIT: ${{ inputs.commit }}
+          CLOUD_REQUEST_ID: ${{ inputs.request_id }}
+          CLOUD_VARIANT: ${{ inputs.variant }}
+          CLOUD_SUFFIX: ${{ inputs.suffix }}
+          CLOUD_DEBUGGABLE: ${{ inputs.debuggable }}
+          CLOUD_VERSION_CODE: ${{ inputs.version_code }}
+          CLOUD_VERSION_NAME: ${{ inputs.version_name }}
+          CLOUD_PROPERTIES_FILE: ${{ runner.temp }}/cloud-local.properties
+          CLOUD_KEYSTORE_FILE: ${{ runner.temp }}/nuvio-debug.keystore
+          CLOUD_OUT: ${{ runner.temp }}/shield-out
+          # Read access to this repo's FFmpeg release; ci_build.sh unsets it before the build.
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/cloud-build/ci_build.sh
+
+      - name: Remove the secret files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/cloud-local.properties" "$RUNNER_TEMP/nuvio-debug.keystore" local.properties
+
+      - name: Upload the APK for one day
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shield-apk-${{ inputs.request_id }}
+          path: ${{ runner.temp }}/shield-out/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Runner resources after the build
+        if: always()
+        run: |
+          free -h
+          df -h / "$RUNNER_TEMP"
