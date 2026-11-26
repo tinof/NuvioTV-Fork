@@ -1493,6 +1493,8 @@ class ShieldBuildScriptTest(unittest.TestCase):
         (self.dir / "scripts").mkdir(parents=True)
         (self.dir / "scripts/shield_build_install.sh").write_bytes((self.REPO / "scripts/shield_build_install.sh").read_bytes())
         (self.dir / "scripts/shield_build_install.sh").chmod(0o755)
+        # The script stops kotlin-lsp before Gradle; the fixture runs no server, so a no-op stands in.
+        self.tool(self.dir / "scripts/stop_kotlin_lsp.sh", "exit 0\n")
         skill = self.dir / ".claude/skills/upstream-sync"
         (skill / "scripts").mkdir(parents=True)
         (skill / "sync.json").write_text((SKILL / "sync.json").read_text())
