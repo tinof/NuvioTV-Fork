@@ -508,7 +508,7 @@ class CiBuildTest(unittest.TestCase):
     def test_gradle_gets_a_heap_for_8_gb_and_no_build_cache(self):
         self.assert_ok(self.ci_build())
         props = (self.home / ".gradle/gradle.properties").read_text()
-        self.assertIn("org.gradle.jvmargs=-Xmx3g", props)
+        self.assertIn("org.gradle.jvmargs=-Xmx5g", props)
         self.assertIn("kotlin.compiler.execution.strategy=in-process\n", props)
         self.assertIn("org.gradle.caching=false\n", props)
         self.assertIn("org.gradle.workers.max=2\n", props)

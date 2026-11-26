@@ -212,10 +212,18 @@ rpu_seconds=$((SECONDS - rpu_started))
 # --- 8. Gradle on 2 vCPU and 8 GB -------------------------------------------------------------------
 # The user-home file wins over the project's gradle.properties (-Xmx6144m). The Kotlin compiler runs
 # in the Gradle JVM, so no second JVM competes for memory. No build cache: every output is built here.
+# A 3 GB heap ran out during compileFullDebugKotlin (first runs, 2026-11-26); 7.7 GB of RAM plus
+# 3 GB of swap stayed mostly free. 5 GB of heap, and 6 GB more swap so R8 and the native linkers that
+# follow the Kotlin compile do not meet the OOM killer.
+if [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ] && [ ! -e /mnt/nuvio.swap ]; then
+  sudo -n fallocate -l 6G /mnt/nuvio.swap && sudo -n chmod 600 /mnt/nuvio.swap \
+    && sudo -n mkswap /mnt/nuvio.swap >/dev/null && sudo -n swapon /mnt/nuvio.swap \
+    || echo "::warning::could not add swap" >&2
+fi
 gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
 mkdir -p "$gradle_home"
 cat > "$gradle_home/gradle.properties" <<'EOF'
-org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+org.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -Dfile.encoding=UTF-8
 org.gradle.workers.max=2
 org.gradle.caching=false
 kotlin.compiler.execution.strategy=in-process
