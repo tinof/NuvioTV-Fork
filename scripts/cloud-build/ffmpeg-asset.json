@@ -1,0 +1,13 @@
+{
+  "asset": "nuvio-ffmpeg.tar",
+  "ffmpeg": "n7.0.2",
+  "libs": {
+    "arm64-v8a/libavcodec.a": "2c8ebf1367caf849ff44b741a79d6b4a99fb78a58e4c04a3e36b78ef337dfe7a",
+    "arm64-v8a/libavutil.a": "e79f92043172c9244470009376b16115945212be0ede42d090b04a93bee20fbf",
+    "arm64-v8a/libswresample.a": "e850992baba43415d42c6d0845820b6d4fa7bfb9d8ee11b0cb01d58769fa4916"
+  },
+  "members": 886,
+  "sha256": "22d701cb76dcc9802e1264f2721dee9ee156f7c3641a07878ffe52e74d9271d0",
+  "size": 81694720,
+  "tag": "ffmpeg-n7.0.2-1"
+}
