@@ -222,9 +222,13 @@ if [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ] && [ ! -e /mnt/nuvio.swap ]; th
 fi
 gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
 mkdir -p "$gradle_home"
-cat > "$gradle_home/gradle.properties" <<'EOF'
-org.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -Dfile.encoding=UTF-8
-org.gradle.workers.max=2
+# Benchmark: R8 and lintVitalAnalyze ran side by side on a 5 GB heap for 67 minutes without finishing
+# (2026-11-26), so that variant gets one worker and 6 GB.
+heap=5g workers=2
+[ "$variant" = "Benchmark" ] && heap=6g workers=1
+cat > "$gradle_home/gradle.properties" <<EOF
+org.gradle.jvmargs=-Xmx${heap} -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -Dfile.encoding=UTF-8
+org.gradle.workers.max=${workers}
 org.gradle.caching=false
 kotlin.compiler.execution.strategy=in-process
 EOF
