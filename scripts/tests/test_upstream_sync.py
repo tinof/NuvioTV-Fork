@@ -1481,7 +1481,11 @@ class BuildRpuScriptTest(unittest.TestCase):
 
 
 class ShieldBuildScriptTest(unittest.TestCase):
-    """shield_build_install.sh in a throwaway tree, over a fake gradlew and Android tools. Never --install."""
+    """shield_build_install.sh in a throwaway tree, over a fake gradlew and Android tools. Never --install.
+
+    The --local cases build with the fake gradlew. The cloud cases put a stub in place of
+    shield_cloud_build.py (its own tests are in scripts/tests/test_shield_cloud_build.py) that names a
+    downloaded APK, its stamp and the unpacked FFmpeg asset, as the real one prints them."""
 
     GOOD = {"lib/arm64-v8a/libffmpegJNI.so": b"..dcaxll..", "lib/arm64-v8a/libnuvio_rpu.so": b"..Java_.."}
     REPO = SKILL.parents[1].parent
@@ -1544,7 +1548,7 @@ class ShieldBuildScriptTest(unittest.TestCase):
         with zipfile.ZipFile(self.apk, "w") as z:
             for name, data in members.items():
                 z.writestr(name, data)
-        return subprocess.run(["scripts/shield_build_install.sh", "--suffix", ".exp", "--allow-empty-config"],
+        return subprocess.run(["scripts/shield_build_install.sh", "--local", "--suffix", ".exp", "--allow-empty-config"],
                               cwd=self.dir, env={**self.env, **env}, capture_output=True, text=True)
 
     def logged(self):
@@ -1642,6 +1646,161 @@ class ShieldBuildScriptTest(unittest.TestCase):
 
     def test_the_build_names_the_ffmpeg_it_carries(self):
         self.assertIn("FFmpeg is the prebuilt AAR", self.build(self.GOOD).stdout)
+
+    def test_a_local_row_keeps_five_columns(self):
+        self.assertEqual(0, self.build(self.GOOD).returncode)
+        row = self.logged().rstrip("\n").split("\t")
+        self.assertEqual(5, len(row), row)
+        self.assertEqual(["com.example.exp", "abc"], [row[2], row[4]])
+
+    # --- the cloud, the default ---
+
+    CLOUD = {"lib/arm64-v8a/libffmpegJNI.so": b"..dcaxll.. linked in the cloud", "lib/arm64-v8a/libnuvio_rpu.so": b"..Java_.."}
+    CLOUD_DIR = ".local/cloud-builds/debug-20261126-120000-abcdef"
+    ASSET_DIR = ".local/cloud-ffmpeg/ffmpeg-n7.0.2-1"
+    STUB = """import json, os, sys
+from pathlib import Path
+Path("cloud-args.json").write_text(json.dumps(sys.argv[1:]))
+sys.stdout.write(Path(os.environ["FAKE_CLOUD_RESULT"]).read_text())
+sys.exit(int(os.environ.get("FAKE_CLOUD_EXIT", "0")))
+"""
+
+    def cloud(self, *flags, members=None, stamp=None, result=None, asset=True, **env):
+        """A cloud build of HEAD: the stub names the files a verified download leaves behind. The JDK's java
+        only answers -version: the cloud mode needs a JVM for apksigner and keytool, and the fakes need none."""
+        jni = self.dir / sync.FFMPEG_JNI / "ffmpeg_jni.cc"
+        if not jni.exists():  # protected-apk reads the module's tree when the library is not the AAR's
+            jni.parent.mkdir(parents=True)
+            jni.write_text("// jni\n")
+            run("git", "add", "-A", sync.FFMPEG_JNI, cwd=self.dir)
+            run("git", "commit", "-q", "-m", "jni", cwd=self.dir)
+        (self.dir / "scripts/shield_cloud_build.py").write_text(self.STUB)
+        download = self.dir / self.CLOUD_DIR
+        download.mkdir(parents=True, exist_ok=True)
+        apk = download / "app-full-arm64-v8a-debug.apk"
+        with zipfile.ZipFile(apk, "w") as z:
+            for name, data in (members or self.CLOUD).items():
+                z.writestr(name, data)
+        tree = subprocess.run(["git", "rev-parse", "HEAD:native/rpu_builder"], cwd=self.dir,
+                              capture_output=True, text=True).stdout.strip()
+        (download / "libnuvio_rpu.so.stamp").write_text(json.dumps(stamp or {
+            "tree": tree, "dirty": False, "sha256": "raw", "packaged_sha256": sync.sha256(self.CLOUD[sync.RPU_LIB])}))
+        libs = self.dir / self.ASSET_DIR / "static-libs/arm64-v8a"
+        libs.mkdir(parents=True, exist_ok=True)
+        (self.dir / self.ASSET_DIR / "headers/libavcodec").mkdir(parents=True, exist_ok=True)
+        for name in sync.FFMPEG_STATIC_LIBS if asset else ():
+            (libs / name).write_bytes(f"asset {name}".encode())
+        jdk = self.dir.parent / "jdk"
+        if not (jdk / "bin/java").exists():
+            self.tool_at(jdk / "bin/java", "echo 'openjdk version \"17.0.99\"' >&2\n")
+        lines = {"commit": self.head(), "run_id": "45800000001",
+                 "run_url": "https://github.com/tinof/NuvioTV-Builds/actions/runs/45800000001",
+                 "apk": f"{self.CLOUD_DIR}/{apk.name}", "stamp": f"{self.CLOUD_DIR}/libnuvio_rpu.so.stamp",
+                 "ffmpeg": self.ASSET_DIR}
+        text = "".join(f"{k}={v}\n" for k, v in lines.items()) if result is None else result
+        (self.dir.parent / "cloud-result.txt").write_text(text)
+        return subprocess.run(["scripts/shield_build_install.sh", "--suffix", ".exp", *flags], cwd=self.dir,
+                              env={**self.env, "JAVA17_HOME": str(jdk), "FAKE_CLOUD_RESULT": str(self.dir.parent / "cloud-result.txt"),
+                                **env},
+                              capture_output=True, text=True)
+
+    def head(self):
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.dir, capture_output=True, text=True).stdout.strip()
+
+    def cloud_args(self):
+        path = self.dir / "cloud-args.json"
+        return json.loads(path.read_text()) if path.exists() else None
+
+    def test_the_cloud_is_the_default_and_its_row_has_a_sixth_column(self):
+        r = self.cloud()
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        self.assertFalse((self.dir / "gradle-args.txt").exists(), "gradlew ran")
+        self.assertEqual(["build", "--variant", "Debug", "--suffix", ".exp", "--version-code", "1580",
+                          "--version-name", "1.1.0-nt.10.shield"], self.cloud_args())
+        row = self.logged().rstrip("\n").split("\t")
+        apk = self.dir / self.CLOUD_DIR / "app-full-arm64-v8a-debug.apk"
+        self.assertEqual([self.head(), "com.example.exp", sync.sha256(apk.read_bytes()), "abc", "cloud:45800000001"],
+                         row[1:], row)
+        self.assertIn(f"== {self.CLOUD_DIR}/app-full-arm64-v8a-debug.apk", r.stdout)
+
+    def test_the_cloud_ffmpeg_check_uses_the_asset_without_local_properties(self):
+        self.assertFalse((self.dir / "local.properties").exists())
+        r = self.cloud()
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        self.assertIn("FFmpeg is the local module", r.stdout)
+        self.assertIn(f"libavcodec.a sha256 {sync.sha256(b'asset libavcodec.a')}", r.stdout)
+        # Not this checkout's HEAD: the asset's headers are no git checkout.
+        self.assertIn("FFmpeg source not a git checkout", r.stdout)
+
+    def test_the_asset_wins_over_the_macs_local_properties(self):
+        (self.dir / "local.properties").write_text("USE_LOCAL_FFMPEG_DECODER=false\nFFMPEG_BUILD_DIR=/nowhere\n")
+        r = self.cloud()
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        self.assertIn(f"libavcodec.a sha256 {sync.sha256(b'asset libavcodec.a')}", r.stdout)
+
+    def test_a_cloud_apk_without_the_asset_libraries_stops(self):
+        r = self.cloud(asset=False)
+        self.assertEqual(1, r.returncode, r.stdout + r.stderr)
+        self.assertIn("libavcodec.a (FFMPEG_BUILD_DIR), the local module links it", r.stdout)
+        self.assertEqual("", self.logged())
+
+    def test_a_foreign_stamp_stops_a_cloud_build(self):
+        r = self.cloud(stamp={"tree": "0" * 40, "dirty": False, "sha256": "raw",
+                              "packaged_sha256": sync.sha256(self.CLOUD[sync.RPU_LIB])})
+        self.assertEqual(1, r.returncode, r.stdout + r.stderr)
+        self.assertIn(f"the library was built from native/rpu_builder tree {'0' * 40}, HEAD has", r.stdout)
+        self.assertIn("NUVIO_ALLOW_NATIVE_MISMATCH=1", r.stderr)
+        self.assertEqual("", self.logged())
+
+    def test_a_cloud_apk_without_the_dts_writer_stops(self):
+        r = self.cloud(members={**self.CLOUD, sync.FFMPEG_LIB: b"no writer"}, NUVIO_ALLOW_NATIVE_MISMATCH="1")
+        self.assertEqual(1, r.returncode, r.stdout + r.stderr)
+        self.assertIn("FAIL: aac-to-dts: lib/arm64-v8a/libffmpegJNI.so has no dcaxll", r.stdout)
+        self.assertEqual("", self.logged())
+
+    def test_the_flags_reach_the_cloud_build(self):
+        self.assertEqual(0, self.cloud("--benchmark", "--rebuild", NUVIO_VERSION_CODE="1590").returncode)
+        self.assertEqual(["build", "--variant", "Benchmark", "--suffix", ".exp", "--version-code", "1590",
+                          "--version-name", "1.1.0-nt.10.shield", "--rebuild"], self.cloud_args())
+        self.assertEqual(0, self.cloud("--debuggable").returncode)
+        self.assertIn("--debuggable", self.cloud_args())
+
+    def test_flags_the_cloud_cannot_take_exit_2_before_it_runs(self):
+        for flags, message in ((["--allow-empty-config"], "--allow-empty-config needs --local"),
+                               (["--benchmark", "--debuggable"], "a benchmark build is never debuggable"),
+                               (["--local", "--benchmark", "--debuggable"], "a benchmark build is never debuggable")):
+            with self.subTest(flags=flags):
+                r = self.cloud(*flags)
+                self.assertEqual(2, r.returncode, r.stdout + r.stderr)
+                self.assertIn(message, r.stderr)
+                self.assertIsNone(self.cloud_args())
+                self.assertFalse((self.dir / "gradle-args.txt").exists())
+
+    def test_the_cloud_exit_code_passes_through(self):
+        for code in ("75", "1", "2"):
+            with self.subTest(code=code):
+                r = self.cloud(FAKE_CLOUD_EXIT=code, result="")
+                self.assertEqual(int(code), r.returncode, r.stdout + r.stderr)
+                self.assertEqual("", self.logged())
+                self.assertFalse((self.dir / "gradle-args.txt").exists())
+
+    def test_an_incomplete_cloud_result_stops(self):
+        r = self.cloud(result="commit=abc\n")
+        self.assertEqual(1, r.returncode, r.stdout + r.stderr)
+        self.assertIn("shield_cloud_build.py named no complete build", r.stderr)
+        self.assertEqual("", self.logged())
+
+    def test_a_cloud_build_needs_a_java_runtime(self):
+        jdk = self.dir.parent / "broken-jdk"
+        self.tool_at(jdk / "bin/java", "exit 1\n")
+        r = self.cloud(JAVA17_HOME=str(jdk))
+        self.assertEqual(1, r.returncode, r.stdout + r.stderr)
+        self.assertIn("no Java runtime for apksigner and keytool", r.stderr)
+        self.assertIsNone(self.cloud_args())
+
+    def tool_at(self, path, body):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.tool(path, body)
 
 
 class MapOverlapRepoTest(RepoFixture, unittest.TestCase):

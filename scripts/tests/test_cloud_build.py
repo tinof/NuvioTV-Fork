@@ -629,7 +629,7 @@ class CiBuildTest(unittest.TestCase):
     # --- the same Gradle arguments as the local script ---
 
     def local_args(self, variant, suffix, debuggable, code, name):
-        argv = ["scripts/shield_build_install.sh", "--suffix", suffix, "--allow-empty-config"]
+        argv = ["scripts/shield_build_install.sh", "--local", "--suffix", suffix, "--allow-empty-config"]
         argv += ["--benchmark"] if variant == "Benchmark" else []
         argv += ["--debuggable"] if debuggable else []
         env = {k: v for k, v in self.env.items() if not k.startswith(("CLOUD_", "GITHUB_"))}

@@ -40,6 +40,38 @@ gh needs the `repo` and `workflow` scopes (`gh auth refresh -s workflow`). Every
 build repo, and every write first checks that it is private. Run `secrets` again after a change to
 `local.properties` or the keystore, `workflow` after a committed change to `shield-build.yml`.
 
+## From the Mac
+
+`scripts/shield_build_install.sh` builds in the cloud by default. `--local` builds this tree on the Mac
+with Gradle, as before.
+
+```sh
+scripts/shield_build_install.sh --install                         # debug .shield of HEAD, then adb install
+scripts/shield_build_install.sh --benchmark                       # the benchmark build, no install
+scripts/shield_build_install.sh --debuggable --suffix .shielddbg  # a debuggable build beside .shield
+```
+
+The tree must be clean, untracked files included, and HEAD must be on an origin branch. Otherwise the
+script stops and names `--local`. `scripts/shield_cloud_build.py` does the cloud part:
+
+- It reuses a verified download of HEAD with the same inputs, attaches to a recorded run of it, or
+  dispatches a new one. `--rebuild` skips the download and a finished run, not a running one.
+- It records each request in `.local/cloud-builds/<request_id>.json` before the dispatch. The run is the
+  one whose title carries the request id.
+- It waits up to `NUVIO_CLOUD_WAIT_MIN` minutes (default 100). Exit 75 means the run is still going. It
+  is never cancelled: the same command attaches to it. A run that does not succeed exits 1.
+- It checks the download against `build-info.json`: commit, request id, inputs, run id, the APK's size
+  and sha256, HEAD's FFmpeg pin and the stamp. The APK's certificate must be that of the Mac's CI debug
+  keystore. Then it deletes the remote artifact and keeps the 3 newest downloads.
+- It unpacks the pinned FFmpeg asset once into `.local/cloud-ffmpeg/<tag>/`, so that `sync.py
+  protected-apk` hashes the libraries the cloud linked.
+
+The rest is the local build's tail: protected-apk with the downloaded stamp, the package and certificate,
+the row in `.local/shield-builds.tsv` and, with `--install`, the install over adb. A cloud row has a
+sixth column `cloud:<run id>`. apksigner and keytool need a Java runtime of any version (`JAVA17_HOME`,
+`JAVA_HOME` or `/usr/libexec/java_home`). `--allow-empty-config` needs `--local`, and
+`--benchmark --debuggable` exits 2.
+
 ## A build by hand
 
 The commit must be pushed to `origin`; the runner fetches it anonymously from GitHub.

@@ -120,7 +120,7 @@ report() {  # <a> <b> <out>
       echo "     to put the recorded APK back: adb -s \"\$s\" install -r $a/apk/$pkg.apk" >>"$out"
     else
       row="$(awk -F'\t' -v h="$bsha" -v p="$pkg" '$4 == h && $3 == p { print $2 }' "$(dirname "$0")/../.local/shield-builds.tsv" 2>/dev/null | tail -1 || true)"
-      echo "     no APK copy (snapshot without --pull-apk). To rebuild it: check out ${row:-the commit it was built from (not in .local/shield-builds.tsv)} and run scripts/shield_build_install.sh --suffix $suffix --install, with the --benchmark or --debuggable flag it was built with" >>"$out"
+      echo "     no APK copy (snapshot without --pull-apk). To rebuild it: check out ${row:-the commit it was built from (not in .local/shield-builds.tsv)} and run scripts/shield_build_install.sh --suffix $suffix --install (add --local when that commit is not on origin), with the --benchmark or --debuggable flag it was built with" >>"$out"
     fi
   done < <(snap_kv_diff <(awk -F'\t' '{ print $1 "=" $3 }' "$a/apks.tsv") <(awk -F'\t' '{ print $1 "=" $3 }' "$b/apks.tsv"))
 }
