@@ -10,6 +10,24 @@ from the second. Line numbers are as of commit 8db45982c.
 From 2026-10-16, roadmap steps carry stable IDs (`<item>.<n>`, for example `R2.1`), and entries from then
 on name the step ID and the PR.
 
+## 2026-11-26: R2.3 Keep the content frame rate after playback (PR #102)
+
+- [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
+  default off. Gate: setting persists; switch still overrides.
+  - **Decided 2026-11-26 (owner):** covered by upstream, no fork setting. Frame Rate Matching
+    "On - start only" (`FrameRateMatchingMode.START`) switches at start and clears the original mode on
+    close, so the TV keeps the content rate; it is saved per profile (`storedFrameRateMatchingMode`,
+    `PlayerSettingsDataStore.kt:800`). `AfrUiModeRestoreTest` and `FrameRateMatchingDefaultTest` pin both.
+    `afr_restore_skip=1` still wins over every delay under "start and stop" (`FrameRateUtilsAfrTest`); under
+    "start only" the setprop `0` cannot force a switch-back, which R2.4 does not need.
+
+- **Evidence:** `AfrUiModeRestoreTest` (`off and start clear the original mode on close`), `FrameRateMatchingDefaultTest`
+  (`a saved mode wins over the device default`, START round-trips) and `FrameRateUtilsAfrTest`
+  (`afr_restore_skip=1 wins over every delay`): 79 tests, 0 failures on PR #102.
+- **Review:** CodeRabbit found that R2.4's delay arms would test nothing under "start only"; R2.4 now runs every
+  arm in "On - start and stop".
+- **Resolution:** closed as covered by upstream's `FrameRateMatchingMode.START`; no fork setting (owner).
+
 ## 2026-11-25: Q5.8 Dolby Vision remux heap fill no longer reproduces (PR #100)
 
 - [Q5.8][device][new-build] Find what fills the Java heap on a Dolby Vision UHD remux with DTS-HD MA 5.1.

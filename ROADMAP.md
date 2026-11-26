@@ -90,6 +90,7 @@ Newest first. One line per step. The full text is in [`docs/ROADMAP_LOG.md`](doc
 
 | Date | Step | Items | Where |
 |------|------|-------|-------|
+| 2026-11-26 | R2.3 closed: upstream's Frame Rate Matching "On - start only" already keeps the content frame rate after playback and is saved per profile, so the fork adds no setting (owner). | R2 | [log](docs/ROADMAP_LOG.md), PR #102 |
 | 2026-11-25 | Q5.8 closed: the Dolby Vision UHD remux that filled the Java heap on 2026-11-17 kept it at 171–218 MB for 10 minutes on HEAD, without and with the frame-gap capture; the cause is not named, and the 2026-11-18 sync is the likely fix. | Q5 | [log](docs/ROADMAP_LOG.md), PR #100 |
 | 2026-11-20 | M1.5 closed: `shield_measure.py ui` compares a screencap after each journey with the start and stops when a journey ends elsewhere, so a Home that does not fit a journey is refused instead of measured wrongly. | M1 | [log](docs/ROADMAP_LOG.md), PR #98 |
 | 2026-11-19 | U1.5: rebased onto upstream 1.2.0-arc.3 (official 1.2.0-beta.2); the Nvidia mpv direct-decoding default was retired because upstream asks for direct MediaCodec on every box; both protected features kept every line; a new CI commit runs upstream's baseline on the candidate's 1 GB test heap. | U1 | [log](docs/ROADMAP_LOG.md), PR #95 |
@@ -280,20 +281,12 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
 
 ### R2: switch-back after Stop (incident 01)
 
-- **Status:** Partial. The 750 ms delay ships but is unproven; a gone activity skips the switch-back on
-  Nvidia, a new player cancels a pending one and restores the UI mode only once its settings load (R2.1,
-  R2.2, R2.5, [log](docs/ROADMAP_LOG.md)). Open: R2.3, R2.4. Findings H1–H5, H7, B2, B3.
+- **Status:** Partial. The 750 ms delay ships but is unproven; a gone activity skips the switch-back, a new
+  player restores the UI mode only once its settings load, and "On - start only" keeps the content rate (R2.1,
+  R2.2, R2.3, R2.5, [log](docs/ROADMAP_LOG.md)). Open: R2.4. Findings H1–H5, H7, B2, B3.
 - In the incident the video layer was already gone when the switch-back hung; HDCP read failures had
   started right after the switch-in. Of the strategies weighed, only skipping the switch-back removes the
   mode set at Stop (H4). A clean run of 30 Stops cannot tell the delay from no delay (H5).
-- [R2.3][desk] User setting "Keep the content frame rate after playback", backed by `afr_restore_skip`,
-  default off. Gate: setting persists; switch still overrides.
-  - **Decided 2026-11-26 (owner):** covered by upstream, no fork setting. Frame Rate Matching
-    "On - start only" (`FrameRateMatchingMode.START`) switches at start and clears the original mode on
-    close, so the TV keeps the content rate; it is saved per profile (`storedFrameRateMatchingMode`,
-    `PlayerSettingsDataStore.kt:800`). `AfrUiModeRestoreTest` and `FrameRateMatchingDefaultTest` pin both.
-    `afr_restore_skip=1` still wins over every delay under "start and stop" (`FrameRateUtilsAfrTest`); under
-    "start only" the setprop `0` cannot force a switch-back, which R2.4 does not need.
 - [R2.4][device][owner][new-build] Hot-Stop test: loop HDR titles whose rate differs from the UI mode (start,
   play 60–120 s, Stop), rotating arms A/B/C = `afr_restore_delay_ms` 0 / 750 / 3000 (each with
   `afr_restore_skip 0` set explicitly) and D = `afr_restore_skip 1`. Every arm runs with Frame Rate Matching
