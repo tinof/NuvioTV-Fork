@@ -601,8 +601,8 @@ the mode restore on every new player and HDR10 as Dolby Vision from a manifest a
   `adb install -r` of an APK signed with the same key (data kept), setprop, launching and measuring.
   Not allowed without a verified backup: uninstall, `pm clear`, an install that changes the signing key.
   A `-Pdebuggable=true` build allows `run-as … tar`; it is used for heap dumps and backups, never for
-  timings. Built locally it has a different signing key, so it installs beside the CI build under its own
-  suffix (`.shielddbg`), never over it.
+  timings. It installs beside the `.shield` build under its own suffix (`.shielddbg`), never over it: a
+  `--local` build without the CI keystore has a different signing key, and a cloud build carries the CI key.
 - **Builds.** `scripts/shield_build_install.sh [--local] [--suffix S] [--benchmark] [--debuggable] [--install]`
   builds a clean, pushed HEAD in the private repo `tinof/NuvioTV-Builds` (since 2026-11-26; about 31 min debug,
   35 min benchmark) and downloads and checks it; `--local` builds on the Mac with JDK 17. Either way it logs HEAD, package, certificate and APK hash to `.local/shield-builds.tsv`, and with
